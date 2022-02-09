@@ -4,7 +4,7 @@ An Evolver for Core War, written in Python. You will need probably need to edit 
 
 A genetic algorithm will pit the warriors against each other, then breed the winner, with some random mutation.
 
-##Usage:
+## Usage:
 
 For all of these, modify the constants at the beginnning of the program.
 
@@ -12,7 +12,7 @@ For all of these, modify the constants at the beginnning of the program.
 2. Set ALREADYSEEDED to False. If you interrupt it and want to resume, set it to True.
 3. Choose how much actual wall clock time (in hours) you plan to run the project for and modify CLOCK_TIME
 
-##Special Features:
+## Special Features:
 
 1. Evolve warrior to compete in multiple arenas at once. This is beneficial because useful instructions can be nabbed by warriors for use in other arenas.
 	- A Sanitizer will chop the numerical values down to something that makes sense in the smaller core if needed. This was also used in Round 3 of the Global Masters Tournament.
