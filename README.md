@@ -13,10 +13,12 @@ For all of these, modify the constants at the beginnning of the program.
 1. Edit the ARENA lists to contain the parameters of the competitions you want to compete in. If you just want to compete in one arena, you have lists of length 1.
 2. Set ALREADYSEEDED to False. If you interrupt it and want to resume, set it to True.
 3. Choose how much actual wall clock time (in hours) you plan to run the project for and modify CLOCK_TIME
+4. python evolverstage.py
+5. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
 
 ## Special Features:
 
-1. Evolve warrior to compete in multiple arenas at once. This is beneficial because useful instructions can be nabbed by warriors for use in other arenas.
+1. Evolve warriors to compete in multiple arenas at once. This is beneficial because useful instructions can be nabbed by warriors for use in other arenas.
 	- A Sanitizer will chop the numerical values down to something that makes sense in the smaller core if needed. This was also used in Round 3 of the Global Masters Tournament.
 2. Bias towards picking more useful instructions. (MOV, SPL, DJN most likely)
 3. Bias towards picking small numbers (likely inside the warrior) (3 out of 4 chance).
