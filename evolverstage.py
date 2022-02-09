@@ -1,4 +1,13 @@
 #For programmers familiar with Core War and Python. You will probably have to modify the code to do what you want.
+
+'''
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+'''
+
 import random
 import os
 import re
@@ -30,7 +39,7 @@ WARLEN_LIST=[100,6,80,20,5,20,50,100,100,100,100,300,200,400]
 WARDISTANCE_LIST=[100,6,80,20,5,20,50,100,100,100,100,300,200,4000]
 
 NUMWARRIORS=500
-ALREADYSEEDED=True
+ALREADYSEEDED=True ################# Set to False on first or it will not work.
 
 CLOCK_TIME=24.0 #actual wall clock time in hours you want to take
 MUT_RATE_LIST=[8,16,24] # 1 in this chance of mutation, per instruction
