@@ -29,10 +29,10 @@ import time
 # 10 94 LP         8000,  80000,     8, 100, 100
 # 11 Tourney       8192, 100000,  8000, 300, 300
 # 12 Experimental 55440, 500000, 10000, 200, 200
-#Python starts lists at 1, so I decided not to fight it.
+#Python starts lists at 0, so I decided not to fight it.
 LASTARENA=3 #A LASTARENA of 12 means you are running 13 arenas
 CORESIZE_LIST=[8000,160,8000,800,80,800,800,8000,8000,8000,8000,8192,55440,8000]
-SANITIZE_LIST=[8000,160,   9,800,80,800,800,8000,8000,8000,8000,8192,55440,8000] #needed for Global Masters Round 3. Also makes code look better if from another areana
+SANITIZE_LIST=[8000,160,   9,800,80,800,800,8000,8000,8000,8000,8192,55440,8000] #needed for Global Masters Round 3. Also makes code look better if from another arena
 CYCLES_LIST=[80000,1600,80000,8000,800,8000,8000,80000,80000,80000,80000,100000,500000,80000]
 PROCESSES_LIST=[64,160,8000,4,80,800,8,64,8000,8000,8,8000,10000,80]
 WARLEN_LIST=[100,6,80,20,5,20,50,100,100,100,100,300,200,400]
