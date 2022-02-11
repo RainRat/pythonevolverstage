@@ -29,5 +29,10 @@ For all of these, modify the constants at the beginnning of the program.
 		The primary activity of this phase is to use breeding to combine features of different warriors. They will fight for more rounds before declaring the winner. How breeding works: The winner, and a random warrior, are loaded side by side. Starting from a random warrior from those two, instructions are copied into the new warrior. Each instruction, there's a chance of switching to reading instructions from the other warrior. So the goal is alternating sections of instructions from each parent.
 	- Optimization (complex life analogy)
 		The primary activity of this phase is to fine tune constants and other behaviour. Warriors fight for even more rounds to determine the winner. Mutation is lower, and while breeding, larger chunks are copied into the new warrior.
-		
+5. (New) Progress tracker. Example:
+	8.00 hours remaining (0.01% complete) Era: 1
+6. (New) Finished the cycle you originally planned and want to optimize some more? Set:
+	FINAL_ERA_ONLY=True
+	ALREADYSEEDED=True #Make sure to set this True as well.
+
 The cellular analogy is just to understand why different parameters were chosen in each era. Warriors are the same size in each era.

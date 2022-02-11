@@ -42,6 +42,8 @@ NUMWARRIORS=500
 ALREADYSEEDED=True ################# Set to False on first or it will not work.
 
 CLOCK_TIME=24.0 #actual wall clock time in hours you want to take
+FINAL_ERA_ONLY=False #if True, skip the first two eras and go straight to the last one(ie. if you want to continue fine-tuning where you left off)
+                     #Or you're doing other research into the parameters and don't want them changing.
 MUT_RATE_LIST=[8,16,24] # 1 in this chance of mutation, per instruction
 MINI_MUT_RATE_LIST=[4,6,8]  # 1 in this chance of minor mutation, per instruction
 CROSSOVERRATE_LIST=[10,2,8] # 1 in this chance of switching to picking lines from other warrior, per instruction
@@ -98,7 +100,9 @@ while(True):
     era=2
   if runtime_in_hours>CLOCK_TIME:
     quit()
-  print("Era: "+str(era))
+  if FINAL_ERA_ONLY==True:
+    era=2
+  print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) +" hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+" complete) Era: "+str(era+1))
   
   #in a random arena
   arena=random.randint(0, LASTARENA)
