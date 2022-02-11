@@ -1,0 +1,23 @@
+;redcode
+;name Evolved173
+;author RainRat
+SPL.AB #97,}-128
+MOV.I >-6,<-1
+DJN.I $-1,$-2
+SPL.I {-14,#-16
+SPL.I #6,}-3
+DJN.I $1,>3
+DJN.BA @-4,*8
+JMP.F {636,@-1
+JMP.A }0,$-3
+SUB.A *18,#-12
+JMZ.I <3,@8
+CMP.A @-152,{2
+JMP.I {1,$1
+MOV.BA #503,*-3
+MOV.A *253,>-385
+SUB.A #2,*-12
+SPL.B #-155,{-5
+SPL.F #-9,$-14
+ADD.X <8,@-4
+CMP.X <-8,}-86

@@ -1,0 +1,7 @@
+These were submitted to the 2022 Corewars Global Masters Tournament http://www.corewar.info/tournament/CGM1/
+
+They all converged into a loop of:
+MOV
+DJN -1
+
+Plus some junk instructions. It's not surprising that they converged, the evolver's designed so that instructions can be shared across arenas.
