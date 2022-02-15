@@ -12,6 +12,7 @@ import random
 import os
 import re
 import time
+#import psutil #Not currently active. See bottom of code for how it could be used.
 
 #size, cycles, processes, length, distance
 # 0-3 Global Masters
@@ -44,10 +45,23 @@ ALREADYSEEDED=True ################# Set to False on first or it will not work.
 CLOCK_TIME=24.0 #actual wall clock time in hours you want to take
 FINAL_ERA_ONLY=False #if True, skip the first two eras and go straight to the last one(ie. if you want to continue fine-tuning where you left off)
                      #Or you're doing other research into the parameters and don't want them changing.
-MUT_RATE_LIST=[8,16,24] # 1 in this chance of mutation, per instruction
-MINI_MUT_RATE_LIST=[4,6,8]  # 1 in this chance of minor mutation, per instruction
+
+#Five strategies for mutating a single instruction. Think of it like a bag of marbles of six different colours, and a different number of each colour.
+NOTHING_LIST=[14,12,20] #one of the colours of marbles will do nothing to the instruction
+RANDOM_LIST=[4,2,1] #This colour of marbles will create a completely random instruction.
+NAB_LIST=[4,6,3] #This will nab an instruction from a different arena. (Set to 0 if you are only running one arena.)
+MINI_MUT_LIST=[3,4,4] #This will do a mini mutation. (One part of the instruction replaced with something random.)
+MICRO_MUT_LIST=[1,4,6] #This will do a micro mutation. (One of the numbers in the instruction increased or decreased by 1.)
+LIBRARY_LIST=[4,3,2] #This will grab an instruction from the instruction library (not included). (Set to 0 if you are only running one arena.)
+
+#******* Not included with distribution. You do not need to use this. ***********
+LIBRARY_PATH="" #instructions to pull from. Maybe a previous evolution run, maybe one or more hand-written warriors.
+#one instruction per line. Just assembled instructions, nothing else. If multiple warriors, just concatenated with no breaks.
+
+
 CROSSOVERRATE_LIST=[10,2,8] # 1 in this chance of switching to picking lines from other warrior, per instruction
 TRANSPOSITIONRATE_LIST=[10,12,20] # 1 in this chance of swapping location of multiple instructions, per warrior
+
 BATTLEROUNDS_LIST=[1,20,100]
 PREFER_WINNER_LIST=[True, False, False]
 
@@ -70,27 +84,29 @@ def coremod(x,y):
 
 if ALREADYSEEDED==False: 
   print("Seeding")
-  for q in range (0,LASTARENA+1):
-    os.mkdir("arena"+str(q))
+  for arena in range (0,LASTARENA+1):
+    os.mkdir("arena"+str(arena))
     for i in range(1, NUMWARRIORS+1):
-      f=open("arena"+str(q)+"\\"+str(i)+".red", "w") 
-      for j in range(1, WARLEN_LIST[q]+1):
+      f=open("arena"+str(arena)+"\\"+str(i)+".red", "w") 
+      for j in range(1, WARLEN_LIST[arena]+1):
         #Biasing toward more viable warriors: 3 in 4 chance of choosing an address within the warrior. Same bias in mutation.     
         if random.randint(1,4)==1:
-          num1=random.randint(-CORESIZE_LIST[q],CORESIZE_LIST[q])
+          num1=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
         else:
-          num1=random.randint(-WARLEN_LIST[q],WARLEN_LIST[q])
+          num1=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
         if random.randint(1,4)==1:
-          num2=random.randint(-CORESIZE_LIST[q],CORESIZE_LIST[q])
+          num2=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
         else:
-          num2=random.randint(-WARLEN_LIST[q],WARLEN_LIST[q])
-        f.write(random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+str(num1)+","+random.choice(INSTR_MODES)+str(num2)+"\n")
+          num2=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
+        f.write(random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+str(coremod(num1,SANITIZE_LIST[arena]))+","+random.choice(INSTR_MODES)+str(coremod(num2,SANITIZE_LIST[arena]))+"\n")
       f.close()
 
 starttime=time.time() #time in seconds
- 
+era=-1
+
 while(True):
   #before we do anything, determine which era we are in.
+  prevera=era
   curtime=time.time()
   runtime_in_hours=(curtime-starttime)/60/60
   era=0
@@ -102,6 +118,16 @@ while(True):
     quit()
   if FINAL_ERA_ONLY==True:
     era=2
+  if era!=prevera:
+    print("************** Switching from era "+str(prevera+1)+" to "+str(era+1)+ " *******************")
+    bag=[]
+    bag.extend([0]* NOTHING_LIST[era])
+    bag.extend([1]* RANDOM_LIST[era])
+    bag.extend([2]* NAB_LIST[era])
+    bag.extend([3]* MINI_MUT_LIST[era])
+    bag.extend([4]* MICRO_MUT_LIST[era])
+    bag.extend([5]* LIBRARY_LIST[era])
+    
   print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) +" hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+" complete) Era: "+str(era+1))
   
   #in a random arena
@@ -168,84 +194,108 @@ Rules:
   if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1: #shuffle a warrior
 
     for i in range(1, random.randint(1, int(WARLEN_LIST[arena]/2))):
-        fromline=random.randint(0,WARLEN_LIST[arena]-1)
-        toline=random.randint(0,WARLEN_LIST[arena]-1)
-        if random.randint(1,2)==1: #either shuffle the winner with itself or shuffle loser with itself
-          templine=winlines[toline]
-          winlines[toline]=winlines[fromline]
-          winlines[fromline]=templine
-        else:
-          templine=ranlines[toline]
-          ranlines[toline]=ranlines[fromline]
-          ranlines[fromline]=templine
+      fromline=random.randint(0,WARLEN_LIST[arena]-1)
+      toline=random.randint(0,WARLEN_LIST[arena]-1)
+      if random.randint(1,2)==1: #either shuffle the winner with itself or shuffle loser with itself
+        templine=winlines[toline]
+        winlines[toline]=winlines[fromline]
+        winlines[fromline]=templine
+      else:
+        templine=ranlines[toline]
+        ranlines[toline]=ranlines[fromline]
+        ranlines[fromline]=templine
   if PREFER_WINNER_LIST[era]==True:  
     pickingfrom=1 #if start picking from the winning warrior, more chance of winning genes passed on.
   else:
     pickingfrom=random.randint(1,2)
 
   for i in range(0, WARLEN_LIST[arena]):
-    if random.randint(1,MUT_RATE_LIST[era])==1: #a major mutation can either be completely random, or pick a instruction from any arena
-      if random.randint(1,2)==1: #1= total random, 2=picked from instruction library
+    #first, pick an instruction from either parent, even if it will get overwritten by a nabbed or random instruction
+    if random.randint(1,CROSSOVERRATE_LIST[era])==1:
+      if pickingfrom==1:
+        pickingfrom=2
+      else:
+        pickingfrom=1
+
+    if pickingfrom==1:
+      templine=(winlines[i])
+    else:
+      templine=(ranlines[i])
+  
+    marble=random.choice(bag)  
+    if marble==1: #a major mutation, completely random
+      print("Major mutation")
+      if random.randint(1,4)==1:
+        num1=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
+      else:
+        num1=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
+      if random.randint(1,4)==1:
+        num2=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
+      else:
+        num2=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
+      templine=random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+str(num1)+","+random.choice(INSTR_MODES)+str(num2)+"\n"
+    elif (marble==2) and (LASTARENA!=0): #nab instruction fron another arena. Doesn't make sense if not multiple arenas
+      donor_arena=random.randint(0, LASTARENA)
+      while (donor_arena==arena):
+        donor_arena=random.randint(0, LASTARENA)
+      print("Nab instruction from arena " + str(donor_arena))
+      templine=random.choice(list(open("arena"+str(donor_arena)+"\\"+str(random.randint(1, NUMWARRIORS))+".red")))
+    elif marble==3: #a minor mutation modifies one aspect of instruction
+      print("Minor mutation")
+      splitline=re.split('[ \.,\n]', templine)
+      r=random.randint(1,6)
+      if r==1:
+        splitline[0]=random.choice(INSTR_SET)
+      elif r==2:
+        splitline[1]=random.choice(INSTR_MODIF)
+      elif r==3:
+        splitline[2]=random.choice(INSTR_MODES)+splitline[2][1:]
+      elif r==4:
         
         if random.randint(1,4)==1:
           num1=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
         else:
           num1=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
+        splitline[2]=splitline[2][0:1]+str(num1)
+      elif r==5:  
+        splitline[3]=random.choice(INSTR_MODES)+splitline[3][1:]
+      elif r==6:
+        
         if random.randint(1,4)==1:
-          num2=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
+          num1=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
         else:
-          num2=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
-        to_emit=random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+str(num1)+","+random.choice(INSTR_MODES)+str(num2)+"\n"
-      else:
-        donor_arena=random.randint(0, LASTARENA)
-        while donor_arena==arena:
-          donor_arena=random.randint(0, LASTARENA)
-        print("nab instruction from arena " + str(donor_arena))
-        to_emit=random.choice(list(open("arena"+str(donor_arena)+"\\"+str(random.randint(1, NUMWARRIORS))+".red")))
-    else:
-      if random.randint(1,CROSSOVERRATE_LIST[era])==1:
-        if pickingfrom==1:
-          pickingfrom=2
+          num1=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
+        splitline[3]=splitline[3][0:1]+str(num1)
+      templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
+    elif marble==4: #a micro mutation modifies one number by +1 or -1
+      print ("Micro mutation")
+      splitline=re.split('[ \.,\n]', templine)
+      r=random.randint(1,2)
+      if r==1:
+        num1=int(splitline[2][1:])
+        if random.randint(1,2)==1:
+          num1=num1+1
         else:
-          pickingfrom=1
-
-      if pickingfrom==1:
-        templine=(winlines[i])
+          num1=num1-1
+        splitline[2]=splitline[2][0:1]+str(num1)
       else:
-        templine=(ranlines[i])
-
-      if random.randint(1,MINI_MUT_RATE_LIST[era])==1: #a minor mutation modifies one aspect of instruction
-          splitline=re.split('[ \.,\n]', templine)
-          r=random.randint(1,6)
-          if r==1:
-            splitline[0]=random.choice(INSTR_SET)
-          elif r==2:
-            splitline[1]=random.choice(INSTR_MODIF)
-          elif r==3:
-            splitline[2]=random.choice(INSTR_MODES)+splitline[2][1:]
-          elif r==4:
-            
-            if random.randint(1,4)==1:
-              num1=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
-            else:
-              num1=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
-            splitline[2]=splitline[2][0:1]+str(num1)
-          elif r==5:  
-            splitline[3]=random.choice(INSTR_MODES)+splitline[3][1:]
-          elif r==6:
-            
-            if random.randint(1,4)==1:
-              num1=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
-            else:
-              num1=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
-            splitline[3]=splitline[3][0:1]+str(num1)
-          templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
-      to_emit=templine
-      
-    splitline=re.split('[ \.,\n]', to_emit)
-    to_emit=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]))+","+splitline[3][0:1]+str(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]))+"\n"
-    if to_emit[-1]!="\n":
-      to_emit=to_emit+"\n"
-    fl.write(to_emit)      
+        num1=int(splitline[3][1:])
+        if random.randint(1,2)==1:
+          num1=num1+1
+        else:
+          num1=num1-1
+        splitline[3]=splitline[3][0:1]+str(num1)
+      templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
+    elif marble==5 and LIBRARY_PATH!="": #choose instruction from instruction library
+      print("Instruction library")
+      templine=random.choice(list(open(LIBRARY_PATH)))    
+    splitline=re.split('[ \.,\n]', templine)
+    templine=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]))+","+splitline[3][0:1]+str(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]))+"\n"
+    fl.write(templine)      
   fl.close()
-  #time.sleep(5) #optional sleep if still using computer for other things
+#  time.sleep(3) #uncomment this for simple proportion of sleep if you're using computer for something else
+
+#experimental. detect if computer being used and yield to other processes.
+#  while psutil.cpu_percent()>50: #I'm not sure what percentage of CPU usage to watch for. Probably depends from computer to computer and personal taste.
+#    print("High CPU Usage. Pausing for 3 seconds.")
+#    time.sleep(3)

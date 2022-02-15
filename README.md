@@ -29,6 +29,7 @@ For all of these, modify the constants at the beginnning of the program.
 		The primary activity of this phase is to use breeding to combine features of different warriors. They will fight for more rounds before declaring the winner. How breeding works: The winner, and a random warrior, are loaded side by side. Starting from a random warrior from those two, instructions are copied into the new warrior. Each instruction, there's a chance of switching to reading instructions from the other warrior. So the goal is alternating sections of instructions from each parent.
 	- Optimization (complex life analogy)
 		The primary activity of this phase is to fine tune constants and other behaviour. Warriors fight for even more rounds to determine the winner. Mutation is lower, and while breeding, larger chunks are copied into the new warrior.
+	The cellular analogy is just to understand why different parameters were chosen in each era. Warriors are the same size in each era.
 5. (New) Progress tracker. Example:
 ```
 8.00 hours remaining (0.01% complete) Era: 1
@@ -39,4 +40,11 @@ FINAL_ERA_ONLY=True
 ALREADYSEEDED=True #Make sure to set this True as well.
 ```
 
-The cellular analogy is just to understand why different parameters were chosen in each era. Warriors are the same size in each era.
+7. (New) Two new evolution strategies.
+    First, the single instruction modification strategies are now all under a "bag of marbles" analogy, to get them all under the same framework and even use fewer variables. Imagine a bag with six different-coloured marbles. One for each of the five modification strategies, plus one for "do nothing". The lists now tell how many marbles of each type to put in the bag for each stage. A single random number decides which strategy is used. They are:
+	- Do Nothing
+	- Completely new random instruction
+	- Nab instruction from another arena
+	- Mini-mutation (change one thing about instruction)
+	- (New) Micro mutation. Increment or decrement a constant by one. Most prominent in the Optimization era.
+	- (New) Pull single instruction from instruction library. Maybe a previous evolution run, maybe one or more hand-written warriors. One text file. One instruction per line. Just assembled instructions, nothing else. If multiple warriors, just concatenated with no breaks. (Not needed and not included with distribution.)
