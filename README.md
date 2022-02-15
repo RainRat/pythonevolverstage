@@ -42,7 +42,7 @@ ALREADYSEEDED=True #Make sure to set this True as well.
 ```
 
 7. (New) Two new evolution strategies.
-    First, the single instruction modification strategies are now all under a "bag of marbles" analogy, to get them all under the same framework and even use fewer variables. Imagine a bag with six different-coloured marbles. One for each of the five modification strategies, plus one for "do nothing". The lists now tell how many marbles of each type to put in the bag for each stage. A single random number decides which strategy is used. They are:
+    First, the single instruction modification strategies are now all under a "bag of marbles" analogy, to get them all under the same framework and even use fewer variables. Imagine a bag with six different-coloured marbles. One for each of the five modification strategies, plus one for "do nothing". The lists now tell how many marbles of each type to put in the bag for each era. A single random number decides which strategy is used. They are:
 	- Do Nothing
 	- Completely new random instruction
 	- Nab instruction from another arena

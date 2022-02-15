@@ -15,29 +15,31 @@ import time
 #import psutil #Not currently active. See bottom of code for how it could be used.
 
 #size, cycles, processes, length, distance
-# 0-3 Global Masters
-# 0 GM 1           8000,  80000,    64, 100, 100
-# 1 GM 2            160,   1600,   160,   6,   6
-# 2 GM 3           8000,  80000,  8000,  80,  80 #and use SANITIZE 9
-# 3 GM 4            800,   8000,     4,  20,  20
+
+##archived 0-3 Global Masters
+## 0 GM 1           8000,  80000,    64, 100, 100
+## 1 GM 2            160,   1600,   160,   6,   6
+## 2 GM 3           8000,  80000,  8000,  80,  80 #and use SANITIZE 9
+## 3 GM 4            800,   8000,     4,  20,  20
 ##
-# 4 Nano             80,    800,    80,   5,   5 
-# 5 Tiny            800,   8000,   800,  20,  20
-# 6 Tiny LP         800,   8000,     8,  50,  50
-# 7 94 Medium P    8000,  80000,    64, 100, 100
-# 8 94/Standard    8000,  80000,  8000, 100, 100
-# 9 94 NOP         8000,  80000,  8000, 100, 100 #same as above (consider it putting more toward most popular hills, or just close the gap if you like)
-# 10 94 LP         8000,  80000,     8, 100, 100
-# 11 Tourney       8192, 100000,  8000, 300, 300
-# 12 Experimental 55440, 500000, 10000, 200, 200
+
+# 0 Nano            80,    800,    80,   5,   5 
+# 1 Tiny           800,   8000,   800,  20,  20
+# 2 Tiny LP        800,   8000,     8,  50,  50
+# 3 94 Medium P   8000,  80000,    64, 100, 100
+# 4 94/Std/NOP    8000,  80000,  8000, 100, 100
+# 5 94 LP         8000,  80000,     8, 100, 100
+# 6 Tourney       8192, 100000,  8000, 300, 300
+# 7 Experimental 55440, 500000, 10000, 200, 200
+
 #Python starts lists at 0, so I decided not to fight it.
-LASTARENA=3 #A LASTARENA of 12 means you are running 13 arenas
-CORESIZE_LIST=[8000,160,8000,800,80,800,800,8000,8000,8000,8000,8192,55440,8000]
-SANITIZE_LIST=[8000,160,   9,800,80,800,800,8000,8000,8000,8000,8192,55440,8000] #needed for Global Masters Round 3. Also makes code look better if from another arena
-CYCLES_LIST=[80000,1600,80000,8000,800,8000,8000,80000,80000,80000,80000,100000,500000,80000]
-PROCESSES_LIST=[64,160,8000,4,80,800,8,64,8000,8000,8,8000,10000,80]
-WARLEN_LIST=[100,6,80,20,5,20,50,100,100,100,100,300,200,400]
-WARDISTANCE_LIST=[100,6,80,20,5,20,50,100,100,100,100,300,200,4000]
+LASTARENA=7 #A LASTARENA of 8 means you are running 8 arenas
+CORESIZE_LIST=[80,800,800,8000,8000,8000,8192,55440]
+SANITIZE_LIST=[80,800,800,8000,8000,8000,8192,55440] #usually the same as above but may be needed for arenas like Global Masters Round 3.
+CYCLES_LIST=[800,8000,8000,80000,80000,80000,100000,500000]
+PROCESSES_LIST=[80,800,8,64,8000,8,8000,10000]
+WARLEN_LIST=[5,20,50,100,100,100,300,200]
+WARDISTANCE_LIST=[5,20,50,100,100,100,300,200]
 
 NUMWARRIORS=500
 ALREADYSEEDED=True ################# Set to False on first or it will not work.
@@ -47,10 +49,10 @@ FINAL_ERA_ONLY=False #if True, skip the first two eras and go straight to the la
                      #Or you're doing other research into the parameters and don't want them changing.
 
 #Five strategies for mutating a single instruction. Think of it like a bag of marbles of six different colours, and a different number of each colour.
-NOTHING_LIST=[14,12,20] #one of the colours of marbles will do nothing to the instruction
+NOTHING_LIST=[14,18,20] #one of the colours of marbles will do nothing to the instruction
 RANDOM_LIST=[4,2,1] #This colour of marbles will create a completely random instruction.
-NAB_LIST=[4,6,3] #This will nab an instruction from a different arena. (Set to 0 if you are only running one arena.)
-MINI_MUT_LIST=[3,4,4] #This will do a mini mutation. (One part of the instruction replaced with something random.)
+NAB_LIST=[4,3,3] #This will nab an instruction from a different arena. (Set to 0 if you are only running one arena.)
+MINI_MUT_LIST=[3,3,4] #This will do a mini mutation. (One part of the instruction replaced with something random.)
 MICRO_MUT_LIST=[1,4,6] #This will do a micro mutation. (One of the numbers in the instruction increased or decreased by 1.)
 LIBRARY_LIST=[4,3,2] #This will grab an instruction from the instruction library (not included). (Set to 0 if you are only running one arena.)
 
