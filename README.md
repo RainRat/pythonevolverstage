@@ -51,7 +51,7 @@ ALREADYSEEDED=True #Make sure to set this True as well.
 	- (New) Pull single instruction from instruction library. Maybe a previous evolution run, maybe one or more hand-written warriors. One text file. One instruction per line. Just assembled instructions, nothing else. If multiple warriors, just concatenated with no breaks. (Not needed and not included with distribution.)
 8. (New) Evolution strategy - Magic Number
 	Let's look at the classic warrior, MICE (it's written in the old format, but that's ok, it's just for example):
-	```
+```
 jmp 2
 dat 0
 mov #12, **-1**
@@ -61,5 +61,5 @@ spl @3
 add #653, 2
 jmz -5, **-6**
 dat 833
-	```
+```
 All of the bold values end up pointing to the same address, but if it were advantagous for the address to be different, the odds of all those numbers changing to point to the same address in unison would be astronomically low. So, at the beginning of the warrior, the evolver will choose a magic number, and decrement it each instruction(because core war uses relative addressing) and if this mutation strategy is chosen, the evolver will replace either the A-field or B-field with that number. 
