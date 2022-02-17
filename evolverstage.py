@@ -33,7 +33,7 @@ import time
 # 7 Experimental 55440, 500000, 10000, 200, 200
 
 #Python starts lists at 0, so I decided not to fight it.
-LASTARENA=7 #A LASTARENA of 8 means you are running 8 arenas
+LASTARENA=7 #A LASTARENA of 7 means you are running 8 arenas
 CORESIZE_LIST=[80,800,800,8000,8000,8000,8192,55440]
 SANITIZE_LIST=[80,800,800,8000,8000,8000,8192,55440] #usually the same as above but may be needed for arenas like Global Masters Round 3.
 CYCLES_LIST=[800,8000,8000,80000,80000,80000,100000,500000]
@@ -49,12 +49,13 @@ FINAL_ERA_ONLY=False #if True, skip the first two eras and go straight to the la
                      #Or you're doing other research into the parameters and don't want them changing.
 
 #Five strategies for mutating a single instruction. Think of it like a bag of marbles of six different colours, and a different number of each colour.
-NOTHING_LIST=[14,18,20] #one of the colours of marbles will do nothing to the instruction
+NOTHING_LIST=[16,18,26] #one of the colours of marbles will do nothing to the instruction
 RANDOM_LIST=[4,2,1] #This colour of marbles will create a completely random instruction.
-NAB_LIST=[4,3,3] #This will nab an instruction from a different arena. (Set to 0 if you are only running one arena.)
-MINI_MUT_LIST=[3,3,4] #This will do a mini mutation. (One part of the instruction replaced with something random.)
-MICRO_MUT_LIST=[1,4,6] #This will do a micro mutation. (One of the numbers in the instruction increased or decreased by 1.)
-LIBRARY_LIST=[4,3,2] #This will grab an instruction from the instruction library (not included). (Set to 0 if you are only running one arena.)
+NAB_LIST=[4,3,2] #This will nab an instruction from a different arena. (Set to 0 if you are only running one arena.)
+MINI_MUT_LIST=[5,4,3] #This will do a mini mutation. (One part of the instruction replaced with something random.)
+MICRO_MUT_LIST=[2,4,9] #This will do a micro mutation. (One of the numbers in the instruction increased or decreased by 1.)
+LIBRARY_LIST=[6,3,1] #This will grab an instruction from the instruction library (not included). (Set to 0 if you haven't made a library.)
+MAGIC_NUMBER_LIST=[6,4,4] #This will replace a constant with the magic number (chosen at beginning of warrior)
 
 #******* Not included with distribution. You do not need to use this. ***********
 LIBRARY_PATH="" #instructions to pull from. Maybe a previous evolution run, maybe one or more hand-written warriors.
@@ -129,6 +130,7 @@ while(True):
     bag.extend([3]* MINI_MUT_LIST[era])
     bag.extend([4]* MICRO_MUT_LIST[era])
     bag.extend([5]* LIBRARY_LIST[era])
+    bag.extend([6]* MAGIC_NUMBER_LIST[era])
     
   print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) +" hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+" complete) Era: "+str(era+1))
   
@@ -210,6 +212,11 @@ Rules:
     pickingfrom=1 #if start picking from the winning warrior, more chance of winning genes passed on.
   else:
     pickingfrom=random.randint(1,2)
+    
+  if random.randint(1,4)==1:
+    magic_number=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
+  else:
+    magic_number=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
 
   for i in range(0, WARLEN_LIST[arena]):
     #first, pick an instruction from either parent, even if it will get overwritten by a nabbed or random instruction
@@ -223,7 +230,7 @@ Rules:
       templine=(winlines[i])
     else:
       templine=(ranlines[i])
-  
+
     marble=random.choice(bag)  
     if marble==1: #a major mutation, completely random
       print("Major mutation")
@@ -290,10 +297,22 @@ Rules:
       templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
     elif marble==5 and LIBRARY_PATH!="": #choose instruction from instruction library
       print("Instruction library")
-      templine=random.choice(list(open(LIBRARY_PATH)))    
+      templine=random.choice(list(open(LIBRARY_PATH)))
+    elif marble==6: #magic number mutation
+      print ("Magic number mutation")
+      splitline=re.split('[ \.,\n]', templine)
+      r=random.randint(1,2)
+      if r==1:
+        splitline[2]=splitline[2][0:1]+str(magic_number)
+      else:
+        splitline[3]=splitline[3][0:1]+str(magic_number)
+      templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
+      
     splitline=re.split('[ \.,\n]', templine)
     templine=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]))+","+splitline[3][0:1]+str(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]))+"\n"
     fl.write(templine)      
+    magic_number=magic_number-1  
+
   fl.close()
 #  time.sleep(3) #uncomment this for simple proportion of sleep if you're using computer for something else
 
