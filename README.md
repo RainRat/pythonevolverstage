@@ -63,6 +63,7 @@ jmz -5, **-6**
 dat 833
 ```
 All of the bold values end up pointing to the same address, but if it were advantagous for the address to be different, the odds of all those numbers changing to point to the same address in unison would be astronomically low. So, at the beginning of the warrior, the evolver will choose a magic number, and decrement it each instruction(because core war uses relative addressing) and if this mutation strategy is chosen, the evolver will replace either the A-field or B-field with that number. 
+
 9. (New) Value Normalizer.
 	In the Nano Arena (size 80), for instance:
 ```
