@@ -49,20 +49,20 @@ FINAL_ERA_ONLY=False #if True, skip the first two eras and go straight to the la
                      #Or you're doing other research into the parameters and don't want them changing.
 
 #Five strategies for mutating a single instruction. Think of it like a bag of marbles of six different colours, and a different number of each colour.
-NOTHING_LIST=[16,18,26] #one of the colours of marbles will do nothing to the instruction
-RANDOM_LIST=[4,2,1] #This colour of marbles will create a completely random instruction.
-NAB_LIST=[4,3,2] #This will nab an instruction from a different arena. (Set to 0 if you are only running one arena.)
-MINI_MUT_LIST=[5,4,3] #This will do a mini mutation. (One part of the instruction replaced with something random.)
-MICRO_MUT_LIST=[2,4,9] #This will do a micro mutation. (One of the numbers in the instruction increased or decreased by 1.)
-LIBRARY_LIST=[6,3,1] #This will grab an instruction from the instruction library (not included). (Set to 0 if you haven't made a library.)
-MAGIC_NUMBER_LIST=[6,4,4] #This will replace a constant with the magic number (chosen at beginning of warrior)
+NOTHING_LIST=[10,18,27] #one of the colours of marbles will do nothing to the instruction
+RANDOM_LIST=[2,1,1] #This colour of marbles will create a completely random instruction.
+NAB_LIST=[4,4,2] #This will nab an instruction from a different arena. (Set to 0 if you are only running one arena.)
+MINI_MUT_LIST=[3,4,2] #This will do a mini mutation. (One part of the instruction replaced with something random.)
+MICRO_MUT_LIST=[3,4,3] #This will do a micro mutation. (One of the numbers in the instruction increased or decreased by 1.)
+LIBRARY_LIST=[6,2,1] #This will grab an instruction from the instruction library (not included). (Set to 0 if you haven't made a library.)
+MAGIC_NUMBER_LIST=[3,3,2] #This will replace a constant with the magic number (chosen at beginning of warrior)
 
 #******* Not included with distribution. You do not need to use this. ***********
 LIBRARY_PATH="" #instructions to pull from. Maybe a previous evolution run, maybe one or more hand-written warriors.
 #one instruction per line. Just assembled instructions, nothing else. If multiple warriors, just concatenated with no breaks.
 
 
-CROSSOVERRATE_LIST=[10,2,8] # 1 in this chance of switching to picking lines from other warrior, per instruction
+CROSSOVERRATE_LIST=[10,2,5] # 1 in this chance of switching to picking lines from other warrior, per instruction
 TRANSPOSITIONRATE_LIST=[10,12,20] # 1 in this chance of swapping location of multiple instructions, per warrior
 
 BATTLEROUNDS_LIST=[1,20,100]
@@ -85,6 +85,13 @@ def coremod(x,y):
   remainder=x%y
   return remainder*numsign
 
+def corenorm(x,y):
+  if x>y//2:
+    return(-(y-x))
+  if x<=-(y//2):
+    return((y+x))
+  return(x)
+
 if ALREADYSEEDED==False: 
   print("Seeding")
   for arena in range (0,LASTARENA+1):
@@ -101,7 +108,7 @@ if ALREADYSEEDED==False:
           num2=random.randint(-CORESIZE_LIST[arena],CORESIZE_LIST[arena])
         else:
           num2=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
-        f.write(random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+str(coremod(num1,SANITIZE_LIST[arena]))+","+random.choice(INSTR_MODES)+str(coremod(num2,SANITIZE_LIST[arena]))+"\n")
+        f.write(random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+str(corenorm(coremod(num1,SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+random.choice(INSTR_MODES)+str(corenorm(coremod(num2,SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+"\n")
       f.close()
 
 starttime=time.time() #time in seconds
@@ -196,7 +203,7 @@ Rules:
   fl=open("arena"+str(arena)+"\\"+str(loser)+".red", "w") #winner destroys loser
     
   if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1: #shuffle a warrior
-
+    print("Transposition")
     for i in range(1, random.randint(1, int(WARLEN_LIST[arena]/2))):
       fromline=random.randint(0,WARLEN_LIST[arena]-1)
       toline=random.randint(0,WARLEN_LIST[arena]-1)
@@ -309,7 +316,7 @@ Rules:
       templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
       
     splitline=re.split('[ \.,\n]', templine)
-    templine=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]))+","+splitline[3][0:1]+str(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]))+"\n"
+    templine=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(corenorm(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+"\n"
     fl.write(templine)      
     magic_number=magic_number-1  
 
