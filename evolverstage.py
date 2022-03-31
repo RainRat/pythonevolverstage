@@ -57,6 +57,14 @@ MICRO_MUT_LIST=[3,4,3] #This will do a micro mutation. (One of the numbers in th
 LIBRARY_LIST=[6,2,1] #This will grab an instruction from the instruction library (not included). (Set to 0 if you haven't made a library.)
 MAGIC_NUMBER_LIST=[3,3,2] #This will replace a constant with the magic number (chosen at beginning of warrior)
 
+#my intuition is that at first, unarchiving should rare:
+#-if sharing archive other runs, with allow unique adaptations to optimize before turning optimized warriors loose
+#later on, unarchiving should be more common:
+#-plenty of archived warriors to cycle through
+ARCHIVE_LIST=[2000,3000,3000]
+UNARCHIVE_LIST=[3000,2000,1000]
+
+
 #******* Not included with distribution. You do not need to use this. ***********
 LIBRARY_PATH="" #instructions to pull from. Maybe a previous evolution run, maybe one or more hand-written warriors.
 #one instruction per line. Just assembled instructions, nothing else. If multiple warriors, just concatenated with no breaks.
@@ -94,6 +102,7 @@ def corenorm(x,y):
 
 if ALREADYSEEDED==False: 
   print("Seeding")
+  os.mkdir("archive")
   for arena in range (0,LASTARENA+1):
     os.mkdir("arena"+str(arena))
     for i in range(1, NUMWARRIORS+1):
@@ -191,6 +200,45 @@ Rules:
     winner=warriors[0]
     loser=warriors[1]
      
+
+  if random.randint(1,ARCHIVE_LIST[era])==1:
+    #archive winner
+    print("storing in archive")
+    fw=open("arena"+str(arena)+"\\"+str(winner)+".red", "r")
+    winnerraw=fw.read() #don't need to process it, just store as is
+    fw.close()
+    fd=open("archive\\"+str(random.randint(1,9999))+".red", "w")
+    fd.write(winnerraw)
+    fd.close()
+
+  if random.randint(1,UNARCHIVE_LIST[era])==1:
+    print("unarchiving")
+    #replace loser with something from archive
+    fs=open("archive\\"+random.choice(os.listdir("archive\\")))
+    sourcelines=fs.readlines()
+    fs.close()
+    #this is more involved. the archive is going to contain warriors from different arenas. which isn't necessarily bad to get some crossover. A nano warrior would be workable,if
+    #inefficient in a normal core. These are the tasks:
+    #1. Truncate any too long
+    #2. Pad any too short with DATs
+    #3. Sanitize values
+    #4. Try to be tolerant of working with other evolvers that may not space things exactly the same.
+    fl=open("arena"+str(arena)+"\\"+str(loser)+".red", "w") #unarchived warrior destroys loser
+    countoflines=0
+    for line in sourcelines:
+      countoflines=countoflines+1
+      if countoflines>WARLEN_LIST[arena]:
+        break
+      line=line.replace('  ',' ').replace('START','').replace(', ',',').strip()
+      splitline=re.split('[ \.,\n]', line)
+      line=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(corenorm(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+"\n"
+      fl.write(line)
+    while countoflines<WARLEN_LIST[arena]:
+      countoflines=countoflines+1
+      fl.write('DAT.F $0,$0\n')
+    fl.close()
+    continue #out of while (loser replaced by archive, no point breeding)
+    
   #the loser is destroyed and the winner can breed with any warrior in the arena  
   fw=open("arena"+str(arena)+"\\"+str(winner)+".red", "r")
   winlines=fw.readlines()
@@ -204,7 +252,7 @@ Rules:
     
   if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1: #shuffle a warrior
     print("Transposition")
-    for i in range(1, random.randint(1, int(WARLEN_LIST[arena]/2))):
+    for i in range(1, random.randint(1, int((WARLEN_LIST[arena]+1)/2))):
       fromline=random.randint(0,WARLEN_LIST[arena]-1)
       toline=random.randint(0,WARLEN_LIST[arena]-1)
       if random.randint(1,2)==1: #either shuffle the winner with itself or shuffle loser with itself

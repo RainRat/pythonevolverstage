@@ -74,3 +74,17 @@ while legal, doesn't look so readable. It means the same thing as:
 DJN.F $-1,{6
 ```
 Evolver output will now rewrite numbers either negative or positive, whichever is closer to 0.
+
+10. (New) Archive and unarchive
+	Create "archive" folder. After a battle, there is a chance of archiving the winner, or replacing the loser with something from the archive.
+	- Keep clues as to how things evolved
+	- Combat hyper-specialization
+	- Transfer whole warriors between arenas
+	- Easy way to insert warriors from
+		- Previous evolution runs
+		- Other evolved warriors
+		- Other handwritten warriors
+	- Collaborate with other instances (will need to edit source code to use absolute path)
+		- Other instances on same machine
+		- Over a LAN
+		- Over the Internet with Google Drive, etc.
