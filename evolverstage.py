@@ -45,7 +45,7 @@ NUMWARRIORS=500
 ALREADYSEEDED=True ################# Set to False on first or it will not work.
 
 CLOCK_TIME=24.0 #actual wall clock time in hours you want to take
-FINAL_ERA_ONLY=False #if True, skip the first two eras and go straight to the last one(ie. if you want to continue fine-tuning where you left off)
+FINAL_ERA_ONLY=False #if True, skip the first two eras and go straight to the last one(i.e. if you want to continue fine-tuning where you left off)
                      #Or you're doing other research into the parameters and don't want them changing.
 
 #Five strategies for mutating a single instruction. Think of it like a bag of marbles of six different colours, and a different number of each colour.
@@ -57,8 +57,8 @@ MICRO_MUT_LIST=[3,4,3] #This will do a micro mutation. (One of the numbers in th
 LIBRARY_LIST=[6,2,1] #This will grab an instruction from the instruction library (not included). (Set to 0 if you haven't made a library.)
 MAGIC_NUMBER_LIST=[3,3,2] #This will replace a constant with the magic number (chosen at beginning of warrior)
 
-#my intuition is that at first, unarchiving should rare:
-#-if sharing archive other runs, with allow unique adaptations to optimize before turning optimized warriors loose
+#my intuition is that at first, unarchiving should be rare:
+#-if sharing archive with other runs, will allow unique adaptations to optimize before turning optimized warriors loose
 #later on, unarchiving should be more common:
 #-plenty of archived warriors to cycle through
 ARCHIVE_LIST=[2000,3000,3000]
@@ -298,7 +298,7 @@ Rules:
       else:
         num2=random.randint(-WARLEN_LIST[arena],WARLEN_LIST[arena])
       templine=random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+str(num1)+","+random.choice(INSTR_MODES)+str(num2)+"\n"
-    elif (marble==2) and (LASTARENA!=0): #nab instruction fron another arena. Doesn't make sense if not multiple arenas
+    elif (marble==2) and (LASTARENA!=0): #nab instruction from another arena. Doesn't make sense if not multiple arenas
       donor_arena=random.randint(0, LASTARENA)
       while (donor_arena==arena):
         donor_arena=random.randint(0, LASTARENA)
