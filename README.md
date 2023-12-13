@@ -1,6 +1,6 @@
 # Python Core War Evolver
 
-An Evolver for Core War, written in Python. You will need probably need to edit the Python code to do what you want. But you don't need to know Redcode (the language used in Core War).
+An Evolver for Core War, written in Python. You don't need to know Redcode (the language used in Core War).
 
 A genetic algorithm will pit the warriors against each other, then breed the winner, with some random mutation.
 
@@ -8,7 +8,7 @@ If you have a suggestion, submit a pull request. I put it on Github to encourage
 
 ## Usage:
 
-For all of these, modify the constants at the beginning of the program.
+For all of these, modify the constants in settings.ini.
 
 1. Edit the ARENA lists to contain the parameters of the competitions you want to compete in. If you just want to compete in one arena, you have lists of length 1.
 2. Set ALREADYSEEDED to False. If you interrupt it and want to resume, set it to True.

@@ -1,0 +1,9 @@
+battle_log.csv
+nmars*.*
+pmars*.*
+arena?/
+nunit.framework.dll
+SDL.dll
+archive/
+instructions.txt
+*.bak
