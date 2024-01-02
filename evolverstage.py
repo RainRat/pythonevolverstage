@@ -148,7 +148,10 @@ if ALREADYSEEDED==False:
             #Same bias in mutation.
             num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
             num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-            f.write(random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+str(corenorm(coremod(num1,SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+random.choice(INSTR_MODES)+str(corenorm(coremod(num2,SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+"\n")
+            f.write(random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
+                    str(corenorm(coremod(num1,SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+ \
+                    random.choice(INSTR_MODES)+str(corenorm(coremod(num2,SANITIZE_LIST[arena]), \
+                    CORESIZE_LIST[arena]))+"\n")
 
 starttime=time.time() #time in seconds
 era=-1
@@ -175,7 +178,8 @@ while(True):
           [Marble.MICRO_MUTATION]*MICRO_MUT_LIST[era] + [Marble.INSTRUCTION_LIBRARY]*LIBRARY_LIST[era] + \
           [Marble.MAGIC_NUMBER_MUTATION]*MAGIC_NUMBER_LIST[era]
 
-  print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) +" hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+" complete) Era: "+str(era+1))
+  print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) + \
+         " hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+" complete) Era: "+str(era+1))
   
   #in a random arena
   arena=random.randint(0, LAST_ARENA)
@@ -313,7 +317,8 @@ while(True):
       while (donor_arena==arena):
         donor_arena=random.randint(0, LAST_ARENA)
       print("Nab instruction from arena " + str(donor_arena))
-      templine=random.choice(list(open("arena"+str(donor_arena)+"\\"+str(random.randint(1, NUMWARRIORS))+".red")))
+      templine=random.choice(list(open("arena"+str(donor_arena)+"\\"+ \
+               str(random.randint(1, NUMWARRIORS))+".red")))
     elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
       print("Minor mutation")
       splitline=re.split('[ \.,\n]', templine)

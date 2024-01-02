@@ -1,4 +1,4 @@
-battle_log.csv
+*.csv
 nmars*.*
 pmars*.*
 arena?/

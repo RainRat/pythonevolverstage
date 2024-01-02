@@ -5,3 +5,7 @@ MOV
 DJN -1
 
 Plus some junk instructions. It's not surprising that they converged, the evolver's designed so that instructions can be shared across arenas.
+
+--
+
+Succeeded in getting onto the nano hill with three warriors. Included for reference.

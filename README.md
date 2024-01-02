@@ -31,25 +31,25 @@ For all of these, modify the constants in settings.ini.
 		The primary activity of this phase is to fine tune constants and other behaviour. Warriors fight for even more rounds to determine the winner. Mutation is lower, and while breeding, larger chunks are copied into the new warrior.
 
 	The cellular analogy is just to understand why different parameters were chosen in each era. Warriors are the same size in each era.
-5. (New) Progress tracker. Example:
+5. Progress tracker. Example:
 ```
 8.00 hours remaining (0.01% complete) Era: 1
 ```
-6. (New) Finished the cycle you originally planned and want to optimize some more? Set:
+6. Finished the cycle you originally planned and want to optimize some more? Set:
 ```
 FINAL_ERA_ONLY=True
 ALREADYSEEDED=True #Make sure to set this True as well.
 ```
 
-7. (New) Two new evolution strategies.
+7. Two new evolution strategies.
     First, the single instruction modification strategies are now all under a "bag of marbles" analogy, to get them all under the same framework and even use fewer variables. Imagine a bag with six different-coloured marbles. One for each of the five modification strategies, plus one for "do nothing". The lists now tell how many marbles of each type to put in the bag for each era. A single random number decides which strategy is used. They are:
 	- Do Nothing
 	- Completely new random instruction
 	- Nab instruction from another arena
 	- Mini-mutation (change one thing about instruction)
-	- (New) Micro mutation. Increment or decrement a constant by one. Most prominent in the Optimization era.
-	- (New) Pull single instruction from instruction library. Maybe a previous evolution run, maybe one or more hand-written warriors. One text file. One instruction per line. Just assembled instructions, nothing else. If multiple warriors, just concatenated with no breaks. (Not needed and not included with distribution.)
-8. (New) Evolution strategy - Magic Number
+	- Micro mutation. Increment or decrement a constant by one. Most prominent in the Optimization era.
+	- Pull single instruction from instruction library. Maybe a previous evolution run, maybe one or more hand-written warriors. One text file. One instruction per line. Just assembled instructions, nothing else. If multiple warriors, just concatenated with no breaks. (Not needed and not included with distribution.)
+8. Evolution strategy - Magic Number
 	Let's look at the classic warrior, MICE (it's written in the old format, but that's ok, it's just for example):
 ```
 jmp 2
@@ -64,7 +64,7 @@ dat 833
 ```
 All of the bold values end up pointing to the same address, but if it were advantageous for the address to be different, the odds of all those numbers changing to point to the same address in unison would be astronomically low. So, at the beginning of the warrior, the evolver will choose a magic number, and decrement it each instruction(because core war uses relative addressing) and if this mutation strategy is chosen, the evolver will replace either the A-field or B-field with that number. 
 
-9. (New) Value Normalizer.
+9. Value Normalizer.
 	In the Nano Arena (size 80), for instance:
 ```
 DJN.F $79,{-74
@@ -75,7 +75,7 @@ DJN.F $-1,{6
 ```
 Evolver output will now rewrite numbers either negative or positive, whichever is closer to 0.
 
-10. (New) Archive and unarchive
+10. Archive and unarchive
 	Create "archive" folder. After a battle, there is a chance of archiving the winner, or replacing the loser with something from the archive.
 	- Keep clues as to how things evolved
 	- Combat hyper-specialization
@@ -88,3 +88,6 @@ Evolver output will now rewrite numbers either negative or positive, whichever i
 		- Other instances on same machine
 		- Over a LAN
 		- Over the Internet with Google Drive, etc.
+
+11. (New) Optional log file
+Results of battles saved so you can analyse your progress. Current fields are 'era', 'arena', 'winner', 'loser', 'score1', 'score2', and 'bred_with'. Edit BATTLE_LOG_FILE setting to choose a file name; comment out or leave blank for no log.
