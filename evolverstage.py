@@ -54,10 +54,11 @@ Rules:
   -f #      Fixed position series
   -xp       Disable P-space
     '''
+    nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
     cmd = [
-        "nmars.exe", 
-        f"arena{arena}\\{cont1}.red", 
-        f"arena{arena}\\{cont2}.red",
+        nmars_cmd,
+        os.path.join(f"arena{arena}", f"{cont1}.red"),
+        os.path.join(f"arena{arena}", f"{cont2}.red"),
         "-s", str(coresize),
         "-c", str(cycles),
         "-p", str(processes),
@@ -67,9 +68,11 @@ Rules:
       ]
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.stdout
+  except FileNotFoundError as e:
+    print(f"Unable to run {nmars_cmd}: {e}")
   except subprocess.SubprocessError as e:
     print(f"An error occurred: {e}")
-    return None
+  return None
 
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
@@ -224,19 +227,17 @@ while(True):
   if ARCHIVE_LIST[era]!=0 and random.randint(1,ARCHIVE_LIST[era])==1:
     #archive winner
     print("storing in archive")
-    with open(os.path.join("arena"+str(arena), str(winner)+".red"), "r") as fw:
-      winlines=fw.readlines()
-    fd=open("archive\\"+str(random.randint(1,9999))+".red", "w")
-    for line in winlines:
-      fd.write(line)
-    fd.close()
+    with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
+      winlines = fw.readlines()
+    with open(os.path.join("archive", f"{random.randint(1,9999)}.red"), "w") as fd:
+      for line in winlines:
+        fd.write(line)
 
   if UNARCHIVE_LIST[era]!=0 and random.randint(1,UNARCHIVE_LIST[era])==1:
     print("unarchiving")
     #replace loser with something from archive
-    fs=open("archive\\"+random.choice(os.listdir("archive\\")))
-    sourcelines=fs.readlines()
-    fs.close()
+    with open(os.path.join("archive", random.choice(os.listdir("archive")))) as fs:
+      sourcelines = fs.readlines()
     #this is more involved. the archive is going to contain warriors from different arenas. which isn't
     #necessarily bad to get some crossover. A nano warrior would be workable, if inefficient in a normal core.
     #These are the tasks:
@@ -244,7 +245,7 @@ while(True):
     #2. Pad any too short with DATs
     #3. Sanitize values
     #4. Try to be tolerant of working with other evolvers that may not space things exactly the same.
-    fl=open("arena"+str(arena)+"\\"+str(loser)+".red", "w") #unarchived warrior destroys loser
+    fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # unarchived warrior destroys loser
     countoflines=0
     for line in sourcelines:
       countoflines=countoflines+1
@@ -263,14 +264,14 @@ while(True):
     continue #out of while (loser replaced by archive, no point breeding)
     
   #the loser is destroyed and the winner can breed with any warrior in the arena  
-  with open(os.path.join("arena"+str(arena), str(winner)+".red"), "r") as fw:
-    winlines=fw.readlines()
+  with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
+    winlines = fw.readlines()
   randomwarrior=str(random.randint(1, NUMWARRIORS))
   print("winner will breed with "+randomwarrior)
-  fr=open("arena"+str(arena)+"\\"+randomwarrior+".red", "r") #winner mates with random warrior
-  ranlines=fr.readlines()
+  fr = open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r")  # winner mates with random warrior
+  ranlines = fr.readlines()
   fr.close()
-  fl=open("arena"+str(arena)+"\\"+str(loser)+".red", "w") #winner destroys loser
+  fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # winner destroys loser
   if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1: #shuffle a warrior
     print("Transposition")
     for i in range(1, random.randint(1, int((WARLEN_LIST[arena]+1)/2))):
@@ -317,8 +318,8 @@ while(True):
       while (donor_arena==arena):
         donor_arena=random.randint(0, LAST_ARENA)
       print("Nab instruction from arena " + str(donor_arena))
-      templine=random.choice(list(open("arena"+str(donor_arena)+"\\"+ \
-               str(random.randint(1, NUMWARRIORS))+".red")))
+      donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
+      templine = random.choice(list(open(donor_file)))
     elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
       print("Minor mutation")
       splitline=re.split('[ \.,\n]', templine)
