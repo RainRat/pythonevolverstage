@@ -42,7 +42,6 @@ struct Instruction {
     int a_field = 0;
     AddressMode b_mode = DIRECT;
     int b_field = 0;
-    int owner = -1; // Which warrior owns this instruction
 
     bool operator==(const Instruction& other) const {
         return opcode == other.opcode &&
@@ -189,11 +188,7 @@ std::vector<Instruction> parse_warrior(const std::string& code) {
 
 class Core {
 public:
-    std::vector<int> instruction_counts;
-
-    Core(int size) : memory(size), core_size(size) {
-        instruction_counts.resize(2, 0);
-    }
+    Core(int size) : memory(size), core_size(size) {}
 
     void normalize_field(int& field) {
         field = (field % core_size + core_size) % core_size;
@@ -265,13 +260,6 @@ public:
         switch (instr.opcode) {
             case MOV:
                 {
-                    int previous_owner = dst.owner;
-                    int new_owner = process.owner;
-                    if (previous_owner != new_owner) {
-                        if (previous_owner != -1) instruction_counts[previous_owner]--;
-                        if (new_owner != -1) instruction_counts[new_owner]++;
-                    }
-
                     switch (instr.modifier) {
                         case A: dst.a_field = src.a_field; break;
                         case B: dst.b_field = src.b_field; break;
@@ -281,7 +269,6 @@ public:
                         case X: dst.a_field = src.b_field; dst.b_field = src.a_field; break;
                         case I: dst = src; break;
                     }
-                    dst.owner = new_owner;
                 }
                 break;
             case ADD:
@@ -399,21 +386,43 @@ public:
                 break;
             case DJN:
                 {
+                    Instruction temp = dst;
                     bool jump = false;
                     switch (instr.modifier) {
-                        case A: dst.a_field--; normalize_field(dst.a_field); if (dst.a_field != 0) jump = true; break;
-                        case B: dst.b_field--; normalize_field(dst.b_field); if (dst.b_field != 0) jump = true; break;
-                        case AB: dst.b_field--; normalize_field(dst.b_field); if (dst.b_field != 0) jump = true; break;
-                        case BA: dst.a_field--; normalize_field(dst.a_field); if (dst.a_field != 0) jump = true; break;
+                        case A:
+                            dst.a_field--; normalize_field(dst.a_field);
+                            temp.a_field--; normalize_field(temp.a_field);
+                            if (temp.a_field != 0) jump = true;
+                            break;
+                        case B:
+                            dst.b_field--; normalize_field(dst.b_field);
+                            temp.b_field--; normalize_field(temp.b_field);
+                            if (temp.b_field != 0) jump = true;
+                            break;
+                        case AB:
+                            dst.b_field--; normalize_field(dst.b_field);
+                            temp.b_field--; normalize_field(temp.b_field);
+                            if (temp.b_field != 0) jump = true;
+                            break;
+                        case BA:
+                            dst.a_field--; normalize_field(dst.a_field);
+                            temp.a_field--; normalize_field(temp.a_field);
+                            if (temp.a_field != 0) jump = true;
+                            break;
                         case F: case I:
                             dst.a_field--; normalize_field(dst.a_field);
                             dst.b_field--; normalize_field(dst.b_field);
-                            if (dst.a_field != 0 && dst.b_field != 0) jump = true;
+                            temp.a_field--; normalize_field(temp.a_field);
+                            temp.b_field--; normalize_field(temp.b_field);
+                            if (temp.a_field != 0 || temp.b_field != 0) jump = true;
                             break;
+        
                         case X:
                             dst.a_field--; normalize_field(dst.a_field);
                             dst.b_field--; normalize_field(dst.b_field);
-                            if (dst.a_field != 0 && dst.b_field != 0) jump = true;
+                            temp.a_field--; normalize_field(temp.a_field);
+                            temp.b_field--; normalize_field(temp.b_field);
+                            if (temp.a_field != 0 || temp.b_field != 0) jump = true;
                             break;
                     }
                     if (jump) { process.pc = a_ptr_final; return; }
@@ -474,15 +483,11 @@ extern "C" {
 
         for (size_t i = 0; i < w1_instrs.size(); ++i) {
             core.memory[normalize(w1_start + i, core_size)] = w1_instrs[i];
-            core.memory[normalize(w1_start + i, core_size)].owner = 0;
         }
-        core.instruction_counts[0] = w1_instrs.size();
 
         for (size_t i = 0; i < w2_instrs.size(); ++i) {
             core.memory[normalize(w2_start + i, core_size)] = w2_instrs[i];
-            core.memory[normalize(w2_start + i, core_size)].owner = 1;
         }
-        core.instruction_counts[1] = w2_instrs.size();
 
         // 4. Create initial processes
         core.process_queues[0].push_back({w1_start, 0});
@@ -490,8 +495,7 @@ extern "C" {
 
         // 5. Run simulation
         for (int cycle = 0; cycle < max_cycles; ++cycle) {
-            if (core.process_queues[0].empty() || core.process_queues[1].empty() ||
-                core.instruction_counts[0] == 0 || core.instruction_counts[1] == 0) {
+            if (core.process_queues[0].empty() || core.process_queues[1].empty()) {
                 break; // Battle over
             }
 
