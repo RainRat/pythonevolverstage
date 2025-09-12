@@ -50,20 +50,19 @@ try:
     elif platform.system() == "Darwin":
         lib_name = "redcode_worker.dylib"
 
-    # The library is in the root directory
     lib_path = os.path.abspath(lib_name)
-
     CPP_WORKER_LIB = ctypes.CDLL(lib_path)
 
-    # Define the function signature from the C++ code:
-    # extern "C" const char* run_battle(const char* warrior1_code, int w1_id, const char* warrior2_code, int w2_id)
-    CPP_WORKER_LIB.run_battle.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    CPP_WORKER_LIB.run_battle.argtypes = [
+        ctypes.c_char_p, ctypes.c_int,
+        ctypes.c_char_p, ctypes.c_int,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int
+    ]
     CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
     print("Successfully loaded C++ Redcode worker.")
 except Exception as e:
     print(f"Could not load C++ Redcode worker: {e}")
     print("Internal battle engine will not be available.")
-
 
 def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
   try:
@@ -115,12 +114,15 @@ def run_internal_battle(arena, cont1, cont2, coresize, cycles, processes, warlen
             w2_code = f.read()
 
         # 2. Call the C++ function
-        # The strings need to be encoded to bytes for C
         result_ptr = CPP_WORKER_LIB.run_battle(
             w1_code.encode('utf-8'),
             cont1,
             w2_code.encode('utf-8'),
-            cont2
+            cont2,
+            coresize,
+            cycles,
+            processes,
+            wardistance
         )
 
         # 3. Decode the result
