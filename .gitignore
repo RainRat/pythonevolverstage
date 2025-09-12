@@ -11,3 +11,7 @@ nano.txt
 both.txt
 std.txt
 tiny.txt
+
+# Build artifacts
+build/
+*.so
