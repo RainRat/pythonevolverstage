@@ -17,6 +17,8 @@ import configparser
 import subprocess
 from enum import Enum
 import csv
+import ctypes
+import platform
 
 class DataLogger:
     def __init__(self, filename):
@@ -38,6 +40,30 @@ class Marble(Enum):
   MICRO_MUTATION = 4
   INSTRUCTION_LIBRARY = 5
   MAGIC_NUMBER_MUTATION = 6
+
+# --- C++ Worker Library Loading ---
+CPP_WORKER_LIB = None
+try:
+    lib_name = "redcode_worker.so"
+    if platform.system() == "Windows":
+        lib_name = "redcode_worker.dll"
+    elif platform.system() == "Darwin":
+        lib_name = "redcode_worker.dylib"
+
+    # The library is in the root directory
+    lib_path = os.path.abspath(lib_name)
+
+    CPP_WORKER_LIB = ctypes.CDLL(lib_path)
+
+    # Define the function signature from the C++ code:
+    # extern "C" const char* run_battle(const char* warrior1_code, int w1_id, const char* warrior2_code, int w2_id)
+    CPP_WORKER_LIB.run_battle.argtypes = [ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
+    print("Successfully loaded C++ Redcode worker.")
+except Exception as e:
+    print(f"Could not load C++ Redcode worker: {e}")
+    print("Internal battle engine will not be available.")
+
 
 def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
   try:
@@ -74,6 +100,38 @@ Rules:
     print(f"An error occurred: {e}")
   return None
 
+def run_internal_battle(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
+    if not CPP_WORKER_LIB:
+        print("C++ worker not available. Cannot run internal battle. Returning a draw.")
+        return f"{cont1} 0 0 0 0 scores\n{cont2} 0 0 0 0 scores"
+
+    try:
+        # 1. Read warrior files
+        w1_path = os.path.join(f"arena{arena}", f"{cont1}.red")
+        w2_path = os.path.join(f"arena{arena}", f"{cont2}.red")
+        with open(w1_path, 'r') as f:
+            w1_code = f.read()
+        with open(w2_path, 'r') as f:
+            w2_code = f.read()
+
+        # 2. Call the C++ function
+        # The strings need to be encoded to bytes for C
+        result_ptr = CPP_WORKER_LIB.run_battle(
+            w1_code.encode('utf-8'),
+            cont1,
+            w2_code.encode('utf-8'),
+            cont2
+        )
+
+        # 3. Decode the result
+        result_str = result_ptr.decode('utf-8')
+        return result_str
+
+    except Exception as e:
+        print(f"An error occurred while running the internal battle: {e}")
+        # Return a draw to avoid crashing the evolution process
+        return f"{cont1} 0 0 0 0 scores\n{cont2} 0 0 0 0 scores"
+
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
     if not value:
@@ -91,6 +149,7 @@ def read_config(key, data_type='int', default=None):
 config = configparser.ConfigParser()
 config.read('settings.ini')
 
+BATTLE_ENGINE = read_config('BATTLE_ENGINE', data_type='string', default='external')
 LAST_ARENA = read_config('LAST_ARENA', data_type='int')
 CORESIZE_LIST = read_config('CORESIZE_LIST', data_type='int_list')
 SANITIZE_LIST = read_config('SANITIZE_LIST', data_type='int_list')
@@ -191,9 +250,14 @@ while(True):
   cont2 = cont1
   while cont2 == cont1: #no self fights
     cont2 = random.randint(1, NUMWARRIORS)
-  raw_output = run_nmars_command(arena, cont1, cont2, CORESIZE_LIST[arena], CYCLES_LIST[arena], \
-                                 PROCESSES_LIST[arena], WARLEN_LIST[arena], \
-                                 WARDISTANCE_LIST[arena], BATTLEROUNDS_LIST[era])
+  if BATTLE_ENGINE == 'internal':
+    raw_output = run_internal_battle(arena, cont1, cont2, CORESIZE_LIST[arena], CYCLES_LIST[arena], \
+                                     PROCESSES_LIST[arena], WARLEN_LIST[arena], \
+                                     WARDISTANCE_LIST[arena], BATTLEROUNDS_LIST[era])
+  else:
+    raw_output = run_nmars_command(arena, cont1, cont2, CORESIZE_LIST[arena], CYCLES_LIST[arena], \
+                                   PROCESSES_LIST[arena], WARLEN_LIST[arena], \
+                                   WARDISTANCE_LIST[arena], BATTLEROUNDS_LIST[era])
   scores=[]
   warriors=[]
   #note nMars will sort by score regardless of the order in the command-line, so match up score with warrior
