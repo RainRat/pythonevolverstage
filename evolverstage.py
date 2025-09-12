@@ -81,7 +81,7 @@ def read_config(key, data_type='int', default=None):
     data_type_mapping = {
         'int': int,
         'int_list': lambda x: [int(i) for i in x.split(',')],
-        'bool_list': lambda x: [config['DEFAULT'].getboolean(i) for i in x.split(',')],
+        'bool_list': lambda x: [s.strip().lower() == 'true' for s in x.split(',') if s.strip()],
         'string_list': lambda x: [i.strip() for i in x.split(',')],
         'bool': lambda x: config['DEFAULT'].getboolean(key, default),
         'float': float,
