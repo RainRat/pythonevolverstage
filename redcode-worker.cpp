@@ -195,11 +195,15 @@ public:
         instruction_counts.resize(2, 0);
     }
 
+    void normalize_field(int& field) {
+        field = (field % core_size + core_size) % core_size;
+    }
+
     void execute(WarriorProcess& process, int read_limit, int write_limit, int max_processes) {
         int pc = process.pc;
         Instruction& instr = memory[pc];
 
-        if (instr.opcode == DAT || instr.b_mode == IMMEDIATE) {
+        if (instr.opcode == DAT) {
             process.pc = -1;
             return;
         }
@@ -260,6 +264,7 @@ public:
         // --- Instruction Execution ---
         switch (instr.opcode) {
             case MOV:
+                if (instr.b_mode == IMMEDIATE) { process.pc = -1; return; }
                 {
                     int previous_owner = dst.owner;
                     int new_owner = process.owner;
@@ -281,36 +286,40 @@ public:
                 }
                 break;
             case ADD:
+                if (instr.b_mode == IMMEDIATE) { process.pc = -1; return; }
                 switch (instr.modifier) {
-                    case A: dst.a_field += src.a_field; break;
-                    case B: dst.b_field += src.b_field; break;
-                    case AB: dst.b_field += src.a_field; break;
-                    case BA: dst.a_field += src.b_field; break;
-                    case F: case I: dst.a_field += src.a_field; dst.b_field += src.b_field; break;
-                    case X: dst.a_field += src.b_field; dst.b_field += src.a_field; break;
+                    case A: dst.a_field += src.a_field; normalize_field(dst.a_field); break;
+                    case B: dst.b_field += src.b_field; normalize_field(dst.b_field); break;
+                    case AB: dst.b_field += src.a_field; normalize_field(dst.b_field); break;
+                    case BA: dst.a_field += src.b_field; normalize_field(dst.a_field); break;
+                    case F: case I: dst.a_field += src.a_field; normalize_field(dst.a_field); dst.b_field += src.b_field; normalize_field(dst.b_field); break;
+                    case X: dst.a_field += src.b_field; normalize_field(dst.a_field); dst.b_field += src.a_field; normalize_field(dst.b_field); break;
                 }
                 break;
             case SUB:
+                if (instr.b_mode == IMMEDIATE) { process.pc = -1; return; }
                 switch (instr.modifier) {
-                    case A: dst.a_field -= src.a_field; break;
-                    case B: dst.b_field -= src.b_field; break;
-                    case AB: dst.b_field -= src.a_field; break;
-                    case BA: dst.a_field -= src.b_field; break;
-                    case F: case I: dst.a_field -= src.a_field; dst.b_field -= src.b_field; break;
-                    case X: dst.a_field -= src.b_field; dst.b_field -= src.a_field; break;
+                    case A: dst.a_field -= src.a_field; normalize_field(dst.a_field); break;
+                    case B: dst.b_field -= src.b_field; normalize_field(dst.b_field); break;
+                    case AB: dst.b_field -= src.a_field; normalize_field(dst.b_field); break;
+                    case BA: dst.a_field -= src.b_field; normalize_field(dst.a_field); break;
+                    case F: case I: dst.a_field -= src.a_field; normalize_field(dst.a_field); dst.b_field -= src.b_field; normalize_field(dst.b_field); break;
+                    case X: dst.a_field -= src.b_field; normalize_field(dst.a_field); dst.b_field -= src.a_field; normalize_field(dst.b_field); break;
                 }
                 break;
             case MUL:
+                if (instr.b_mode == IMMEDIATE) { process.pc = -1; return; }
                 switch (instr.modifier) {
-                    case A: dst.a_field *= src.a_field; break;
-                    case B: dst.b_field *= src.b_field; break;
-                    case AB: dst.b_field *= src.a_field; break;
-                    case BA: dst.a_field *= src.b_field; break;
-                    case F: case I: dst.a_field *= src.a_field; dst.b_field *= src.b_field; break;
-                    case X: dst.a_field *= src.b_field; dst.b_field *= src.a_field; break;
+                    case A: dst.a_field *= src.a_field; normalize_field(dst.a_field); break;
+                    case B: dst.b_field *= src.b_field; normalize_field(dst.b_field); break;
+                    case AB: dst.b_field *= src.a_field; normalize_field(dst.b_field); break;
+                    case BA: dst.a_field *= src.b_field; normalize_field(dst.a_field); break;
+                    case F: case I: dst.a_field *= src.a_field; normalize_field(dst.a_field); dst.b_field *= src.b_field; normalize_field(dst.b_field); break;
+                    case X: dst.a_field *= src.b_field; normalize_field(dst.a_field); dst.b_field *= src.a_field; normalize_field(dst.b_field); break;
                 }
                 break;
             case DIV:
+                if (instr.b_mode == IMMEDIATE) { process.pc = -1; return; }
                 {
                     bool div_by_zero = false;
                     switch (instr.modifier) {
@@ -327,10 +336,11 @@ public:
                             else { dst.a_field /= src.b_field; dst.b_field /= src.a_field; }
                             break;
                     }
-                    if (div_by_zero) process.pc = -1;
+                    if (div_by_zero) process.pc = -1; else { normalize_field(dst.a_field); normalize_field(dst.b_field); }
                 }
                 break;
             case MOD:
+                if (instr.b_mode == IMMEDIATE) { process.pc = -1; return; }
                 {
                     bool div_by_zero = false;
                     switch (instr.modifier) {
@@ -347,7 +357,7 @@ public:
                             else { dst.a_field %= src.b_field; dst.b_field %= src.a_field; }
                             break;
                     }
-                    if (div_by_zero) process.pc = -1;
+                    if (div_by_zero) process.pc = -1; else { normalize_field(dst.a_field); normalize_field(dst.b_field); }
                 }
                 break;
             case CMP: // Same as SEQ
@@ -460,9 +470,12 @@ extern "C" {
 
         int w1_start = distrib(gen);
         int w2_start;
+        int circular_dist;
         do {
             w2_start = distrib(gen);
-        } while (std::abs(w1_start - w2_start) < min_distance);
+            int dist = std::abs(w1_start - w2_start);
+            circular_dist = std::min(dist, core_size - dist);
+        } while (circular_dist < min_distance);
 
         for (size_t i = 0; i < w1_instrs.size(); ++i) {
             core.memory[normalize(w1_start + i, core_size)] = w1_instrs[i];
