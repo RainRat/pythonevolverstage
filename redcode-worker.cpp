@@ -211,19 +211,15 @@ public:
         int pc = process.pc;
         Instruction& instr = memory[pc];
 
-        // DAT or any instruction with an immediate B-operand is illegal and kills the process.
         if (instr.opcode == DAT || instr.b_mode == IMMEDIATE) {
-            process.pc = -1; // Mark process for removal
+            process.pc = -1;
             return;
         }
 
         int a_ptr = get_address(pc, instr.a_mode, instr.a_field);
         int b_ptr = get_address(pc, instr.b_mode, instr.b_field);
 
-        // If get_address returns -1 for immediate mode, this is safe for src.
         Instruction& src = (instr.a_mode == IMMEDIATE) ? instr : memory[a_ptr];
-
-        // We already checked for immediate b_mode, so b_ptr should be a valid address.
         Instruction& dst = memory[b_ptr];
 
         switch (instr.opcode) {
@@ -231,35 +227,106 @@ public:
                 {
                     int previous_owner = dst.owner;
                     int new_owner = process.owner;
-
-                    dst = src; // Copy instruction content
-                    dst.owner = new_owner; // Set new owner
-
                     if (previous_owner != new_owner) {
-                        if (previous_owner != -1) {
-                            instruction_counts[previous_owner]--;
-                        }
-                        if (new_owner != -1) {
-                            instruction_counts[new_owner]++;
-                        }
+                        if (previous_owner != -1) instruction_counts[previous_owner]--;
+                        if (new_owner != -1) instruction_counts[new_owner]++;
                     }
+
+                    switch (instr.modifier) {
+                        case A: dst.a_field = src.a_field; break;
+                        case B: dst.b_field = src.b_field; break;
+                        case AB: dst.b_field = src.a_field; break;
+                        case BA: dst.a_field = src.b_field; break;
+                        case F: dst.a_field = src.a_field; dst.b_field = src.b_field; break;
+                        case X: dst.a_field = src.b_field; dst.b_field = src.a_field; break;
+                        case I: dst = src; break;
+                    }
+                    dst.owner = new_owner;
                 }
                 break;
             case ADD:
-                dst.a_field += src.a_field;
-                dst.b_field += src.b_field;
+                switch (instr.modifier) {
+                    case A: dst.a_field += src.a_field; break;
+                    case B: dst.b_field += src.b_field; break;
+                    case AB: dst.b_field += src.a_field; break;
+                    case BA: dst.a_field += src.b_field; break;
+                    case F: case I: dst.a_field += src.a_field; dst.b_field += src.b_field; break;
+                    case X: dst.a_field += src.b_field; dst.b_field += src.a_field; break;
+                }
                 break;
+            case SUB:
+                switch (instr.modifier) {
+                    case A: dst.a_field -= src.a_field; break;
+                    case B: dst.b_field -= src.b_field; break;
+                    case AB: dst.b_field -= src.a_field; break;
+                    case BA: dst.a_field -= src.b_field; break;
+                    case F: case I: dst.a_field -= src.a_field; dst.b_field -= src.b_field; break;
+                    case X: dst.a_field -= src.b_field; dst.b_field -= src.a_field; break;
+                }
+                break;
+            case MUL:
+                switch (instr.modifier) {
+                    case A: dst.a_field *= src.a_field; break;
+                    case B: dst.b_field *= src.b_field; break;
+                    case AB: dst.b_field *= src.a_field; break;
+                    case BA: dst.a_field *= src.b_field; break;
+                    case F: case I: dst.a_field *= src.a_field; dst.b_field *= src.b_field; break;
+                    case X: dst.a_field *= src.b_field; dst.b_field *= src.a_field; break;
+                }
+                break;
+            case DIV:
+                {
+                    bool div_by_zero = false;
+                    switch (instr.modifier) {
+                        case A: if (src.a_field == 0) div_by_zero = true; else dst.a_field /= src.a_field; break;
+                        case B: if (src.b_field == 0) div_by_zero = true; else dst.b_field /= src.b_field; break;
+                        case AB: if (src.a_field == 0) div_by_zero = true; else dst.b_field /= src.a_field; break;
+                        case BA: if (src.b_field == 0) div_by_zero = true; else dst.a_field /= src.b_field; break;
+                        case F: case I:
+                            if (src.a_field == 0 || src.b_field == 0) div_by_zero = true;
+                            else { dst.a_field /= src.a_field; dst.b_field /= src.b_field; }
+                            break;
+                        case X:
+                            if (src.a_field == 0 || src.b_field == 0) div_by_zero = true;
+                            else { dst.a_field /= src.b_field; dst.b_field /= src.a_field; }
+                            break;
+                    }
+                    if (div_by_zero) process.pc = -1;
+                }
+                break;
+            case MOD:
+                {
+                    bool div_by_zero = false;
+                    switch (instr.modifier) {
+                        case A: if (src.a_field == 0) div_by_zero = true; else dst.a_field %= src.a_field; break;
+                        case B: if (src.b_field == 0) div_by_zero = true; else dst.b_field %= src.b_field; break;
+                        case AB: if (src.a_field == 0) div_by_zero = true; else dst.b_field %= src.a_field; break;
+                        case BA: if (src.b_field == 0) div_by_zero = true; else dst.a_field %= src.b_field; break;
+                        case F: case I:
+                            if (src.a_field == 0 || src.b_field == 0) div_by_zero = true;
+                            else { dst.a_field %= src.a_field; dst.b_field %= src.b_field; }
+                            break;
+                        case X:
+                            if (src.a_field == 0 || src.b_field == 0) div_by_zero = true;
+                            else { dst.a_field %= src.b_field; dst.b_field %= src.a_field; }
+                            break;
+                    }
+                    if (div_by_zero) process.pc = -1;
+                }
+                break;
+
+            // Flow control instructions (modifiers have limited/no standard effect)
             case JMP:
                 process.pc = a_ptr;
-                return; // Skip normal PC increment
+                return;
             case JMZ:
-                if (dst.a_field == 0 && dst.b_field == 0) {
+                if (dst.b_field == 0) { // Simplified: only checks B-field
                     process.pc = a_ptr;
                     return;
                 }
                 break;
             case DJN:
-                if (--dst.b_field != 0) {
+                if (--dst.b_field != 0) { // Simplified: only acts on B-field
                     process.pc = a_ptr;
                     return;
                 }
@@ -272,11 +339,12 @@ public:
                     return;
                 }
             default:
-                // Other opcodes are no-ops in this simple version
                 break;
         }
 
-        process.pc = normalize(pc + 1, core_size);
+        if (process.pc != -1) {
+            process.pc = normalize(pc + 1, core_size);
+        }
     }
 
 
