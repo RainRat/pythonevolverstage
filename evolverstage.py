@@ -56,7 +56,8 @@ try:
     CPP_WORKER_LIB.run_battle.argtypes = [
         ctypes.c_char_p, ctypes.c_int,
         ctypes.c_char_p, ctypes.c_int,
-        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int
+        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ctypes.c_int
     ]
     CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
     print("Successfully loaded C++ Redcode worker.")
@@ -122,7 +123,8 @@ def run_internal_battle(arena, cont1, cont2, coresize, cycles, processes, warlen
             coresize,
             cycles,
             processes,
-            wardistance
+            wardistance,
+            battlerounds
         )
 
         # 3. Decode the result
