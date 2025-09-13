@@ -14,7 +14,7 @@ MOV.I {-3,*-3
 -Making sure all instructions have all operands.
 -Making sure all opcodes used are in the spec.
 -So, these things should be checked during input, and then not do anything that could break those rules.
--It shouldn't normally send invalid code to the cpp, but it can choose whether to gracefully exit or throw an exception.
+-It shouldn't normally send invalid code to the cpp, but if it receives invalid code, it can choose whether to gracefully exit or throw an exception.
 
 The cpp program:
 -should safely exit if it encounters a problem, but is not responsible for making assumptions about what was intended.
