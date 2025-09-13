@@ -91,3 +91,19 @@ Evolver output will now rewrite numbers either negative or positive, whichever i
 
 11. (New) Optional log file
 Results of battles saved so you can analyse your progress. Current fields are 'era', 'arena', 'winner', 'loser', 'score1', 'score2', and 'bred_with'. Edit BATTLE_LOG_FILE setting to choose a file name; comment out or leave blank for no log.
+
+## Compiling `redcode-worker.cpp`
+
+An experimental C++ worker (`redcode-worker.cpp`) can be built as a shared library for use with the Python evolver. Compile it with g++:
+
+```
+g++ -std=c++17 -shared -fPIC redcode-worker.cpp -o redcode_worker.so
+```
+
+To trace each instruction executed by the worker, set the environment variable `REDCODE_TRACE_FILE` to a log file path before running:
+
+```
+export REDCODE_TRACE_FILE=trace.log
+```
+
+Omit the variable to disable tracing.
