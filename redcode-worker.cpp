@@ -209,12 +209,12 @@ public:
 
         // --- A-Operand ---
         int primary_a_offset = fold(instr.a_field, read_limit);
+        int intermediate_a_addr = normalize(pc + primary_a_offset, core_size);
         if (instr.a_mode == IMMEDIATE) {
             a_ptr_final = pc;
         } else if (instr.a_mode == DIRECT) {
-            a_ptr_final = normalize(pc + primary_a_offset, core_size);
-        } else { // All indirect modes
-            int intermediate_a_addr = normalize(pc + primary_a_offset, core_size);
+            a_ptr_final = intermediate_a_addr;
+        } else {
             if (instr.a_mode == PREDEC) {
                 memory[intermediate_a_addr].b_field--;
                 normalize_field(memory[intermediate_a_addr].b_field);
@@ -222,38 +222,38 @@ public:
             int secondary_a_offset = memory[intermediate_a_addr].b_field;
             int final_a_offset = fold(primary_a_offset + secondary_a_offset, read_limit);
             a_ptr_final = normalize(pc + final_a_offset, core_size);
-
-            if (instr.a_mode == POSTINC) {
-                memory[intermediate_a_addr].b_field++;
-                normalize_field(memory[intermediate_a_addr].b_field);
-            }
         }
 
-        Instruction& src = (instr.a_mode == IMMEDIATE) ? instr : memory[a_ptr_final];
+        Instruction src = (instr.a_mode == IMMEDIATE) ? instr : memory[a_ptr_final];
+
+        if (instr.a_mode == POSTINC) {
+            memory[intermediate_a_addr].b_field++;
+            normalize_field(memory[intermediate_a_addr].b_field);
+        }
 
         // --- B-Operand ---
         int primary_b_offset = fold(instr.b_field, write_limit);
+        int intermediate_b_addr = normalize(pc + primary_b_offset, core_size);
         if (instr.b_mode == IMMEDIATE) {
-             b_ptr_final = pc; // Immediate B-mode targets the current instruction.
+            b_ptr_final = pc; // Immediate B-mode targets the current instruction.
         } else if (instr.b_mode == DIRECT) {
-            b_ptr_final = normalize(pc + primary_b_offset, core_size);
-        } else { // All indirect modes
-            int intermediate_b_addr = normalize(pc + primary_b_offset, core_size);
-             if (instr.b_mode == PREDEC) {
+            b_ptr_final = intermediate_b_addr;
+        } else {
+            if (instr.b_mode == PREDEC) {
                 memory[intermediate_b_addr].b_field--;
                 normalize_field(memory[intermediate_b_addr].b_field);
             }
             int secondary_b_offset = memory[intermediate_b_addr].b_field;
             int final_b_offset = fold(primary_b_offset + secondary_b_offset, write_limit);
             b_ptr_final = normalize(pc + final_b_offset, core_size);
-
-            if (instr.b_mode == POSTINC) {
-                memory[intermediate_b_addr].b_field++;
-                normalize_field(memory[intermediate_b_addr].b_field);
-            }
         }
 
         Instruction& dst = memory[b_ptr_final];
+
+        if (instr.b_mode == POSTINC) {
+            memory[intermediate_b_addr].b_field++;
+            normalize_field(memory[intermediate_b_addr].b_field);
+        }
         bool skip = false;
 
         // --- Instruction Execution ---
@@ -380,8 +380,8 @@ public:
                     case B: if (dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
                     case AB: if (dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
                     case BA: if (dst.a_field != 0) { process.pc = a_ptr_final; return; } break;
-                    case F: case I: if (dst.a_field != 0 || dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
-                    case X: if (dst.a_field != 0 || dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
+                    case F: case I: if (dst.a_field != 0 && dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
+                    case X: if (dst.a_field != 0 && dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
                 }
                 break;
             case DJN:
@@ -414,15 +414,15 @@ public:
                             dst.b_field--; normalize_field(dst.b_field);
                             temp.a_field--; normalize_field(temp.a_field);
                             temp.b_field--; normalize_field(temp.b_field);
-                            if (temp.a_field != 0 || temp.b_field != 0) jump = true;
+                            if (temp.a_field != 0 && temp.b_field != 0) jump = true;
                             break;
-        
+
                         case X:
                             dst.a_field--; normalize_field(dst.a_field);
                             dst.b_field--; normalize_field(dst.b_field);
                             temp.a_field--; normalize_field(temp.a_field);
                             temp.b_field--; normalize_field(temp.b_field);
-                            if (temp.a_field != 0 || temp.b_field != 0) jump = true;
+                            if (temp.a_field != 0 && temp.b_field != 0) jump = true;
                             break;
                     }
                     if (jump) { process.pc = a_ptr_final; return; }
