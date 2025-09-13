@@ -5,6 +5,8 @@
 #include <map>
 #include <list>
 #include <random>
+#include <fstream>
+#include <cstdlib>
 
 // --- Configuration ---
 const int DEFAULT_CORE_SIZE = 8000;
@@ -74,6 +76,21 @@ const std::map<std::string, Opcode> OPCODE_MAP = {
 const std::map<std::string, Modifier> MODIFIER_MAP = {
     {"A", A}, {"B", B}, {"AB", AB}, {"BA", BA},
     {"F", F}, {"X", X}, {"I", I}
+};
+
+// Reverse lookups for logging
+const char* OPCODE_NAMES[] = {
+    "DAT", "MOV", "ADD", "SUB", "MUL", "DIV", "MOD",
+    "JMP", "JMZ", "JMN", "DJN", "CMP", "SLT", "SPL",
+    "SEQ", "SNE", "NOP", "ORG"
+};
+
+const char* MODIFIER_NAMES[] = {
+    "A", "B", "AB", "BA", "F", "X", "I"
+};
+
+const char* MODE_PREFIXES[] = {
+    "#", "$", "@", "<", ">", "*", "{", "}"
 };
 
 // --- Core Normalization & Folding ---
@@ -196,7 +213,24 @@ std::vector<Instruction> parse_warrior(const std::string& code) {
 
 class Core {
 public:
-    Core(int size) : memory(size), core_size(size) {}
+    Core(int size, const char* trace_filename = nullptr)
+        : memory(size), core_size(size) {
+        if (trace_filename && *trace_filename) {
+            trace.open(trace_filename);
+            trace_enabled = trace.is_open();
+        } else {
+            trace_enabled = false;
+        }
+    }
+
+    void log(int pc, const Instruction& instr) {
+        if (!trace_enabled) return;
+        trace << pc << ": "
+              << OPCODE_NAMES[instr.opcode] << '.'
+              << MODIFIER_NAMES[instr.modifier] << ' '
+              << MODE_PREFIXES[instr.a_mode] << instr.a_field << ", "
+              << MODE_PREFIXES[instr.b_mode] << instr.b_field << '\n';
+    }
 
     void normalize_field(int& field) {
         field = (field % core_size + core_size) % core_size;
@@ -205,6 +239,8 @@ public:
     void execute(WarriorProcess process, int read_limit, int write_limit, int max_processes) {
         int pc = process.pc;
         Instruction& instr = memory[pc];
+
+        log(pc, instr);
 
         if (instr.opcode == DAT) {
             return; // Process terminates
@@ -466,6 +502,8 @@ public:
     std::vector<Instruction> memory;
     int core_size;
     std::map<int, std::list<WarriorProcess>> process_queues;
+    std::ofstream trace;
+    bool trace_enabled;
 };
 
 
@@ -477,8 +515,9 @@ extern "C" {
         int core_size, int max_cycles, int max_processes,
         int min_distance
     ) {
-        // 1. Initialize Core
-        Core core(core_size);
+        // 1. Initialize Core (optional tracing via REDCODE_TRACE_FILE env var)
+        const char* trace_file = std::getenv("REDCODE_TRACE_FILE");
+        Core core(core_size, trace_file);
 
         // 2. Parse Warriors
         auto w1_instrs = parse_warrior(warrior1_code);

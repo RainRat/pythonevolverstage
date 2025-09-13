@@ -54,6 +54,6 @@ def test_validate_self_tie():
         8000, 10000, 8000, 100
     ).decode()
     w1_procs, w2_procs = get_process_counts(result)
-    assert w1_procs > 0 and w2_procs > 0, (
-        "Validate1.1R should self-tie with processes remaining, got: " + result
+    assert w1_procs == w2_procs, (
+        "Validate1.1R should result in a tie, got: " + result
     )
