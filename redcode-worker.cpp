@@ -396,8 +396,8 @@ public:
                     case B: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
                     case AB: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
                     case BA: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case F: case I: if (dst.a_field != 0 && dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case X: if (dst.a_field != 0 && dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case F: case I: if (dst.a_field != 0 || dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case X: if (dst.a_field != 0 || dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
                 }
                 break;
             case DJN:
@@ -430,14 +430,14 @@ public:
                             dst.b_field--; normalize_field(dst.b_field);
                             temp.a_field--; normalize_field(temp.a_field);
                             temp.b_field--; normalize_field(temp.b_field);
-                            if (temp.a_field != 0 && temp.b_field != 0) jump = true;
+                            if (temp.a_field != 0 || temp.b_field != 0) jump = true;
                             break;
                         case X:
                             dst.a_field--; normalize_field(dst.a_field);
                             dst.b_field--; normalize_field(dst.b_field);
                             temp.a_field--; normalize_field(temp.a_field);
                             temp.b_field--; normalize_field(temp.b_field);
-                            if (temp.a_field != 0 && temp.b_field != 0) jump = true;
+                            if (temp.a_field != 0 || temp.b_field != 0) jump = true;
                             break;
                     }
                     if (jump) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; }
