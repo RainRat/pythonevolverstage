@@ -107,3 +107,19 @@ export REDCODE_TRACE_FILE=trace.log
 ```
 
 Omit the variable to disable tracing.
+
+## Docker
+
+A `Dockerfile` is provided to run the evolver in an isolated environment. Build the image with:
+
+```
+docker build -t corewar-evolver .
+```
+
+Run the evolver:
+
+```
+docker run --rm -it corewar-evolver
+```
+
+The build step compiles the optional C++ worker (`redcode-worker.cpp`) so the library is ready to use inside the container.
