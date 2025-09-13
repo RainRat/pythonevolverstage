@@ -28,18 +28,19 @@ def load_worker():
         ctypes.c_int,
         ctypes.c_int,
         ctypes.c_int,
+        ctypes.c_int,
     ]
     lib.run_battle.restype = ctypes.c_char_p
     return lib
 
 
-def get_process_counts(result_str):
+def get_scores(result_str):
     lines = result_str.strip().splitlines()
-    counts = []
+    scores = []
     for line in lines:
         parts = line.split()
-        counts.append(int(parts[4]))
-    return counts
+        scores.append(int(parts[4]))
+    return scores
 
 
 def test_validate_self_tie():
@@ -48,12 +49,13 @@ def test_validate_self_tie():
     code_path = base_path / "Validate1_1R_assembled.txt"
     with open(code_path, "r") as f:
         code = f.read()
+    rounds = 5
     result = lib.run_battle(
         code.encode(), 1,
         code.encode(), 2,
-        8000, 10000, 8000, 100
+        8000, 10000, 8000, 100, rounds
     ).decode()
-    w1_procs, w2_procs = get_process_counts(result)
-    assert w1_procs == w2_procs, (
-        "Validate1.1R should result in a tie, got: " + result
+    w1_score, w2_score = get_scores(result)
+    assert w1_score == w2_score == rounds, (
+        "Validate1.1R should score " + str(rounds) + " each, got: " + result
     )

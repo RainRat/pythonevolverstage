@@ -513,72 +513,74 @@ extern "C" {
         const char* warrior1_code, int w1_id,
         const char* warrior2_code, int w2_id,
         int core_size, int max_cycles, int max_processes,
-        int min_distance
+        int min_distance, int rounds
     ) {
-        // 1. Initialize Core (optional tracing via REDCODE_TRACE_FILE env var)
-        const char* trace_file = std::getenv("REDCODE_TRACE_FILE");
-        Core core(core_size, trace_file);
-
-        // 2. Parse Warriors
         auto w1_instrs = parse_warrior(warrior1_code);
         auto w2_instrs = parse_warrior(warrior2_code);
 
-        // 3. Load Warriors into Core
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_int_distribution<> distrib(0, core_size - 1);
+        const char* trace_file = std::getenv("REDCODE_TRACE_FILE");
 
-        int w1_start = distrib(gen);
-        int w2_start;
-        int circular_dist;
-        do {
-            w2_start = distrib(gen);
-            int dist = std::abs(w1_start - w2_start);
-            circular_dist = std::min(dist, core_size - dist);
-        } while (circular_dist < min_distance);
+        int w1_score = 0;
+        int w2_score = 0;
 
-        for (size_t i = 0; i < w1_instrs.size(); ++i) {
-            core.memory[normalize(w1_start + i, core_size)] = w1_instrs[i];
-        }
+        for (int r = 0; r < rounds; ++r) {
+            Core core(core_size, trace_file);
+            std::uniform_int_distribution<> distrib(0, core_size - 1);
 
-        for (size_t i = 0; i < w2_instrs.size(); ++i) {
-            core.memory[normalize(w2_start + i, core_size)] = w2_instrs[i];
-        }
+            int w1_start = distrib(gen);
+            int w2_start;
+            int circular_dist;
+            do {
+                w2_start = distrib(gen);
+                int dist = std::abs(w1_start - w2_start);
+                circular_dist = std::min(dist, core_size - dist);
+            } while (circular_dist < min_distance);
 
-        // 4. Create initial processes
-        core.process_queues[0].push_back({w1_start, 0});
-        core.process_queues[1].push_back({w2_start, 1});
-
-        // 5. Run simulation
-        for (int cycle = 0; cycle < max_cycles; ++cycle) {
-            if (core.process_queues[0].empty() || core.process_queues[1].empty()) {
-                break; // Battle over
+            for (size_t i = 0; i < w1_instrs.size(); ++i) {
+                core.memory[normalize(w1_start + i, core_size)] = w1_instrs[i];
+            }
+            for (size_t i = 0; i < w2_instrs.size(); ++i) {
+                core.memory[normalize(w2_start + i, core_size)] = w2_instrs[i];
             }
 
-            // Execute one process from each warrior's queue
-            if (!core.process_queues[0].empty()) {
-                WarriorProcess p = core.process_queues[0].front();
-                core.process_queues[0].pop_front();
-                core.execute(p, core_size, core_size, max_processes);
+            core.process_queues[0].push_back({w1_start, 0});
+            core.process_queues[1].push_back({w2_start, 1});
+
+            for (int cycle = 0; cycle < max_cycles; ++cycle) {
+                if (core.process_queues[0].empty() || core.process_queues[1].empty()) {
+                    break;
+                }
+                if (!core.process_queues[0].empty()) {
+                    WarriorProcess p = core.process_queues[0].front();
+                    core.process_queues[0].pop_front();
+                    core.execute(p, core_size, core_size, max_processes);
+                }
+                if (!core.process_queues[1].empty()) {
+                    WarriorProcess p = core.process_queues[1].front();
+                    core.process_queues[1].pop_front();
+                    core.execute(p, core_size, core_size, max_processes);
+                }
             }
-            if (!core.process_queues[1].empty()) {
-                WarriorProcess p = core.process_queues[1].front();
-                core.process_queues[1].pop_front();
-                core.execute(p, core_size, core_size, max_processes);
+
+            int w1_procs = core.process_queues[0].size();
+            int w2_procs = core.process_queues[1].size();
+
+            if (w1_procs > 0 && w2_procs == 0) {
+                w1_score += 3;
+            } else if (w2_procs > 0 && w1_procs == 0) {
+                w2_score += 3;
+            } else {
+                w1_score += 1;
+                w2_score += 1;
             }
         }
 
-        // 6. Determine winner and format result
-        int w1_procs = core.process_queues[0].size();
-        int w2_procs = core.process_queues[1].size();
-
-        // This is a static buffer. In a real scenario, you'd want to manage memory better.
         static std::string result_str;
         std::stringstream result_ss;
-
-        // Format the output to be compatible with the Python script's parser.
-        result_ss << w1_id << " 0 0 0 " << w1_procs << " scores\n";
-        result_ss << w2_id << " 0 0 0 " << w2_procs << " scores";
+        result_ss << w1_id << " 0 0 0 " << w1_score << " scores\n";
+        result_ss << w2_id << " 0 0 0 " << w2_score << " scores";
 
         result_str = result_ss.str();
         return result_str.c_str();
