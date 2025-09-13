@@ -19,6 +19,17 @@ MOV.I {-3,*-3
 The cpp program:
 -should safely exit if it encounters a problem, but is not responsible for making assumptions about what was intended.
 
--Don't worry about supporting battles between more than 2 warriors at a time.
--None of the tourneys use Read/Write limits, so that can be skipped
--All of the warrior start at the first instruction, so there is no need to use the ORG pseudo-opcode, so that can be skipped.
+**Both the Python and CPP should gracefully exit or throw an exception if there is an error or unexpected input. If the program exits, the last-known good warriors are still on the disk and nothing is lost. If the program does things like declaring battles a draw, or making assumptions about the redcode that are not what is actually written, it could corrupt the whole run.**
+
+Adherence to spec:
+
+Not supported:
+-Battles between more than 2 warriors at a time.
+-Read/Write limits: the cpp has this feature, but none of the tourneys use it, so it is absent from the Python, and the cpp code is untested.
+-ORG pseudo-opcode: All of the warriors being evolved start at the first instruction to be easier to combine. The Python code may be updated to strip the ORG out if found in an input. The cpp may be updated to support it, but it is untested.
+-LDP/STP opcodes: Listed in the extended draft, but it doesn't work well with evolution, so not supported
+
+Supported:
+-NOP: in the Extended spec, so it is supported.
+-SNE, SEQ: in the Extended spec, so it is supported. 
+-`{`, `}` and `*` modes: in the Extended spec, so it is supported.
