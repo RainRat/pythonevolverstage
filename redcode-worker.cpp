@@ -18,7 +18,8 @@ const int DEFAULT_MIN_DISTANCE = 100;
 enum Opcode {
     DAT, MOV, ADD, SUB, MUL, DIV, MOD,
     JMP, JMZ, JMN, DJN, CMP, SLT, SPL,
-    ORG, NOP // ORG is a pseudo-op, NOP for invalid instructions
+    SEQ, SNE, NOP,
+    ORG // ORG is a pseudo-op
 };
 
 enum Modifier {
@@ -28,9 +29,12 @@ enum Modifier {
 enum AddressMode {
     IMMEDIATE,  // #
     DIRECT,     // $
-    INDIRECT,   // * @
-    PREDEC,     // { <
-    POSTINC     // } >
+    B_INDIRECT, // @
+    B_PREDEC,   // <
+    B_POSTINC,  // >
+    A_INDIRECT, // *
+    A_PREDEC,   // {
+    A_POSTINC   // }
 };
 
 // --- Data Structures ---
@@ -63,7 +67,8 @@ struct WarriorProcess {
 const std::map<std::string, Opcode> OPCODE_MAP = {
     {"DAT", DAT}, {"MOV", MOV}, {"ADD", ADD}, {"SUB", SUB}, {"MUL", MUL},
     {"DIV", DIV}, {"MOD", MOD}, {"JMP", JMP}, {"JMZ", JMZ}, {"JMN", JMN},
-    {"DJN", DJN}, {"CMP", CMP}, {"SLT", SLT}, {"SPL", SPL}, {"ORG", ORG}
+    {"DJN", DJN}, {"CMP", CMP}, {"SLT", SLT}, {"SPL", SPL},
+    {"SEQ", SEQ}, {"SNE", SNE}, {"NOP", NOP}, {"ORG", ORG}
 };
 
 const std::map<std::string, Modifier> MODIFIER_MAP = {
@@ -96,9 +101,12 @@ AddressMode get_mode(char c) {
     switch (c) {
         case '#': return IMMEDIATE;
         case '$': return DIRECT;
-        case '*': case '@': return INDIRECT;
-        case '{': case '<': return PREDEC;
-        case '}': case '>': return POSTINC;
+        case '@': return B_INDIRECT;
+        case '<': return B_PREDEC;
+        case '>': return B_POSTINC;
+        case '*': return A_INDIRECT;
+        case '{': return A_PREDEC;
+        case '}': return A_POSTINC;
         default: return DIRECT;
     }
 }
@@ -194,41 +202,39 @@ public:
         field = (field % core_size + core_size) % core_size;
     }
 
-    void execute(WarriorProcess& process, int read_limit, int write_limit, int max_processes) {
+    void execute(WarriorProcess process, int read_limit, int write_limit, int max_processes) {
         int pc = process.pc;
         Instruction& instr = memory[pc];
 
         if (instr.opcode == DAT) {
-            process.pc = -1;
-            return;
+            return; // Process terminates
         }
 
         // --- Operand Evaluation ---
         int a_ptr_final;
         int b_ptr_final;
+        Instruction src;
 
         // --- A-Operand ---
         int primary_a_offset = fold(instr.a_field, read_limit);
         int intermediate_a_addr = normalize(pc + primary_a_offset, core_size);
         if (instr.a_mode == IMMEDIATE) {
             a_ptr_final = pc;
+            src = instr;
         } else if (instr.a_mode == DIRECT) {
             a_ptr_final = intermediate_a_addr;
+            src = memory[a_ptr_final];
         } else {
-            if (instr.a_mode == PREDEC) {
-                memory[intermediate_a_addr].b_field--;
-                normalize_field(memory[intermediate_a_addr].b_field);
-            }
-            int secondary_a_offset = memory[intermediate_a_addr].b_field;
+            bool use_a = (instr.a_mode == A_INDIRECT || instr.a_mode == A_PREDEC || instr.a_mode == A_POSTINC);
+            bool predec = (instr.a_mode == A_PREDEC || instr.a_mode == B_PREDEC);
+            bool postinc = (instr.a_mode == A_POSTINC || instr.a_mode == B_POSTINC);
+            int& field = use_a ? memory[intermediate_a_addr].a_field : memory[intermediate_a_addr].b_field;
+            if (predec) { field--; normalize_field(field); }
+            int secondary_a_offset = field;
             int final_a_offset = fold(primary_a_offset + secondary_a_offset, read_limit);
             a_ptr_final = normalize(pc + final_a_offset, core_size);
-        }
-
-        Instruction src = (instr.a_mode == IMMEDIATE) ? instr : memory[a_ptr_final];
-
-        if (instr.a_mode == POSTINC) {
-            memory[intermediate_a_addr].b_field++;
-            normalize_field(memory[intermediate_a_addr].b_field);
+            src = memory[a_ptr_final];
+            if (postinc) { field++; normalize_field(field); }
         }
 
         // --- B-Operand ---
@@ -239,21 +245,18 @@ public:
         } else if (instr.b_mode == DIRECT) {
             b_ptr_final = intermediate_b_addr;
         } else {
-            if (instr.b_mode == PREDEC) {
-                memory[intermediate_b_addr].b_field--;
-                normalize_field(memory[intermediate_b_addr].b_field);
-            }
-            int secondary_b_offset = memory[intermediate_b_addr].b_field;
+            bool use_a = (instr.b_mode == A_INDIRECT || instr.b_mode == A_PREDEC || instr.b_mode == A_POSTINC);
+            bool predec = (instr.b_mode == A_PREDEC || instr.b_mode == B_PREDEC);
+            bool postinc = (instr.b_mode == A_POSTINC || instr.b_mode == B_POSTINC);
+            int& field = use_a ? memory[intermediate_b_addr].a_field : memory[intermediate_b_addr].b_field;
+            if (predec) { field--; normalize_field(field); }
+            int secondary_b_offset = field;
             int final_b_offset = fold(primary_b_offset + secondary_b_offset, write_limit);
             b_ptr_final = normalize(pc + final_b_offset, core_size);
+            if (postinc) { field++; normalize_field(field); }
         }
 
         Instruction& dst = memory[b_ptr_final];
-
-        if (instr.b_mode == POSTINC) {
-            memory[intermediate_b_addr].b_field++;
-            normalize_field(memory[intermediate_b_addr].b_field);
-        }
         bool skip = false;
 
         // --- Instruction Execution ---
@@ -318,7 +321,7 @@ public:
                             else { dst.a_field /= src.b_field; dst.b_field /= src.a_field; }
                             break;
                     }
-                    if (div_by_zero) process.pc = -1; else { normalize_field(dst.a_field); normalize_field(dst.b_field); }
+                    if (div_by_zero) return; else { normalize_field(dst.a_field); normalize_field(dst.b_field); }
                 }
                 break;
             case MOD:
@@ -338,10 +341,11 @@ public:
                             else { dst.a_field %= src.b_field; dst.b_field %= src.a_field; }
                             break;
                     }
-                    if (div_by_zero) process.pc = -1; else { normalize_field(dst.a_field); normalize_field(dst.b_field); }
+                    if (div_by_zero) return; else { normalize_field(dst.a_field); normalize_field(dst.b_field); }
                 }
                 break;
-            case CMP: // Same as SEQ
+            case CMP:
+            case SEQ:
                 switch (instr.modifier) {
                     case A: if (src.a_field == dst.a_field) skip = true; break;
                     case B: if (src.b_field == dst.b_field) skip = true; break;
@@ -350,6 +354,17 @@ public:
                     case F: if (src.a_field == dst.a_field && src.b_field == dst.b_field) skip = true; break;
                     case X: if (src.a_field == dst.b_field && src.b_field == dst.a_field) skip = true; break;
                     case I: if (src == dst) skip = true; break;
+                }
+                break;
+            case SNE:
+                switch (instr.modifier) {
+                    case A: if (src.a_field != dst.a_field) skip = true; break;
+                    case B: if (src.b_field != dst.b_field) skip = true; break;
+                    case AB: if (src.a_field != dst.b_field) skip = true; break;
+                    case BA: if (src.b_field != dst.a_field) skip = true; break;
+                    case F: if (src.a_field != dst.a_field || src.b_field != dst.b_field) skip = true; break;
+                    case X: if (src.a_field != dst.b_field || src.b_field != dst.a_field) skip = true; break;
+                    case I: if (!(src == dst)) skip = true; break;
                 }
                 break;
             case SLT:
@@ -363,25 +378,26 @@ public:
                 }
                 break;
             case JMP:
-                process.pc = a_ptr_final; return;
+                process_queues[process.owner].push_back({a_ptr_final, process.owner});
+                return;
             case JMZ:
                 switch (instr.modifier) {
-                    case A: if (dst.a_field == 0) { process.pc = a_ptr_final; return; } break;
-                    case B: if (dst.b_field == 0) { process.pc = a_ptr_final; return; } break;
-                    case AB: if (dst.b_field == 0) { process.pc = a_ptr_final; return; } break;
-                    case BA: if (dst.a_field == 0) { process.pc = a_ptr_final; return; } break;
-                    case F: case I: if (dst.a_field == 0 && dst.b_field == 0) { process.pc = a_ptr_final; return; } break;
-                    case X: if (dst.a_field == 0 && dst.b_field == 0) { process.pc = a_ptr_final; return; } break;
+                    case A: if (dst.a_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case B: if (dst.b_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case AB: if (dst.b_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case BA: if (dst.a_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case F: case I: if (dst.a_field == 0 && dst.b_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case X: if (dst.a_field == 0 && dst.b_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
                 }
                 break;
             case JMN:
-                 switch (instr.modifier) {
-                    case A: if (dst.a_field != 0) { process.pc = a_ptr_final; return; } break;
-                    case B: if (dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
-                    case AB: if (dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
-                    case BA: if (dst.a_field != 0) { process.pc = a_ptr_final; return; } break;
-                    case F: case I: if (dst.a_field != 0 && dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
-                    case X: if (dst.a_field != 0 && dst.b_field != 0) { process.pc = a_ptr_final; return; } break;
+                switch (instr.modifier) {
+                    case A: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case B: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case AB: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case BA: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case F: case I: if (dst.a_field != 0 && dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case X: if (dst.a_field != 0 && dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
                 }
                 break;
             case DJN:
@@ -416,7 +432,6 @@ public:
                             temp.b_field--; normalize_field(temp.b_field);
                             if (temp.a_field != 0 && temp.b_field != 0) jump = true;
                             break;
-
                         case X:
                             dst.a_field--; normalize_field(dst.a_field);
                             dst.b_field--; normalize_field(dst.b_field);
@@ -425,24 +440,26 @@ public:
                             if (temp.a_field != 0 && temp.b_field != 0) jump = true;
                             break;
                     }
-                    if (jump) { process.pc = a_ptr_final; return; }
+                    if (jump) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; }
                 }
                 break;
             case SPL:
                 {
+                    int next_pc = normalize(pc + 1, core_size);
+                    process_queues[process.owner].push_back({next_pc, process.owner});
                     if (process_queues[process.owner].size() < max_processes) {
-                        WarriorProcess new_process = { a_ptr_final, process.owner };
-                        process_queues[process.owner].push_back(new_process);
+                        process_queues[process.owner].push_back({a_ptr_final, process.owner});
                     }
                 }
+                return;
+            case NOP:
                 break;
             default:
                 break;
         }
 
-        if (process.pc != -1) {
-            process.pc = normalize(pc + (skip ? 2 : 1), core_size);
-        }
+        int next_pc = normalize(pc + (skip ? 2 : 1), core_size);
+        process_queues[process.owner].push_back({next_pc, process.owner});
     }
 
 
@@ -504,13 +521,11 @@ extern "C" {
                 WarriorProcess p = core.process_queues[0].front();
                 core.process_queues[0].pop_front();
                 core.execute(p, core_size, core_size, max_processes);
-                if(p.pc != -1) core.process_queues[0].push_back(p);
             }
             if (!core.process_queues[1].empty()) {
                 WarriorProcess p = core.process_queues[1].front();
                 core.process_queues[1].pop_front();
                 core.execute(p, core_size, core_size, max_processes);
-                if(p.pc != -1) core.process_queues[1].push_back(p);
             }
         }
 
