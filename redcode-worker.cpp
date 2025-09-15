@@ -8,6 +8,7 @@
 #include <fstream>
 #include <cstdlib>
 #include <stdexcept>
+#include <cctype>
 
 // --- Configuration ---
 const int DEFAULT_CORE_SIZE = 8000;
@@ -71,7 +72,7 @@ const std::map<std::string, Opcode> OPCODE_MAP = {
     {"DAT", DAT}, {"MOV", MOV}, {"ADD", ADD}, {"SUB", SUB}, {"MUL", MUL},
     {"DIV", DIV}, {"MOD", MOD}, {"JMP", JMP}, {"JMZ", JMZ}, {"JMN", JMN},
     {"DJN", DJN}, {"CMP", CMP}, {"SLT", SLT}, {"SPL", SPL},
-    {"SEQ", SEQ}, {"SNE", SNE}, {"NOP", NOP}, {"ORG", ORG}
+    {"SEQ", SEQ}, {"SNE", SNE}, {"NOP", NOP}
 };
 
 const std::map<std::string, Modifier> MODIFIER_MAP = {
@@ -138,6 +139,15 @@ std::string trim(const std::string& str) {
     return str.substr(start, end - start + 1);
 }
 
+std::string to_upper_copy(const std::string& input) {
+    std::string result;
+    result.reserve(input.size());
+    for (char c : input) {
+        result.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    }
+    return result;
+}
+
 int parse_numeric_field(const std::string& value, const std::string& context) {
     if (value.empty()) {
         throw std::runtime_error("Missing numeric operand in " + context);
@@ -157,32 +167,49 @@ int parse_numeric_field(const std::string& value, const std::string& context) {
 
 Instruction parse_line(const std::string& line) {
     Instruction instr;
-    std::stringstream ss(line);
+    std::string original_line = trim(line);
+    std::string working = original_line;
+    size_t comment_pos = working.find(';');
+    if (comment_pos != std::string::npos) {
+        working = trim(working.substr(0, comment_pos));
+    }
+
+    std::stringstream ss(working);
     std::string opcode_full;
 
     if (!(ss >> opcode_full)) {
-        throw std::runtime_error("Missing opcode in line: " + line);
+        throw std::runtime_error("Missing opcode in line: " + original_line);
     }
 
-    std::string opcode_str, modifier_str;
+    std::string opcode_token;
+    std::string modifier_token;
+    bool has_modifier = false;
     size_t dot_pos = opcode_full.find('.');
     if (dot_pos != std::string::npos) {
-        opcode_str = opcode_full.substr(0, dot_pos);
-        modifier_str = opcode_full.substr(dot_pos + 1);
+        opcode_token = opcode_full.substr(0, dot_pos);
+        modifier_token = opcode_full.substr(dot_pos + 1);
+        has_modifier = true;
     } else {
-        opcode_str = opcode_full;
-        modifier_str = "F"; // Default modifier
+        opcode_token = opcode_full;
+    }
+
+    std::string opcode_str = to_upper_copy(opcode_token);
+    std::string modifier_lookup = has_modifier ? to_upper_copy(modifier_token) : "F";
+    std::string modifier_display = has_modifier ? modifier_token : "F";
+
+    if (opcode_str == "ORG") {
+        throw std::runtime_error("Unsupported pseudo-opcode 'ORG' in line: " + original_line);
     }
 
     auto op_it = OPCODE_MAP.find(opcode_str);
     if (op_it == OPCODE_MAP.end()) {
-        throw std::runtime_error("Unknown opcode '" + opcode_str + "' in line: " + line);
+        throw std::runtime_error("Unknown opcode '" + opcode_token + "' in line: " + original_line);
     }
     instr.opcode = op_it->second;
 
-    auto mod_it = MODIFIER_MAP.find(modifier_str);
+    auto mod_it = MODIFIER_MAP.find(modifier_lookup);
     if (mod_it == MODIFIER_MAP.end()) {
-        throw std::runtime_error("Unknown modifier '" + modifier_str + "' in line: " + line);
+        throw std::runtime_error("Unknown modifier '" + modifier_display + "' in line: " + original_line);
     }
     instr.modifier = mod_it->second;
 
@@ -191,7 +218,7 @@ Instruction parse_line(const std::string& line) {
     operands_str = trim(operands_str);
 
     if (operands_str.empty()) {
-        throw std::runtime_error("Missing operands in line: " + line);
+        throw std::runtime_error("Missing operands in line: " + original_line);
     }
 
     std::string a_str;
@@ -206,26 +233,26 @@ Instruction parse_line(const std::string& line) {
     }
 
     if (a_str.empty()) {
-        throw std::runtime_error("Missing A-field operand in line: " + line);
+        throw std::runtime_error("Missing A-field operand in line: " + original_line);
     }
     if (b_str.empty()) {
-        throw std::runtime_error("Missing B-field operand in line: " + line);
+        throw std::runtime_error("Missing B-field operand in line: " + original_line);
     }
 
     if (std::string("#$*@{}<>").find(a_str[0]) != std::string::npos) {
         instr.a_mode = get_mode(a_str[0]);
-        instr.a_field = parse_numeric_field(trim(a_str.substr(1)), "line: " + line);
+        instr.a_field = parse_numeric_field(trim(a_str.substr(1)), "line: " + original_line);
     } else {
         instr.a_mode = DIRECT;
-        instr.a_field = parse_numeric_field(a_str, "line: " + line);
+        instr.a_field = parse_numeric_field(a_str, "line: " + original_line);
     }
 
     if (std::string("#$*@{}<>").find(b_str[0]) != std::string::npos) {
         instr.b_mode = get_mode(b_str[0]);
-        instr.b_field = parse_numeric_field(trim(b_str.substr(1)), "line: " + line);
+        instr.b_field = parse_numeric_field(trim(b_str.substr(1)), "line: " + original_line);
     } else {
         instr.b_mode = DIRECT;
-        instr.b_field = parse_numeric_field(b_str, "line: " + line);
+        instr.b_field = parse_numeric_field(b_str, "line: " + original_line);
     }
 
     return instr;
@@ -239,8 +266,20 @@ std::vector<Instruction> parse_warrior(const std::string& code) {
     while (std::getline(ss, line)) {
         line_number++;
         std::string trimmed = trim(line);
-        // Basic cleaning
-        if (trimmed.empty() || trimmed.rfind(";", 0) == 0 || trimmed.rfind("END", 0) == 0) {
+        if (trimmed.empty() || trimmed.rfind(";", 0) == 0) {
+            continue;
+        }
+
+        size_t comment_pos = trimmed.find(';');
+        if (comment_pos != std::string::npos) {
+            trimmed = trim(trimmed.substr(0, comment_pos));
+            if (trimmed.empty()) {
+                continue;
+            }
+        }
+
+        std::string upper_trimmed = to_upper_copy(trimmed);
+        if (upper_trimmed.rfind("END", 0) == 0) {
             continue;
         }
         try {
