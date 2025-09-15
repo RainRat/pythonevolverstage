@@ -71,3 +71,31 @@ def test_invalid_operand_returns_error():
     ).decode()
     assert result.startswith("ERROR:"), f"Expected error response, got: {result}"
     assert "Invalid numeric operand" in result
+
+
+def test_mixed_case_warrior_with_inline_comments():
+    lib = load_worker()
+    warrior = (
+        "mov.i $0, $0 ; copy current cell\n"
+        "add.aB #1,$2 ; adjust pointer\n"
+    )
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        warrior.encode(), 2,
+        8000, 10, 8000, 1, 1
+    ).decode()
+    assert not result.startswith("ERROR:"), f"Expected warrior to load, got: {result}"
+    scores = get_scores(result)
+    assert len(scores) == 2
+
+
+def test_org_pseudo_opcode_rejected():
+    lib = load_worker()
+    warrior = "ORG 1\nDAT.F #0, #0\n"
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        warrior.encode(), 2,
+        8000, 10, 8000, 1, 1
+    ).decode()
+    assert result.startswith("ERROR:"), f"Expected ORG to be rejected, got: {result}"
+    assert "Unsupported pseudo-opcode 'ORG'" in result
