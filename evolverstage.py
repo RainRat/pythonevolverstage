@@ -10,7 +10,6 @@ You should have received a copy of the GNU Lesser General Public License along w
 
 import random
 import os
-import re
 import time
 #import psutil #Not currently active. See bottom of code for how it could be used.
 import configparser
@@ -19,6 +18,8 @@ from enum import Enum
 import csv
 import ctypes
 import platform
+from dataclasses import dataclass
+from typing import Optional
 
 class DataLogger:
     def __init__(self, filename):
@@ -184,6 +185,12 @@ INSTR_SET = read_config('INSTR_SET', data_type='string_list')
 INSTR_MODES = read_config('INSTR_MODES', data_type='string_list')
 INSTR_MODIF = read_config('INSTR_MODIF', data_type='string_list')
 
+INSTR_SET_LOOKUP = {instr.upper() for instr in INSTR_SET} if INSTR_SET else set()
+DEFAULT_MODE = '$'
+DEFAULT_MODIFIER = 'F'
+ADDRESSING_MODES = set(INSTR_MODES) if INSTR_MODES else set()
+ADDRESSING_MODES.update({'$', '#', '@', '<', '>', '*', '{', '}'})
+
 def weighted_random_number(size, length):
     if random.randint(1,4)==1:
         return random.randint(-size, size)
@@ -197,6 +204,217 @@ def coremod(x, y):
 
 def corenorm(x, y):
     return -(y - x) if x > y // 2 else (y + x) if x <= -(y // 2) else x
+
+
+@dataclass
+class RedcodeInstruction:
+    opcode: str
+    modifier: str = DEFAULT_MODIFIER
+    a_mode: str = DEFAULT_MODE
+    a_field: int = 0
+    b_mode: str = DEFAULT_MODE
+    b_field: int = 0
+    label: Optional[str] = None
+
+    def copy(self) -> "RedcodeInstruction":
+        return RedcodeInstruction(
+            opcode=self.opcode,
+            modifier=self.modifier,
+            a_mode=self.a_mode,
+            a_field=self.a_field,
+            b_mode=self.b_mode,
+            b_field=self.b_field,
+            label=self.label,
+        )
+
+
+def _tokenize_instruction(line: str):
+    tokens = []
+    current = []
+    for ch in line:
+        if ch.isspace():
+            if current:
+                tokens.append(''.join(current))
+                current = []
+        elif ch == ',':
+            if current:
+                tokens.append(''.join(current))
+                current = []
+            tokens.append(',')
+        else:
+            current.append(ch)
+    if current:
+        tokens.append(''.join(current))
+    return tokens
+
+
+def _split_opcode_token(token: str):
+    parts = token.split('.', 1)
+    if len(parts) == 2:
+        return parts[0], parts[1]
+    return token, None
+
+
+def _is_opcode_token(token: str) -> bool:
+    opcode, _ = _split_opcode_token(token)
+    opcode = opcode.upper()
+    if INSTR_SET_LOOKUP:
+        return opcode in INSTR_SET_LOOKUP
+    return True
+
+
+def _safe_int(value: str) -> int:
+    value = value.strip()
+    if not value:
+        return 0
+    try:
+        return int(value, 0)
+    except ValueError:
+        sign = 1
+        if value[0] in '+-':
+            sign = -1 if value[0] == '-' else 1
+            value = value[1:]
+        digits = ''.join(ch for ch in value if ch.isdigit())
+        if digits:
+            return sign * int(digits)
+        return 0
+
+
+def _ensure_int(value) -> int:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    return _safe_int(str(value))
+
+
+def _parse_operand(operand: str):
+    operand = operand.strip()
+    if not operand:
+        return DEFAULT_MODE, 0
+    mode = operand[0]
+    if mode in ADDRESSING_MODES:
+        value_part = operand[1:]
+    else:
+        mode = DEFAULT_MODE
+        value_part = operand
+    return mode if mode else DEFAULT_MODE, _safe_int(value_part)
+
+
+def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
+    if not line:
+        return None
+    code_part = line.split(';', 1)[0].strip()
+    if not code_part:
+        return None
+    tokens = _tokenize_instruction(code_part)
+    if not tokens:
+        return None
+
+    label: Optional[str] = None
+    idx = 0
+    if len(tokens) >= 2 and not _is_opcode_token(tokens[0]) and _is_opcode_token(tokens[1]):
+        label = tokens[0]
+        idx = 1
+
+    if idx >= len(tokens):
+        return None
+
+    opcode_token = tokens[idx]
+    opcode_part, modifier_part = _split_opcode_token(opcode_token)
+    opcode = opcode_part.upper()
+    modifier = modifier_part.upper() if modifier_part else DEFAULT_MODIFIER
+    idx += 1
+
+    operands = []
+    current_operand = ''
+    while idx < len(tokens):
+        tok = tokens[idx]
+        idx += 1
+        if tok == ',':
+            operands.append(current_operand)
+            current_operand = ''
+        else:
+            current_operand += tok
+    if current_operand or (tokens and tokens[-1] == ','):
+        operands.append(current_operand)
+
+    a_mode, a_field = _parse_operand(operands[0]) if operands else (DEFAULT_MODE, 0)
+    b_mode, b_field = _parse_operand(operands[1]) if len(operands) > 1 else (DEFAULT_MODE, 0)
+
+    return RedcodeInstruction(
+        opcode=opcode,
+        modifier=modifier or DEFAULT_MODIFIER,
+        a_mode=a_mode or DEFAULT_MODE,
+        a_field=a_field,
+        b_mode=b_mode or DEFAULT_MODE,
+        b_field=b_field,
+        label=label,
+    )
+
+
+def default_instruction() -> RedcodeInstruction:
+    return RedcodeInstruction(
+        opcode='DAT',
+        modifier=DEFAULT_MODIFIER,
+        a_mode=DEFAULT_MODE,
+        a_field=0,
+        b_mode=DEFAULT_MODE,
+        b_field=0,
+    )
+
+
+def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstruction:
+    sanitized = instr.copy()
+    sanitized.opcode = sanitized.opcode.upper()
+    sanitized.modifier = (sanitized.modifier or DEFAULT_MODIFIER).upper()
+    sanitized.a_mode = sanitized.a_mode if sanitized.a_mode in ADDRESSING_MODES else DEFAULT_MODE
+    sanitized.b_mode = sanitized.b_mode if sanitized.b_mode in ADDRESSING_MODES else DEFAULT_MODE
+    sanitized.a_field = corenorm(
+        coremod(_ensure_int(sanitized.a_field), SANITIZE_LIST[arena]),
+        CORESIZE_LIST[arena],
+    )
+    sanitized.b_field = corenorm(
+        coremod(_ensure_int(sanitized.b_field), SANITIZE_LIST[arena]),
+        CORESIZE_LIST[arena],
+    )
+    sanitized.label = None
+    return sanitized
+
+
+def format_redcode_instruction(instr: RedcodeInstruction) -> str:
+    return (
+        f"{instr.opcode}.{instr.modifier} "
+        f"{instr.a_mode}{_ensure_int(instr.a_field)},"
+        f"{instr.b_mode}{_ensure_int(instr.b_field)}\n"
+    )
+
+
+def instruction_to_line(instr: RedcodeInstruction, arena: int) -> str:
+    return format_redcode_instruction(sanitize_instruction(instr, arena))
+
+
+def parse_instruction_or_default(line: str) -> RedcodeInstruction:
+    parsed = parse_redcode_instruction(line)
+    return parsed if parsed else default_instruction()
+
+
+def choose_random_opcode() -> str:
+    if INSTR_SET:
+        return random.choice(INSTR_SET).upper()
+    return 'DAT'
+
+
+def choose_random_modifier() -> str:
+    if INSTR_MODIF:
+        return random.choice(INSTR_MODIF).upper()
+    return DEFAULT_MODIFIER
+
+
+def choose_random_mode() -> str:
+    if INSTR_MODES:
+        return random.choice(INSTR_MODES)
+    return DEFAULT_MODE
 
 def create_directory_if_not_exists(directory):
     if not os.path.exists(directory):
@@ -314,20 +532,18 @@ while(True):
     #3. Sanitize values
     #4. Try to be tolerant of working with other evolvers that may not space things exactly the same.
     fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # unarchived warrior destroys loser
-    countoflines=0
+    instructions_written=0
     for line in sourcelines:
-      countoflines=countoflines+1
-      if countoflines>WARLEN_LIST[arena]:
+      instruction=parse_redcode_instruction(line)
+      if instruction is None:
+        continue
+      fl.write(instruction_to_line(instruction, arena))
+      instructions_written=instructions_written+1
+      if instructions_written>=WARLEN_LIST[arena]:
         break
-      line=line.replace('  ',' ').replace('START','').replace(', ',',').strip()
-      splitline=re.split('[ \.,\n]', line)
-      line=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(corenorm(coremod(int(splitline[2][1:]), \
-           SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+splitline[3][0:1]+ \
-           str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+"\n"
-      fl.write(line)
-    while countoflines<WARLEN_LIST[arena]:
-      countoflines=countoflines+1
-      fl.write('DAT.F $0,$0\n')
+    while instructions_written<WARLEN_LIST[arena]:
+      fl.write(instruction_to_line(default_instruction(), arena))
+      instructions_written=instructions_written+1
     fl.close()
     continue #out of while (loser replaced by archive, no point breeding)
     
@@ -369,83 +585,85 @@ while(True):
         pickingfrom=1
 
     if pickingfrom==1:
-      templine=(winlines[i])
+      source_line=winlines[i] if i < len(winlines) else ''
     else:
-      templine=(ranlines[i])
+      source_line=ranlines[i] if i < len(ranlines) else ''
 
-    chosen_marble=random.choice(bag)  
+    instruction=parse_instruction_or_default(source_line)
+    chosen_marble=random.choice(bag)
     if chosen_marble==Marble.MAJOR_MUTATION: #completely random
       print("Major mutation")
-      num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-      num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-      templine=random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
-               str(num1)+","+random.choice(INSTR_MODES)+str(num2)+"\n"
+      num1=weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+      num2=weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+      instruction=RedcodeInstruction(
+        opcode=choose_random_opcode(),
+        modifier=choose_random_modifier(),
+        a_mode=choose_random_mode(),
+        a_field=num1,
+        b_mode=choose_random_mode(),
+        b_field=num2,
+      )
     elif chosen_marble==Marble.NAB_INSTRUCTION and (LAST_ARENA!=0):
       #nab instruction from another arena. Doesn't make sense if not multiple arenas
       donor_arena=random.randint(0, LAST_ARENA)
       while (donor_arena==arena):
         donor_arena=random.randint(0, LAST_ARENA)
       print("Nab instruction from arena " + str(donor_arena))
-      donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
-      templine = random.choice(list(open(donor_file)))
+      donor_file=os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
+      with open(donor_file, "r") as donor_handle:
+        donor_lines=donor_handle.readlines()
+      if donor_lines:
+        instruction=parse_instruction_or_default(random.choice(donor_lines))
+      else:
+        instruction=default_instruction()
     elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
       print("Minor mutation")
-      splitline=re.split('[ \.,\n]', templine)
       r=random.randint(1,6)
       if r==1:
-        splitline[0]=random.choice(INSTR_SET)
+        instruction.opcode=choose_random_opcode()
       elif r==2:
-        splitline[1]=random.choice(INSTR_MODIF)
+        instruction.modifier=choose_random_modifier()
       elif r==3:
-        splitline[2]=random.choice(INSTR_MODES)+splitline[2][1:]
+        instruction.a_mode=choose_random_mode()
       elif r==4:
-        num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-        splitline[2]=splitline[2][0:1]+str(num1)
-      elif r==5:  
-        splitline[3]=random.choice(INSTR_MODES)+splitline[3][1:]
+        instruction.a_field=weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+      elif r==5:
+        instruction.b_mode=choose_random_mode()
       elif r==6:
-        num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-        splitline[3]=splitline[3][0:1]+str(num1)
-      templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
+        instruction.b_field=weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
     elif chosen_marble==Marble.MICRO_MUTATION: #modifies one number by +1 or -1
       print ("Micro mutation")
-      splitline=re.split('[ \.,\n]', templine)
-      r=random.randint(1,2)
-      if r==1:
-        num1=int(splitline[2][1:])
+      if random.randint(1,2)==1:
+        current_value=_ensure_int(instruction.a_field)
         if random.randint(1,2)==1:
-          num1=num1+1
+          current_value=current_value+1
         else:
-          num1=num1-1
-        splitline[2]=splitline[2][0:1]+str(num1)
+          current_value=current_value-1
+        instruction.a_field=current_value
       else:
-        num1=int(splitline[3][1:])
+        current_value=_ensure_int(instruction.b_field)
         if random.randint(1,2)==1:
-          num1=num1+1
+          current_value=current_value+1
         else:
-          num1=num1-1
-        splitline[3]=splitline[3][0:1]+str(num1)
-      templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
+          current_value=current_value-1
+        instruction.b_field=current_value
     elif chosen_marble==Marble.INSTRUCTION_LIBRARY and LIBRARY_PATH and os.path.exists(LIBRARY_PATH):
       print("Instruction library")
-      templine=random.choice(list(open(LIBRARY_PATH)))
+      with open(LIBRARY_PATH, "r") as library_handle:
+        library_lines=library_handle.readlines()
+      if library_lines:
+        instruction=parse_instruction_or_default(random.choice(library_lines))
+      else:
+        instruction=default_instruction()
     elif chosen_marble==Marble.MAGIC_NUMBER_MUTATION:
       print ("Magic number mutation")
-      splitline=re.split('[ \.,\n]', templine)
-      r=random.randint(1,2)
-      if r==1:
-        splitline[2]=splitline[2][0:1]+str(magic_number)
+      if random.randint(1,2)==1:
+        instruction.a_field=magic_number
       else:
-        splitline[3]=splitline[3][0:1]+str(magic_number)
-      templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
-      
-    splitline=re.split('[ \.,\n]', templine)
-    templine=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
-             str(corenorm(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+ \
-             splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]), \
-             CORESIZE_LIST[arena]))+"\n"
-    fl.write(templine)      
-    magic_number=magic_number-1  
+        instruction.b_field=magic_number
+
+    fl.write(instruction_to_line(instruction, arena))
+    magic_number=magic_number-1
 
   fl.close()
   data_logger.log_data(era=era, arena=arena, winner=winner, loser=loser, score1=scores[0], score2=scores[1], \
