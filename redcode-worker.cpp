@@ -388,42 +388,72 @@ public:
                 break;
             case DIV:
                 {
-                    bool div_by_zero = false;
+                    auto perform_division = [this](int& target, int divisor) {
+                        if (divisor == 0) {
+                            return false;
+                        }
+                        target /= divisor;
+                        normalize_field(target);
+                        return true;
+                    };
                     switch (instr.modifier) {
-                        case A: if (src.a_field == 0) div_by_zero = true; else dst.a_field /= src.a_field; break;
-                        case B: if (src.b_field == 0) div_by_zero = true; else dst.b_field /= src.b_field; break;
-                        case AB: if (src.a_field == 0) div_by_zero = true; else dst.b_field /= src.a_field; break;
-                        case BA: if (src.b_field == 0) div_by_zero = true; else dst.a_field /= src.b_field; break;
-                        case F: case I:
-                            if (src.a_field == 0 || src.b_field == 0) div_by_zero = true;
-                            else { dst.a_field /= src.a_field; dst.b_field /= src.b_field; }
+                        case A:
+                            if (!perform_division(dst.a_field, src.a_field)) return;
+                            break;
+                        case B:
+                            if (!perform_division(dst.b_field, src.b_field)) return;
+                            break;
+                        case AB:
+                            if (!perform_division(dst.b_field, src.a_field)) return;
+                            break;
+                        case BA:
+                            if (!perform_division(dst.a_field, src.b_field)) return;
+                            break;
+                        case F:
+                        case I:
+                            if (!perform_division(dst.a_field, src.a_field)) return;
+                            if (!perform_division(dst.b_field, src.b_field)) return;
                             break;
                         case X:
-                            if (src.a_field == 0 || src.b_field == 0) div_by_zero = true;
-                            else { dst.a_field /= src.b_field; dst.b_field /= src.a_field; }
+                            if (!perform_division(dst.a_field, src.b_field)) return;
+                            if (!perform_division(dst.b_field, src.a_field)) return;
                             break;
                     }
-                    if (div_by_zero) return; else { normalize_field(dst.a_field); normalize_field(dst.b_field); }
                 }
                 break;
             case MOD:
                 {
-                    bool div_by_zero = false;
+                    auto perform_modulo = [this](int& target, int divisor) {
+                        if (divisor == 0) {
+                            return false;
+                        }
+                        target %= divisor;
+                        normalize_field(target);
+                        return true;
+                    };
                     switch (instr.modifier) {
-                        case A: if (src.a_field == 0) div_by_zero = true; else dst.a_field %= src.a_field; break;
-                        case B: if (src.b_field == 0) div_by_zero = true; else dst.b_field %= src.b_field; break;
-                        case AB: if (src.a_field == 0) div_by_zero = true; else dst.b_field %= src.a_field; break;
-                        case BA: if (src.b_field == 0) div_by_zero = true; else dst.a_field %= src.b_field; break;
-                        case F: case I:
-                            if (src.a_field == 0 || src.b_field == 0) div_by_zero = true;
-                            else { dst.a_field %= src.a_field; dst.b_field %= src.b_field; }
+                        case A:
+                            if (!perform_modulo(dst.a_field, src.a_field)) return;
+                            break;
+                        case B:
+                            if (!perform_modulo(dst.b_field, src.b_field)) return;
+                            break;
+                        case AB:
+                            if (!perform_modulo(dst.b_field, src.a_field)) return;
+                            break;
+                        case BA:
+                            if (!perform_modulo(dst.a_field, src.b_field)) return;
+                            break;
+                        case F:
+                        case I:
+                            if (!perform_modulo(dst.a_field, src.a_field)) return;
+                            if (!perform_modulo(dst.b_field, src.b_field)) return;
                             break;
                         case X:
-                            if (src.a_field == 0 || src.b_field == 0) div_by_zero = true;
-                            else { dst.a_field %= src.b_field; dst.b_field %= src.a_field; }
+                            if (!perform_modulo(dst.a_field, src.b_field)) return;
+                            if (!perform_modulo(dst.b_field, src.a_field)) return;
                             break;
                     }
-                    if (div_by_zero) return; else { normalize_field(dst.a_field); normalize_field(dst.b_field); }
                 }
                 break;
             case CMP:
