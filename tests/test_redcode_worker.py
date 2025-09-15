@@ -59,3 +59,15 @@ def test_validate_self_tie():
     assert w1_score == w2_score == rounds, (
         "Validate1.1R should score " + str(rounds) + " each, got: " + result
     )
+
+
+def test_invalid_operand_returns_error():
+    lib = load_worker()
+    invalid_code = "MOV.I #abc, $0\n"
+    result = lib.run_battle(
+        invalid_code.encode(), 1,
+        invalid_code.encode(), 2,
+        8000, 1000, 8000, 100, 1
+    ).decode()
+    assert result.startswith("ERROR:"), f"Expected error response, got: {result}"
+    assert "Invalid numeric operand" in result

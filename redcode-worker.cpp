@@ -7,6 +7,7 @@
 #include <random>
 #include <fstream>
 #include <cstdlib>
+#include <stdexcept>
 
 // --- Configuration ---
 const int DEFAULT_CORE_SIZE = 8000;
@@ -128,13 +129,41 @@ AddressMode get_mode(char c) {
     }
 }
 
+std::string trim(const std::string& str) {
+    size_t start = str.find_first_not_of(" \t");
+    if (start == std::string::npos) {
+        return "";
+    }
+    size_t end = str.find_last_not_of(" \t");
+    return str.substr(start, end - start + 1);
+}
+
+int parse_numeric_field(const std::string& value, const std::string& context) {
+    if (value.empty()) {
+        throw std::runtime_error("Missing numeric operand in " + context);
+    }
+    size_t processed = 0;
+    int parsed_value = 0;
+    try {
+        parsed_value = std::stoi(value, &processed, 10);
+    } catch (const std::exception&) {
+        throw std::runtime_error("Invalid numeric operand '" + value + "' in " + context);
+    }
+    if (processed != value.size()) {
+        throw std::runtime_error("Invalid numeric operand '" + value + "' in " + context);
+    }
+    return parsed_value;
+}
+
 Instruction parse_line(const std::string& line) {
     Instruction instr;
-    std::string opcode_full, operands_str;
     std::stringstream ss(line);
+    std::string opcode_full;
 
-    // 1. Opcode and optional Modifier
-    ss >> opcode_full;
+    if (!(ss >> opcode_full)) {
+        throw std::runtime_error("Missing opcode in line: " + line);
+    }
+
     std::string opcode_str, modifier_str;
     size_t dot_pos = opcode_full.find('.');
     if (dot_pos != std::string::npos) {
@@ -146,49 +175,57 @@ Instruction parse_line(const std::string& line) {
     }
 
     auto op_it = OPCODE_MAP.find(opcode_str);
-    instr.opcode = (op_it != OPCODE_MAP.end()) ? op_it->second : NOP;
+    if (op_it == OPCODE_MAP.end()) {
+        throw std::runtime_error("Unknown opcode '" + opcode_str + "' in line: " + line);
+    }
+    instr.opcode = op_it->second;
+
     auto mod_it = MODIFIER_MAP.find(modifier_str);
-    if (mod_it != MODIFIER_MAP.end()) instr.modifier = mod_it->second;
+    if (mod_it == MODIFIER_MAP.end()) {
+        throw std::runtime_error("Unknown modifier '" + modifier_str + "' in line: " + line);
+    }
+    instr.modifier = mod_it->second;
 
-    // 2. Operands
+    std::string operands_str;
     std::getline(ss, operands_str);
-    // Trim leading space
-    operands_str.erase(0, operands_str.find_first_not_of(" \t"));
+    operands_str = trim(operands_str);
 
-    std::string a_str, b_str;
+    if (operands_str.empty()) {
+        throw std::runtime_error("Missing operands in line: " + line);
+    }
+
+    std::string a_str;
+    std::string b_str;
     size_t comma_pos = operands_str.find(',');
     if (comma_pos != std::string::npos) {
-        a_str = operands_str.substr(0, comma_pos);
-        b_str = operands_str.substr(comma_pos + 1);
+        a_str = trim(operands_str.substr(0, comma_pos));
+        b_str = trim(operands_str.substr(comma_pos + 1));
     } else {
-        a_str = operands_str;
+        a_str = trim(operands_str);
         b_str = "$0"; // Default for missing B-field
     }
 
-    // Trim trailing/leading whitespace from operands
-    a_str.erase(a_str.find_last_not_of(" \t") + 1);
-    b_str.erase(0, b_str.find_first_not_of(" \t"));
-
-    // 3. A-field
-    if (!a_str.empty()) {
-        if (std::string("#$*@{}<>").find(a_str[0]) != std::string::npos) {
-            instr.a_mode = get_mode(a_str[0]);
-            try { instr.a_field = std::stoi(a_str.substr(1)); } catch (...) { instr.a_field = 0; }
-        } else {
-            instr.a_mode = DIRECT;
-            try { instr.a_field = std::stoi(a_str); } catch (...) { instr.a_field = 0; }
-        }
+    if (a_str.empty()) {
+        throw std::runtime_error("Missing A-field operand in line: " + line);
+    }
+    if (b_str.empty()) {
+        throw std::runtime_error("Missing B-field operand in line: " + line);
     }
 
-    // 4. B-field
-    if (!b_str.empty()) {
-        if (std::string("#$*@{}<>").find(b_str[0]) != std::string::npos) {
-            instr.b_mode = get_mode(b_str[0]);
-            try { instr.b_field = std::stoi(b_str.substr(1)); } catch (...) { instr.b_field = 0; }
-        } else {
-            instr.b_mode = DIRECT;
-            try { instr.b_field = std::stoi(b_str); } catch (...) { instr.b_field = 0; }
-        }
+    if (std::string("#$*@{}<>").find(a_str[0]) != std::string::npos) {
+        instr.a_mode = get_mode(a_str[0]);
+        instr.a_field = parse_numeric_field(trim(a_str.substr(1)), "line: " + line);
+    } else {
+        instr.a_mode = DIRECT;
+        instr.a_field = parse_numeric_field(a_str, "line: " + line);
+    }
+
+    if (std::string("#$*@{}<>").find(b_str[0]) != std::string::npos) {
+        instr.b_mode = get_mode(b_str[0]);
+        instr.b_field = parse_numeric_field(trim(b_str.substr(1)), "line: " + line);
+    } else {
+        instr.b_mode = DIRECT;
+        instr.b_field = parse_numeric_field(b_str, "line: " + line);
     }
 
     return instr;
@@ -198,12 +235,21 @@ std::vector<Instruction> parse_warrior(const std::string& code) {
     std::vector<Instruction> warrior_code;
     std::stringstream ss(code);
     std::string line;
+    int line_number = 0;
     while (std::getline(ss, line)) {
+        line_number++;
+        std::string trimmed = trim(line);
         // Basic cleaning
-        if (line.empty() || line.rfind(";", 0) == 0 || line.rfind("END", 0) == 0) {
+        if (trimmed.empty() || trimmed.rfind(";", 0) == 0 || trimmed.rfind("END", 0) == 0) {
             continue;
         }
-        warrior_code.push_back(parse_line(line));
+        try {
+            warrior_code.push_back(parse_line(trimmed));
+        } catch (const std::exception& e) {
+            throw std::runtime_error(
+                "Error parsing warrior at line " + std::to_string(line_number) + ": " + e.what()
+            );
+        }
     }
     return warrior_code;
 }
@@ -515,74 +561,80 @@ extern "C" {
         int core_size, int max_cycles, int max_processes,
         int min_distance, int rounds
     ) {
-        auto w1_instrs = parse_warrior(warrior1_code);
-        auto w2_instrs = parse_warrior(warrior2_code);
+        static std::string response;
+        try {
+            auto w1_instrs = parse_warrior(warrior1_code);
+            auto w2_instrs = parse_warrior(warrior2_code);
 
-        std::random_device rd;
-        std::mt19937 gen(rd());
-        const char* trace_file = std::getenv("REDCODE_TRACE_FILE");
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            const char* trace_file = std::getenv("REDCODE_TRACE_FILE");
 
-        int w1_score = 0;
-        int w2_score = 0;
+            int w1_score = 0;
+            int w2_score = 0;
 
-        for (int r = 0; r < rounds; ++r) {
-            Core core(core_size, trace_file);
-            std::uniform_int_distribution<> distrib(0, core_size - 1);
+            for (int r = 0; r < rounds; ++r) {
+                Core core(core_size, trace_file);
+                std::uniform_int_distribution<> distrib(0, core_size - 1);
 
-            int w1_start = distrib(gen);
-            int w2_start;
-            int circular_dist;
-            do {
-                w2_start = distrib(gen);
-                int dist = std::abs(w1_start - w2_start);
-                circular_dist = std::min(dist, core_size - dist);
-            } while (circular_dist < min_distance);
+                int w1_start = distrib(gen);
+                int w2_start;
+                int circular_dist;
+                do {
+                    w2_start = distrib(gen);
+                    int dist = std::abs(w1_start - w2_start);
+                    circular_dist = std::min(dist, core_size - dist);
+                } while (circular_dist < min_distance);
 
-            for (size_t i = 0; i < w1_instrs.size(); ++i) {
-                core.memory[normalize(w1_start + i, core_size)] = w1_instrs[i];
-            }
-            for (size_t i = 0; i < w2_instrs.size(); ++i) {
-                core.memory[normalize(w2_start + i, core_size)] = w2_instrs[i];
-            }
-
-            core.process_queues[0].push_back({w1_start, 0});
-            core.process_queues[1].push_back({w2_start, 1});
-
-            for (int cycle = 0; cycle < max_cycles; ++cycle) {
-                if (core.process_queues[0].empty() || core.process_queues[1].empty()) {
-                    break;
+                for (size_t i = 0; i < w1_instrs.size(); ++i) {
+                    core.memory[normalize(w1_start + i, core_size)] = w1_instrs[i];
                 }
-                if (!core.process_queues[0].empty()) {
-                    WarriorProcess p = core.process_queues[0].front();
-                    core.process_queues[0].pop_front();
-                    core.execute(p, core_size, core_size, max_processes);
+                for (size_t i = 0; i < w2_instrs.size(); ++i) {
+                    core.memory[normalize(w2_start + i, core_size)] = w2_instrs[i];
                 }
-                if (!core.process_queues[1].empty()) {
-                    WarriorProcess p = core.process_queues[1].front();
-                    core.process_queues[1].pop_front();
-                    core.execute(p, core_size, core_size, max_processes);
+
+                core.process_queues[0].push_back({w1_start, 0});
+                core.process_queues[1].push_back({w2_start, 1});
+
+                for (int cycle = 0; cycle < max_cycles; ++cycle) {
+                    if (core.process_queues[0].empty() || core.process_queues[1].empty()) {
+                        break;
+                    }
+                    if (!core.process_queues[0].empty()) {
+                        WarriorProcess p = core.process_queues[0].front();
+                        core.process_queues[0].pop_front();
+                        core.execute(p, core_size, core_size, max_processes);
+                    }
+                    if (!core.process_queues[1].empty()) {
+                        WarriorProcess p = core.process_queues[1].front();
+                        core.process_queues[1].pop_front();
+                        core.execute(p, core_size, core_size, max_processes);
+                    }
+                }
+
+                int w1_procs = core.process_queues[0].size();
+                int w2_procs = core.process_queues[1].size();
+
+                if (w1_procs > 0 && w2_procs == 0) {
+                    w1_score += 3;
+                } else if (w2_procs > 0 && w1_procs == 0) {
+                    w2_score += 3;
+                } else {
+                    w1_score += 1;
+                    w2_score += 1;
                 }
             }
 
-            int w1_procs = core.process_queues[0].size();
-            int w2_procs = core.process_queues[1].size();
+            std::stringstream result_ss;
+            result_ss << w1_id << " 0 0 0 " << w1_score << " scores\n";
+            result_ss << w2_id << " 0 0 0 " << w2_score << " scores";
 
-            if (w1_procs > 0 && w2_procs == 0) {
-                w1_score += 3;
-            } else if (w2_procs > 0 && w1_procs == 0) {
-                w2_score += 3;
-            } else {
-                w1_score += 1;
-                w2_score += 1;
-            }
+            response = result_ss.str();
+        } catch (const std::exception& e) {
+            response = std::string("ERROR: ") + e.what();
+        } catch (...) {
+            response = "ERROR: Unknown exception encountered while running battle";
         }
-
-        static std::string result_str;
-        std::stringstream result_ss;
-        result_ss << w1_id << " 0 0 0 " << w1_score << " scores\n";
-        result_ss << w2_id << " 0 0 0 " << w2_score << " scores";
-
-        result_str = result_ss.str();
-        return result_str.c_str();
+        return response.c_str();
     }
 }
