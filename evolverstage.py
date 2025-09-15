@@ -8,6 +8,7 @@ from enum import Enum
 import csv
 import ctypes
 import platform
+import re
 from dataclasses import dataclass
 from typing import Optional
 
@@ -118,14 +119,17 @@ def run_internal_battle(arena, cont1, cont2, coresize, cycles, processes, warlen
             battlerounds
         )
 
+        if not result_ptr:
+            raise RuntimeError("C++ worker returned no result")
+
         # 3. Decode the result
         result_str = result_ptr.decode('utf-8')
         return result_str
 
     except Exception as e:
-        print(f"An error occurred while running the internal battle: {e}")
-        # Return a draw to avoid crashing the evolution process
-        return f"{cont1} 0 0 0 0 scores\n{cont2} 0 0 0 0 scores"
+        raise RuntimeError(
+            "An error occurred while running the internal battle"
+        ) from e
 
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
@@ -175,11 +179,34 @@ INSTR_SET = read_config('INSTR_SET', data_type='string_list')
 INSTR_MODES = read_config('INSTR_MODES', data_type='string_list')
 INSTR_MODIF = read_config('INSTR_MODIF', data_type='string_list')
 
-INSTR_SET_LOOKUP = {instr.upper() for instr in INSTR_SET} if INSTR_SET else set()
 DEFAULT_MODE = '$'
 DEFAULT_MODIFIER = 'F'
 ADDRESSING_MODES = set(INSTR_MODES) if INSTR_MODES else set()
 ADDRESSING_MODES.update({'$', '#', '@', '<', '>', '*', '{', '}'})
+
+SUPPORTED_OPCODES = {
+    'DAT', 'MOV', 'ADD', 'SUB', 'MUL', 'DIV', 'MOD',
+    'JMP', 'JMZ', 'JMN', 'DJN', 'CMP', 'SEQ', 'SNE', 'SLT', 'SPL', 'NOP',
+}
+UNSUPPORTED_OPCODES = {'LDP', 'STP'}
+
+GENERATION_OPCODE_POOL = []
+_invalid_generation_opcodes = set()
+if INSTR_SET:
+    for instr in INSTR_SET:
+        normalized = instr.strip().upper()
+        if not normalized:
+            continue
+        if normalized in UNSUPPORTED_OPCODES or normalized not in SUPPORTED_OPCODES:
+            _invalid_generation_opcodes.add(normalized)
+            continue
+        GENERATION_OPCODE_POOL.append(normalized)
+if _invalid_generation_opcodes:
+    raise ValueError(
+        "Unsupported opcodes specified in INSTR_SET: "
+        + ', '.join(sorted(_invalid_generation_opcodes))
+    )
+del _invalid_generation_opcodes
 
 def weighted_random_number(size, length):
     if random.randint(1,4)==1:
@@ -248,26 +275,19 @@ def _split_opcode_token(token: str):
 def _is_opcode_token(token: str) -> bool:
     opcode, _ = _split_opcode_token(token)
     opcode = opcode.upper()
-    if INSTR_SET_LOOKUP:
-        return opcode in INSTR_SET_LOOKUP
-    return True
+    return opcode in SUPPORTED_OPCODES or opcode in UNSUPPORTED_OPCODES
+
+
+_INT_LITERAL_RE = re.compile(r'^[+-]?\d+$')
 
 
 def _safe_int(value: str) -> int:
     value = value.strip()
     if not value:
-        return 0
-    try:
-        return int(value, 0)
-    except ValueError:
-        sign = 1
-        if value[0] in '+-':
-            sign = -1 if value[0] == '-' else 1
-            value = value[1:]
-        digits = ''.join(ch for ch in value if ch.isdigit())
-        if digits:
-            return sign * int(digits)
-        return 0
+        raise ValueError("Empty integer literal")
+    if not _INT_LITERAL_RE.fullmatch(value):
+        raise ValueError(f"Invalid integer literal: '{value}'")
+    return int(value, 10)
 
 
 def _ensure_int(value) -> int:
@@ -278,17 +298,25 @@ def _ensure_int(value) -> int:
     return _safe_int(str(value))
 
 
-def _parse_operand(operand: str):
+def _parse_operand(operand: str, operand_name: str):
     operand = operand.strip()
     if not operand:
-        return DEFAULT_MODE, 0
+        raise ValueError(f"Missing {operand_name}-field operand")
     mode = operand[0]
     if mode in ADDRESSING_MODES:
         value_part = operand[1:]
     else:
         mode = DEFAULT_MODE
         value_part = operand
-    return mode if mode else DEFAULT_MODE, _safe_int(value_part)
+    if not value_part.strip():
+        raise ValueError(f"Missing value for {operand_name}-field operand")
+    try:
+        value = _safe_int(value_part)
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid {operand_name}-field operand '{operand}': {exc}"
+        ) from exc
+    return mode if mode else DEFAULT_MODE, value
 
 
 def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
@@ -316,6 +344,11 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     modifier = modifier_part.upper() if modifier_part else DEFAULT_MODIFIER
     idx += 1
 
+    if opcode in UNSUPPORTED_OPCODES:
+        raise ValueError(f"Opcode '{opcode}' is not supported")
+    if opcode not in SUPPORTED_OPCODES:
+        raise ValueError(f"Unknown opcode '{opcode}'")
+
     operands = []
     current_operand = ''
     while idx < len(tokens):
@@ -329,8 +362,17 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     if current_operand or (tokens and tokens[-1] == ','):
         operands.append(current_operand)
 
-    a_mode, a_field = _parse_operand(operands[0]) if operands else (DEFAULT_MODE, 0)
-    b_mode, b_field = _parse_operand(operands[1]) if len(operands) > 1 else (DEFAULT_MODE, 0)
+    if len(operands) < 2:
+        raise ValueError(
+            f"Instruction '{code_part}' is missing operands; expected two operands"
+        )
+    if len(operands) > 2:
+        raise ValueError(
+            f"Instruction '{code_part}' has too many operands; expected exactly two"
+        )
+
+    a_mode, a_field = _parse_operand(operands[0], 'A')
+    b_mode, b_field = _parse_operand(operands[1], 'B')
 
     return RedcodeInstruction(
         opcode=opcode,
@@ -358,6 +400,10 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
     sanitized = instr.copy()
     sanitized.opcode = sanitized.opcode.upper()
     sanitized.modifier = (sanitized.modifier or DEFAULT_MODIFIER).upper()
+    if sanitized.opcode in UNSUPPORTED_OPCODES:
+        raise ValueError(f"Opcode '{sanitized.opcode}' is not supported")
+    if sanitized.opcode not in SUPPORTED_OPCODES:
+        raise ValueError(f"Unknown opcode '{sanitized.opcode}'")
     sanitized.a_mode = sanitized.a_mode if sanitized.a_mode in ADDRESSING_MODES else DEFAULT_MODE
     sanitized.b_mode = sanitized.b_mode if sanitized.b_mode in ADDRESSING_MODES else DEFAULT_MODE
     sanitized.a_field = corenorm(
@@ -390,8 +436,8 @@ def parse_instruction_or_default(line: str) -> RedcodeInstruction:
 
 
 def choose_random_opcode() -> str:
-    if INSTR_SET:
-        return random.choice(INSTR_SET).upper()
+    if GENERATION_OPCODE_POOL:
+        return random.choice(GENERATION_OPCODE_POOL)
     return 'DAT'
 
 
@@ -422,10 +468,13 @@ if ALREADYSEEDED==False:
             #Same bias in mutation.
             num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
             num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-            f.write(random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
-                    str(corenorm(coremod(num1,SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+ \
-                    random.choice(INSTR_MODES)+str(corenorm(coremod(num2,SANITIZE_LIST[arena]), \
-                    CORESIZE_LIST[arena]))+"\n")
+            opcode = choose_random_opcode()
+            modifier = choose_random_modifier()
+            a_mode = choose_random_mode()
+            b_mode = choose_random_mode()
+            a_field = str(corenorm(coremod(num1, SANITIZE_LIST[arena]), CORESIZE_LIST[arena]))
+            b_field = str(corenorm(coremod(num2, SANITIZE_LIST[arena]), CORESIZE_LIST[arena]))
+            f.write(f"{opcode}.{modifier} {a_mode}{a_field},{b_mode}{b_field}\n")
 
 starttime=time.time() #time in seconds
 era=-1
@@ -470,19 +519,32 @@ while(True):
     raw_output = run_nmars_command(arena, cont1, cont2, CORESIZE_LIST[arena], CYCLES_LIST[arena], \
                                    PROCESSES_LIST[arena], WARLEN_LIST[arena], \
                                    WARDISTANCE_LIST[arena], BATTLEROUNDS_LIST[era])
+  if raw_output is None:
+    raise RuntimeError("Battle engine returned no output")
+  if isinstance(raw_output, bytes):
+    raw_output = raw_output.decode('utf-8')
+  raw_output_stripped = raw_output.strip()
+  if raw_output_stripped.startswith("ERROR:"):
+    raise RuntimeError(f"Battle engine reported an error: {raw_output_stripped}")
   scores=[]
   warriors=[]
   #note nMars will sort by score regardless of the order in the command-line, so match up score with warrior
   numline=0
   output = raw_output.splitlines()
+  if not output:
+    raise RuntimeError("Battle engine produced no output to parse")
 
   for line in output:
     numline=numline+1
     if "scores" in line:
       print(line.strip())
       splittedline=line.split()
+      if len(splittedline) < 5:
+        raise RuntimeError(f"Unexpected score line format: {line.strip()}")
       scores.append( int(splittedline [4]))
       warriors.append( int(splittedline [0]))
+  if len(scores) < 2:
+    raise RuntimeError("Battle engine output did not include scores for both warriors")
   print(numline)
 
   if scores[1]==scores[0]:
