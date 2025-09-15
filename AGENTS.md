@@ -26,7 +26,7 @@ Adherence to spec:
 Not supported:
 -Battles between more than 2 warriors at a time.
 -Read/Write limits: the cpp has this feature, but none of the tourneys use it, so it is absent from the Python, and the cpp code is untested.
--ORG pseudo-opcode: All of the warriors being evolved start at the first instruction to be easier to combine. The Python code may be updated to strip the ORG out if found in an input. The cpp may be updated to support it, but it is untested.
+-ORG pseudo-opcode: All of the warriors being evolved start at the first instruction to be easier to combine. If the Python or CPP encounters one, an error should be raised and the run halted.
 -LDP/STP opcodes: Listed in the extended draft, but it doesn't work well with evolution, so not supported
 
 Supported:
