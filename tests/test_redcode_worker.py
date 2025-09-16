@@ -99,3 +99,23 @@ def test_org_pseudo_opcode_rejected():
     ).decode()
     assert result.startswith("ERROR:"), f"Expected ORG to be rejected, got: {result}"
     assert "Unsupported pseudo-opcode 'ORG'" in result
+
+
+def test_battle_stops_once_outcome_decided():
+    lib = load_worker()
+    dominant_warrior = "JMP 0\n"
+    fragile_warrior = "DAT.F #0, #0\n"
+    rounds = 100
+    result = lib.run_battle(
+        dominant_warrior.encode(), 1,
+        fragile_warrior.encode(), 2,
+        8000, 50, 8000, 1, rounds
+    ).decode()
+    w1_score, w2_score = get_scores(result)
+    assert w2_score == 0, f"Expected fragile warrior to lose every round, got scores {w1_score}, {w2_score}"
+    expected_rounds_played = (rounds // 2) + 1
+    expected_score = expected_rounds_played * 3
+    assert w1_score == expected_score, (
+        "Battle should stop once the outcome is locked; "
+        f"expected leader score {expected_score} for {expected_rounds_played} rounds, got {w1_score}"
+    )

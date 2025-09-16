@@ -642,6 +642,7 @@ extern "C" {
             int w1_score = 0;
             int w2_score = 0;
 
+            int rounds_played = 0;
             for (int r = 0; r < rounds; ++r) {
                 Core core(core_size, trace_file);
                 std::uniform_int_distribution<> distrib(0, core_size - 1);
@@ -691,6 +692,17 @@ extern "C" {
                 } else {
                     w1_score += 1;
                     w2_score += 1;
+                }
+
+                rounds_played = r + 1;
+                int rounds_remaining = rounds - rounds_played;
+                int score_diff = w1_score - w2_score;
+                int max_possible_swing = 3 * rounds_remaining;
+                if (score_diff > 0 && score_diff > max_possible_swing) {
+                    break;
+                }
+                if (score_diff < 0 && -score_diff > max_possible_swing) {
+                    break;
                 }
             }
 
