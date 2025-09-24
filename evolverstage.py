@@ -661,6 +661,211 @@ def run_final_tournament(config: EvolverConfig):
             f"Champion: Warrior {champion_id} with {champion_score} points"
         )
 
+
+def select_opponents(num_warriors: int) -> tuple[int, int]:
+    cont1 = random.randint(1, num_warriors)
+    cont2 = cont1
+    while cont2 == cont1:
+        cont2 = random.randint(1, num_warriors)
+    return cont1, cont2
+
+
+def determine_winner_and_loser(
+    warriors: list[int], scores: list[int]
+) -> tuple[int, int]:
+    if len(warriors) < 2 or len(scores) < 2:
+        raise ValueError("Expected scores for two warriors")
+
+    if scores[1] == scores[0]:
+        print("draw")
+        if random.randint(1, 2) == 1:
+            return warriors[1], warriors[0]
+        return warriors[0], warriors[1]
+    if scores[1] > scores[0]:
+        return warriors[1], warriors[0]
+    return warriors[0], warriors[1]
+
+
+def handle_archiving(
+    winner: int, loser: int, arena: int, era: int, config: EvolverConfig
+) -> bool:
+    if config.archive_list[era] != 0 and random.randint(1, config.archive_list[era]) == 1:
+        print("storing in archive")
+        with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
+            winlines = fw.readlines()
+        archive_filename = f"{random.randint(1, 9999)}.red"
+        with open(os.path.join("archive", archive_filename), "w") as fd:
+            fd.writelines(winlines)
+
+    if config.unarchive_list[era] != 0 and random.randint(1, config.unarchive_list[era]) == 1:
+        print("unarchiving")
+        archive_files = os.listdir("archive")
+        if not archive_files:
+            return False
+        with open(os.path.join("archive", random.choice(archive_files))) as fs:
+            sourcelines = fs.readlines()
+
+        instructions_written = 0
+        with open(os.path.join(f"arena{arena}", f"{loser}.red"), "w") as fl:
+            for line in sourcelines:
+                instruction = parse_redcode_instruction(line)
+                if instruction is None:
+                    continue
+                fl.write(instruction_to_line(instruction, arena))
+                instructions_written += 1
+                if instructions_written >= config.warlen_list[arena]:
+                    break
+            while instructions_written < config.warlen_list[arena]:
+                fl.write(instruction_to_line(default_instruction(), arena))
+                instructions_written += 1
+        return True
+
+    return False
+
+
+def breed_offspring(
+    winner: int,
+    loser: int,
+    arena: int,
+    era: int,
+    config: EvolverConfig,
+    bag: list[Marble],
+    data_logger: DataLogger,
+    scores: list[int],
+):
+    with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
+        winlines = fw.readlines()
+
+    randomwarrior = str(random.randint(1, config.numwarriors))
+    print("winner will breed with " + randomwarrior)
+    with open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r") as fr:
+        ranlines = fr.readlines()
+
+    if random.randint(1, config.transpositionrate_list[era]) == 1:
+        print("Transposition")
+        for _ in range(1, random.randint(1, int((config.warlen_list[arena] + 1) / 2))):
+            fromline = random.randint(0, config.warlen_list[arena] - 1)
+            toline = random.randint(0, config.warlen_list[arena] - 1)
+            if random.randint(1, 2) == 1:
+                if fromline < len(winlines) and toline < len(winlines):
+                    winlines[toline], winlines[fromline] = (
+                        winlines[fromline],
+                        winlines[toline],
+                    )
+            else:
+                if fromline < len(ranlines) and toline < len(ranlines):
+                    ranlines[toline], ranlines[fromline] = (
+                        ranlines[fromline],
+                        ranlines[toline],
+                    )
+
+    if config.prefer_winner_list[era] is True:
+        pickingfrom = 1
+    else:
+        pickingfrom = random.randint(1, 2)
+
+    magic_number = weighted_random_number(
+        config.coresize_list[arena], config.warlen_list[arena]
+    )
+    with open(os.path.join(f"arena{arena}", f"{loser}.red"), "w") as fl:
+        for i in range(0, config.warlen_list[arena]):
+            if random.randint(1, config.crossoverrate_list[era]) == 1:
+                pickingfrom = 2 if pickingfrom == 1 else 1
+
+            if pickingfrom == 1:
+                source_line = winlines[i] if i < len(winlines) else ""
+            else:
+                source_line = ranlines[i] if i < len(ranlines) else ""
+
+            instruction = parse_instruction_or_default(source_line)
+            chosen_marble = random.choice(bag)
+            if chosen_marble == Marble.MAJOR_MUTATION:
+                print("Major mutation")
+                instruction = generate_random_instruction(arena)
+            elif (
+                chosen_marble == Marble.NAB_INSTRUCTION
+                and config.last_arena != 0
+            ):
+                donor_arena = random.randint(0, config.last_arena)
+                while donor_arena == arena:
+                    donor_arena = random.randint(0, config.last_arena)
+                print("Nab instruction from arena " + str(donor_arena))
+                donor_file = os.path.join(
+                    f"arena{donor_arena}", f"{random.randint(1, config.numwarriors)}.red"
+                )
+                with open(donor_file, "r") as donor_handle:
+                    donor_lines = donor_handle.readlines()
+                if donor_lines:
+                    instruction = parse_instruction_or_default(random.choice(donor_lines))
+                else:
+                    instruction = default_instruction()
+            elif chosen_marble == Marble.MINOR_MUTATION:
+                print("Minor mutation")
+                r = random.randint(1, 6)
+                if r == 1:
+                    instruction.opcode = choose_random_opcode()
+                elif r == 2:
+                    instruction.modifier = choose_random_modifier()
+                elif r == 3:
+                    instruction.a_mode = choose_random_mode()
+                elif r == 4:
+                    instruction.a_field = weighted_random_number(
+                        config.coresize_list[arena], config.warlen_list[arena]
+                    )
+                elif r == 5:
+                    instruction.b_mode = choose_random_mode()
+                elif r == 6:
+                    instruction.b_field = weighted_random_number(
+                        config.coresize_list[arena], config.warlen_list[arena]
+                    )
+            elif chosen_marble == Marble.MICRO_MUTATION:
+                print("Micro mutation")
+                if random.randint(1, 2) == 1:
+                    current_value = _ensure_int(instruction.a_field)
+                    if random.randint(1, 2) == 1:
+                        current_value = current_value + 1
+                    else:
+                        current_value = current_value - 1
+                    instruction.a_field = current_value
+                else:
+                    current_value = _ensure_int(instruction.b_field)
+                    if random.randint(1, 2) == 1:
+                        current_value = current_value + 1
+                    else:
+                        current_value = current_value - 1
+                    instruction.b_field = current_value
+            elif (
+                chosen_marble == Marble.INSTRUCTION_LIBRARY
+                and config.library_path
+                and os.path.exists(config.library_path)
+            ):
+                print("Instruction library")
+                with open(config.library_path, "r") as library_handle:
+                    library_lines = library_handle.readlines()
+                if library_lines:
+                    instruction = parse_instruction_or_default(random.choice(library_lines))
+                else:
+                    instruction = default_instruction()
+            elif chosen_marble == Marble.MAGIC_NUMBER_MUTATION:
+                print("Magic number mutation")
+                if random.randint(1, 2) == 1:
+                    instruction.a_field = magic_number
+                else:
+                    instruction.b_field = magic_number
+
+            fl.write(instruction_to_line(instruction, arena))
+            magic_number = magic_number - 1
+
+    data_logger.log_data(
+        era=era,
+        arena=arena,
+        winner=winner,
+        loser=loser,
+        score1=scores[0],
+        score2=scores[1],
+        bred_with=randomwarrior,
+    )
+
 if os.getenv("PYTHONEVOLVER_SKIP_MAIN") == "1":
     pass
 else:
@@ -680,6 +885,7 @@ else:
     starttime=time.time() #time in seconds
     era=-1
     data_logger = DataLogger(filename=config.battle_log_file)
+    bag: list[Marble] = []
     interrupted = False
 
     try:
@@ -708,179 +914,24 @@ else:
         print ("{0:.2f}".format(config.clock_time-runtime_in_hours) + \
                " hours remaining ({0:.2f}%".format(runtime_in_hours/config.clock_time*100)+" complete) Era: "+str(era+1))
 
-        #in a random arena
-        arena=random.randint(0, config.last_arena)
-        #two random warriors
-        cont1 = random.randint(1, config.numwarriors)
-        cont2 = cont1
-        while cont2 == cont1: #no self fights
-          cont2 = random.randint(1, config.numwarriors)
+        arena = random.randint(0, config.last_arena)
+        cont1, cont2 = select_opponents(config.numwarriors)
         warriors, scores = execute_battle(arena, cont1, cont2, era)
+        winner, loser = determine_winner_and_loser(warriors, scores)
 
-        if scores[1]==scores[0]:
-          print("draw") #in case of a draw, destroy one at random. we want attacking.
-          if random.randint(1,2)==1:
-            winner=warriors[1]
-            loser=warriors[0]
-          else:
-            winner=warriors[0]
-            loser=warriors[1]
-        elif scores[1]>scores[0]:
-          winner=warriors[1]
-          loser=warriors[0]
-        else:
-          winner=warriors[0]
-          loser=warriors[1]
+        if handle_archiving(winner, loser, arena, era, config):
+          continue
 
-        if config.archive_list[era]!=0 and random.randint(1,config.archive_list[era])==1:
-          #archive winner
-          print("storing in archive")
-          with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
-            winlines = fw.readlines()
-          with open(os.path.join("archive", f"{random.randint(1,9999)}.red"), "w") as fd:
-            for line in winlines:
-              fd.write(line)
-
-        if config.unarchive_list[era]!=0 and random.randint(1,config.unarchive_list[era])==1:
-          print("unarchiving")
-          #replace loser with something from archive
-          with open(os.path.join("archive", random.choice(os.listdir("archive")))) as fs:
-            sourcelines = fs.readlines()
-          #this is more involved. the archive is going to contain warriors from different arenas. which isn't
-          #necessarily bad to get some crossover. A nano warrior would be workable, if inefficient in a normal core.
-          #These are the tasks:
-          #1. Truncate any too long
-          #2. Pad any too short with DATs
-          #3. Sanitize values
-          #4. Try to be tolerant of working with other evolvers that may not space things exactly the same.
-          fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # unarchived warrior destroys loser
-          instructions_written=0
-          for line in sourcelines:
-            instruction=parse_redcode_instruction(line)
-            if instruction is None:
-              continue
-            fl.write(instruction_to_line(instruction, arena))
-            instructions_written=instructions_written+1
-            if instructions_written>=config.warlen_list[arena]:
-              break
-          while instructions_written<config.warlen_list[arena]:
-            fl.write(instruction_to_line(default_instruction(), arena))
-            instructions_written=instructions_written+1
-          fl.close()
-          continue #out of while (loser replaced by archive, no point breeding)
-      
-        #the loser is destroyed and the winner can breed with any warrior in the arena  
-        with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
-          winlines = fw.readlines()
-        randomwarrior=str(random.randint(1, config.numwarriors))
-        print("winner will breed with "+randomwarrior)
-        fr = open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r")  # winner mates with random warrior
-        ranlines = fr.readlines()
-        fr.close()
-        fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # winner destroys loser
-        if random.randint(1, config.transpositionrate_list[era])==1: #shuffle a warrior
-          print("Transposition")
-          for i in range(1, random.randint(1, int((config.warlen_list[arena]+1)/2))):
-            fromline=random.randint(0,config.warlen_list[arena]-1)
-            toline=random.randint(0,config.warlen_list[arena]-1)
-            if random.randint(1,2)==1: #either shuffle the winner with itself or shuffle loser with itself
-              templine=winlines[toline]
-              winlines[toline]=winlines[fromline]
-              winlines[fromline]=templine
-            else:
-              templine=ranlines[toline]
-              ranlines[toline]=ranlines[fromline]
-              ranlines[fromline]=templine
-        if config.prefer_winner_list[era]==True:
-          pickingfrom=1 #if start picking from the winning warrior, more chance of winning genes passed on.
-        else:
-          pickingfrom=random.randint(1,2)
-
-        magic_number = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
-        for i in range(0, config.warlen_list[arena]):
-          #first, pick an instruction from either parent, even if
-          #it will get overwritten by a nabbed or random instruction
-          if random.randint(1,config.crossoverrate_list[era])==1:
-            if pickingfrom==1:
-              pickingfrom=2
-            else:
-              pickingfrom=1
-
-          if pickingfrom==1:
-            source_line=winlines[i] if i < len(winlines) else ''
-          else:
-            source_line=ranlines[i] if i < len(ranlines) else ''
-
-          instruction=parse_instruction_or_default(source_line)
-          chosen_marble=random.choice(bag)
-          if chosen_marble==Marble.MAJOR_MUTATION: #completely random
-            print("Major mutation")
-            instruction=generate_random_instruction(arena)
-          elif chosen_marble==Marble.NAB_INSTRUCTION and (config.last_arena!=0):
-            #nab instruction from another arena. Doesn't make sense if not multiple arenas
-            donor_arena=random.randint(0, config.last_arena)
-            while (donor_arena==arena):
-              donor_arena=random.randint(0, config.last_arena)
-            print("Nab instruction from arena " + str(donor_arena))
-            donor_file=os.path.join(f"arena{donor_arena}", f"{random.randint(1, config.numwarriors)}.red")
-            with open(donor_file, "r") as donor_handle:
-              donor_lines=donor_handle.readlines()
-            if donor_lines:
-              instruction=parse_instruction_or_default(random.choice(donor_lines))
-            else:
-              instruction=default_instruction()
-          elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
-            print("Minor mutation")
-            r=random.randint(1,6)
-            if r==1:
-              instruction.opcode=choose_random_opcode()
-            elif r==2:
-              instruction.modifier=choose_random_modifier()
-            elif r==3:
-              instruction.a_mode=choose_random_mode()
-            elif r==4:
-              instruction.a_field=weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
-            elif r==5:
-              instruction.b_mode=choose_random_mode()
-            elif r==6:
-              instruction.b_field=weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
-          elif chosen_marble==Marble.MICRO_MUTATION: #modifies one number by +1 or -1
-            print ("Micro mutation")
-            if random.randint(1,2)==1:
-              current_value=_ensure_int(instruction.a_field)
-              if random.randint(1,2)==1:
-                current_value=current_value+1
-              else:
-                current_value=current_value-1
-              instruction.a_field=current_value
-            else:
-              current_value=_ensure_int(instruction.b_field)
-              if random.randint(1,2)==1:
-                current_value=current_value+1
-              else:
-                current_value=current_value-1
-              instruction.b_field=current_value
-          elif chosen_marble==Marble.INSTRUCTION_LIBRARY and config.library_path and os.path.exists(config.library_path):
-            print("Instruction library")
-            with open(config.library_path, "r") as library_handle:
-              library_lines=library_handle.readlines()
-            if library_lines:
-              instruction=parse_instruction_or_default(random.choice(library_lines))
-            else:
-              instruction=default_instruction()
-          elif chosen_marble==Marble.MAGIC_NUMBER_MUTATION:
-            print ("Magic number mutation")
-            if random.randint(1,2)==1:
-              instruction.a_field=magic_number
-            else:
-              instruction.b_field=magic_number
-
-          fl.write(instruction_to_line(instruction, arena))
-          magic_number=magic_number-1
-
-        fl.close()
-        data_logger.log_data(era=era, arena=arena, winner=winner, loser=loser, score1=scores[0], score2=scores[1], \
-                           bred_with=randomwarrior)
+        breed_offspring(
+          winner,
+          loser,
+          arena,
+          era,
+          config,
+          bag,
+          data_logger,
+          scores,
+        )
 
     except KeyboardInterrupt:
       print("Evolution interrupted by user.")
