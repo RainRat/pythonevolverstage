@@ -320,6 +320,80 @@ public:
         field = (field % core_size + core_size) % core_size;
     }
 
+private:
+    template <typename Operation>
+    void apply_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op) {
+        auto apply = [&](int& target, int value) {
+            target = op(target, value);
+            normalize_field(target);
+        };
+
+        switch (modifier) {
+            case A:
+                apply(dst.a_field, src.a_field);
+                break;
+            case B:
+                apply(dst.b_field, src.b_field);
+                break;
+            case AB:
+                apply(dst.b_field, src.a_field);
+                break;
+            case BA:
+                apply(dst.a_field, src.b_field);
+                break;
+            case F:
+            case I:
+                apply(dst.a_field, src.a_field);
+                apply(dst.b_field, src.b_field);
+                break;
+            case X:
+                apply(dst.a_field, src.b_field);
+                apply(dst.b_field, src.a_field);
+                break;
+        }
+    }
+
+    template <typename Operation>
+    bool apply_safe_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op) {
+        auto apply = [&](int& target, int value) {
+            if (value == 0) {
+                return false;
+            }
+            target = op(target, value);
+            normalize_field(target);
+            return true;
+        };
+
+        bool success = true;
+
+        switch (modifier) {
+            case A:
+                success &= apply(dst.a_field, src.a_field);
+                break;
+            case B:
+                success &= apply(dst.b_field, src.b_field);
+                break;
+            case AB:
+                success &= apply(dst.b_field, src.a_field);
+                break;
+            case BA:
+                success &= apply(dst.a_field, src.b_field);
+                break;
+            case F:
+            case I:
+                success &= apply(dst.a_field, src.a_field);
+                success &= apply(dst.b_field, src.b_field);
+                break;
+            case X:
+                success &= apply(dst.a_field, src.b_field);
+                success &= apply(dst.b_field, src.a_field);
+                break;
+        }
+
+        return success;
+    }
+
+public:
     void execute(WarriorProcess process, int read_limit, int write_limit, int max_processes) {
         int pc = process.pc;
         Instruction& instr = memory[pc];
@@ -331,19 +405,19 @@ public:
         }
 
         // --- Operand Evaluation ---
-        int a_ptr_final;
-        int b_ptr_final;
+        int a_addr_final;
+        int b_addr_final;
         Instruction src;
 
         // --- A-Operand ---
         int primary_a_offset = fold(instr.a_field, read_limit);
         int intermediate_a_addr = normalize(pc + primary_a_offset, core_size);
         if (instr.a_mode == IMMEDIATE) {
-            a_ptr_final = pc;
+            a_addr_final = pc;
             src = instr;
         } else if (instr.a_mode == DIRECT) {
-            a_ptr_final = intermediate_a_addr;
-            src = memory[a_ptr_final];
+            a_addr_final = intermediate_a_addr;
+            src = memory[a_addr_final];
         } else {
             bool use_a = (instr.a_mode == A_INDIRECT || instr.a_mode == A_PREDEC || instr.a_mode == A_POSTINC);
             bool predec = (instr.a_mode == A_PREDEC || instr.a_mode == B_PREDEC);
@@ -352,8 +426,8 @@ public:
             if (predec) { field--; normalize_field(field); }
             int secondary_a_offset = field;
             int final_a_offset = fold(primary_a_offset + secondary_a_offset, read_limit);
-            a_ptr_final = normalize(pc + final_a_offset, core_size);
-            src = memory[a_ptr_final];
+            a_addr_final = normalize(pc + final_a_offset, core_size);
+            src = memory[a_addr_final];
             if (postinc) { field++; normalize_field(field); }
         }
 
@@ -361,9 +435,9 @@ public:
         int primary_b_offset = fold(instr.b_field, write_limit);
         int intermediate_b_addr = normalize(pc + primary_b_offset, core_size);
         if (instr.b_mode == IMMEDIATE) {
-            b_ptr_final = pc; // Immediate B-mode targets the current instruction.
+            b_addr_final = pc; // Immediate B-mode targets the current instruction.
         } else if (instr.b_mode == DIRECT) {
-            b_ptr_final = intermediate_b_addr;
+            b_addr_final = intermediate_b_addr;
         } else {
             bool use_a = (instr.b_mode == A_INDIRECT || instr.b_mode == A_PREDEC || instr.b_mode == A_POSTINC);
             bool predec = (instr.b_mode == A_PREDEC || instr.b_mode == B_PREDEC);
@@ -372,11 +446,11 @@ public:
             if (predec) { field--; normalize_field(field); }
             int secondary_b_offset = field;
             int final_b_offset = fold(primary_b_offset + secondary_b_offset, write_limit);
-            b_ptr_final = normalize(pc + final_b_offset, core_size);
+            b_addr_final = normalize(pc + final_b_offset, core_size);
             if (postinc) { field++; normalize_field(field); }
         }
 
-        Instruction& dst = memory[b_ptr_final];
+        Instruction& dst = memory[b_addr_final];
         bool skip = false;
 
         // --- Instruction Execution ---
@@ -395,107 +469,22 @@ public:
                 }
                 break;
             case ADD:
-                switch (instr.modifier) {
-                    case A: dst.a_field += src.a_field; normalize_field(dst.a_field); break;
-                    case B: dst.b_field += src.b_field; normalize_field(dst.b_field); break;
-                    case AB: dst.b_field += src.a_field; normalize_field(dst.b_field); break;
-                    case BA: dst.a_field += src.b_field; normalize_field(dst.a_field); break;
-                    case F: case I: dst.a_field += src.a_field; normalize_field(dst.a_field); dst.b_field += src.b_field; normalize_field(dst.b_field); break;
-                    case X: dst.a_field += src.b_field; normalize_field(dst.a_field); dst.b_field += src.a_field; normalize_field(dst.b_field); break;
-                }
+                apply_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs + rhs; });
                 break;
             case SUB:
-                switch (instr.modifier) {
-                    case A: dst.a_field -= src.a_field; normalize_field(dst.a_field); break;
-                    case B: dst.b_field -= src.b_field; normalize_field(dst.b_field); break;
-                    case AB: dst.b_field -= src.a_field; normalize_field(dst.b_field); break;
-                    case BA: dst.a_field -= src.b_field; normalize_field(dst.a_field); break;
-                    case F: case I: dst.a_field -= src.a_field; normalize_field(dst.a_field); dst.b_field -= src.b_field; normalize_field(dst.b_field); break;
-                    case X: dst.a_field -= src.b_field; normalize_field(dst.a_field); dst.b_field -= src.a_field; normalize_field(dst.b_field); break;
-                }
+                apply_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs - rhs; });
                 break;
             case MUL:
-                switch (instr.modifier) {
-                    case A: dst.a_field *= src.a_field; normalize_field(dst.a_field); break;
-                    case B: dst.b_field *= src.b_field; normalize_field(dst.b_field); break;
-                    case AB: dst.b_field *= src.a_field; normalize_field(dst.b_field); break;
-                    case BA: dst.a_field *= src.b_field; normalize_field(dst.a_field); break;
-                    case F: case I: dst.a_field *= src.a_field; normalize_field(dst.a_field); dst.b_field *= src.b_field; normalize_field(dst.b_field); break;
-                    case X: dst.a_field *= src.b_field; normalize_field(dst.a_field); dst.b_field *= src.a_field; normalize_field(dst.b_field); break;
-                }
+                apply_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs * rhs; });
                 break;
             case DIV:
-                {
-                    auto perform_division = [this](int& target, int divisor) {
-                        if (divisor == 0) {
-                            return false;
-                        }
-                        target /= divisor;
-                        normalize_field(target);
-                        return true;
-                    };
-                    bool should_kill = false;
-                    switch (instr.modifier) {
-                        case A:
-                            should_kill |= !perform_division(dst.a_field, src.a_field);
-                            break;
-                        case B:
-                            should_kill |= !perform_division(dst.b_field, src.b_field);
-                            break;
-                        case AB:
-                            should_kill |= !perform_division(dst.b_field, src.a_field);
-                            break;
-                        case BA:
-                            should_kill |= !perform_division(dst.a_field, src.b_field);
-                            break;
-                        case F:
-                        case I:
-                            should_kill |= !perform_division(dst.a_field, src.a_field);
-                            should_kill |= !perform_division(dst.b_field, src.b_field);
-                            break;
-                        case X:
-                            should_kill |= !perform_division(dst.a_field, src.b_field);
-                            should_kill |= !perform_division(dst.b_field, src.a_field);
-                            break;
-                    }
-                    if (should_kill) return;
+                if (!apply_safe_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; })) {
+                    return;
                 }
                 break;
             case MOD:
-                {
-                    auto perform_modulo = [this](int& target, int divisor) {
-                        if (divisor == 0) {
-                            return false;
-                        }
-                        target %= divisor;
-                        normalize_field(target);
-                        return true;
-                    };
-                    bool should_kill = false;
-                    switch (instr.modifier) {
-                        case A:
-                            should_kill |= !perform_modulo(dst.a_field, src.a_field);
-                            break;
-                        case B:
-                            should_kill |= !perform_modulo(dst.b_field, src.b_field);
-                            break;
-                        case AB:
-                            should_kill |= !perform_modulo(dst.b_field, src.a_field);
-                            break;
-                        case BA:
-                            should_kill |= !perform_modulo(dst.a_field, src.b_field);
-                            break;
-                        case F:
-                        case I:
-                            should_kill |= !perform_modulo(dst.a_field, src.a_field);
-                            should_kill |= !perform_modulo(dst.b_field, src.b_field);
-                            break;
-                        case X:
-                            should_kill |= !perform_modulo(dst.a_field, src.b_field);
-                            should_kill |= !perform_modulo(dst.b_field, src.a_field);
-                            break;
-                    }
-                    if (should_kill) return;
+                if (!apply_safe_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; })) {
+                    return;
                 }
                 break;
             case CMP:
@@ -531,26 +520,26 @@ public:
                 }
                 break;
             case JMP:
-                process_queues[process.owner].push_back({a_ptr_final, process.owner});
+                process_queues[process.owner].push_back({a_addr_final, process.owner});
                 return;
             case JMZ:
                 switch (instr.modifier) {
-                    case A: if (dst.a_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case B: if (dst.b_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case AB: if (dst.b_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case BA: if (dst.a_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case F: case I: if (dst.a_field == 0 && dst.b_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case X: if (dst.a_field == 0 && dst.b_field == 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case A: if (dst.a_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst.b_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst.b_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst.a_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst.a_field == 0 && dst.b_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst.a_field == 0 && dst.b_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             case JMN:
                 switch (instr.modifier) {
-                    case A: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case B: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case AB: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case BA: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case F: case I: if (dst.a_field != 0 || dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
-                    case X: if (dst.a_field != 0 || dst.b_field != 0) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; } break;
+                    case A: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst.a_field != 0 || dst.b_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst.a_field != 0 || dst.b_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             case DJN:
@@ -593,7 +582,7 @@ public:
                             if (temp.a_field != 0 || temp.b_field != 0) jump = true;
                             break;
                     }
-                    if (jump) { process_queues[process.owner].push_back({a_ptr_final, process.owner}); return; }
+                    if (jump) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; }
                 }
                 break;
             case SPL:
@@ -601,7 +590,7 @@ public:
                     int next_pc = normalize(pc + 1, core_size);
                     process_queues[process.owner].push_back({next_pc, process.owner});
                     if (process_queues[process.owner].size() < max_processes) {
-                        process_queues[process.owner].push_back({a_ptr_final, process.owner});
+                        process_queues[process.owner].push_back({a_addr_final, process.owner});
                     }
                 }
                 return;
