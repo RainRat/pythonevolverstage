@@ -22,7 +22,7 @@ const int DEFAULT_MIN_DISTANCE = 100;
 enum Opcode {
     DAT, MOV, ADD, SUB, MUL, DIV, MOD,
     JMP, JMZ, JMN, DJN, CMP, SLT, SPL,
-    SEQ, SNE, NOP,
+    SNE, NOP,
     ORG // ORG is a pseudo-op
 };
 
@@ -72,7 +72,7 @@ const std::map<std::string, Opcode> OPCODE_MAP = {
     {"DAT", DAT}, {"MOV", MOV}, {"ADD", ADD}, {"SUB", SUB}, {"MUL", MUL},
     {"DIV", DIV}, {"MOD", MOD}, {"JMP", JMP}, {"JMZ", JMZ}, {"JMN", JMN},
     {"DJN", DJN}, {"CMP", CMP}, {"SLT", SLT}, {"SPL", SPL},
-    {"SEQ", SEQ}, {"SNE", SNE}, {"NOP", NOP}
+    {"SEQ", CMP}, {"SNE", SNE}, {"NOP", NOP}
 };
 
 const std::map<std::string, Modifier> MODIFIER_MAP = {
@@ -84,7 +84,7 @@ const std::map<std::string, Modifier> MODIFIER_MAP = {
 const char* OPCODE_NAMES[] = {
     "DAT", "MOV", "ADD", "SUB", "MUL", "DIV", "MOD",
     "JMP", "JMZ", "JMN", "DJN", "CMP", "SLT", "SPL",
-    "SEQ", "SNE", "NOP", "ORG"
+    "SNE", "NOP", "ORG"
 };
 
 const char* MODIFIER_NAMES[] = {
@@ -495,7 +495,6 @@ public:
                 }
                 break;
             case CMP:
-            case SEQ:
                 switch (instr.modifier) {
                     case A: if (src.a_field == dst.a_field) skip = true; break;
                     case B: if (src.b_field == dst.b_field) skip = true; break;

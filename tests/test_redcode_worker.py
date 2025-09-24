@@ -103,7 +103,7 @@ def test_org_pseudo_opcode_rejected():
 
 def test_battle_stops_once_outcome_decided():
     lib = load_worker()
-    dominant_warrior = "JMP 0\n"
+    dominant_warrior = "JMP 0, 0\n"
     fragile_warrior = "DAT.F #0, #0\n"
     rounds = 100
     result = lib.run_battle(

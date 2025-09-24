@@ -192,11 +192,19 @@ DEFAULT_MODIFIER = 'F'
 ADDRESSING_MODES = set(INSTR_MODES) if INSTR_MODES else set()
 ADDRESSING_MODES.update({'$', '#', '@', '<', '>', '*', '{', '}'})
 
-SUPPORTED_OPCODES = {
+CANONICAL_SUPPORTED_OPCODES = {
     'DAT', 'MOV', 'ADD', 'SUB', 'MUL', 'DIV', 'MOD',
-    'JMP', 'JMZ', 'JMN', 'DJN', 'CMP', 'SEQ', 'SNE', 'SLT', 'SPL', 'NOP',
+    'JMP', 'JMZ', 'JMN', 'DJN', 'CMP', 'SNE', 'SLT', 'SPL', 'NOP',
 }
+OPCODE_ALIASES = {
+    'SEQ': 'CMP',
+}
+SUPPORTED_OPCODES = CANONICAL_SUPPORTED_OPCODES | set(OPCODE_ALIASES)
 UNSUPPORTED_OPCODES = {'LDP', 'STP'}
+
+
+def canonicalize_opcode(opcode: str) -> str:
+    return OPCODE_ALIASES.get(opcode, opcode)
 
 GENERATION_OPCODE_POOL = []
 _invalid_generation_opcodes = set()
@@ -205,10 +213,11 @@ if INSTR_SET:
         normalized = instr.strip().upper()
         if not normalized:
             continue
-        if normalized in UNSUPPORTED_OPCODES or normalized not in SUPPORTED_OPCODES:
+        canonical_opcode = OPCODE_ALIASES.get(normalized, normalized)
+        if canonical_opcode in UNSUPPORTED_OPCODES or canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
             _invalid_generation_opcodes.add(normalized)
             continue
-        GENERATION_OPCODE_POOL.append(normalized)
+        GENERATION_OPCODE_POOL.append(canonical_opcode)
 if _invalid_generation_opcodes:
     raise ValueError(
         "Unsupported opcodes specified in INSTR_SET: "
@@ -283,7 +292,11 @@ def _split_opcode_token(token: str):
 def _is_opcode_token(token: str) -> bool:
     opcode, _ = _split_opcode_token(token)
     opcode = opcode.upper()
-    return opcode in SUPPORTED_OPCODES or opcode in UNSUPPORTED_OPCODES
+    canonical_opcode = canonicalize_opcode(opcode)
+    return (
+        canonical_opcode in CANONICAL_SUPPORTED_OPCODES
+        or canonical_opcode in UNSUPPORTED_OPCODES
+    )
 
 
 _INT_LITERAL_RE = re.compile(r'^[+-]?\d+$')
@@ -349,12 +362,13 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     opcode_token = tokens[idx]
     opcode_part, modifier_part = _split_opcode_token(opcode_token)
     opcode = opcode_part.upper()
+    canonical_opcode = canonicalize_opcode(opcode)
     modifier = modifier_part.upper() if modifier_part else DEFAULT_MODIFIER
     idx += 1
 
-    if opcode in UNSUPPORTED_OPCODES:
+    if canonical_opcode in UNSUPPORTED_OPCODES:
         raise ValueError(f"Opcode '{opcode}' is not supported")
-    if opcode not in SUPPORTED_OPCODES:
+    if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
         raise ValueError(f"Unknown opcode '{opcode}'")
 
     operands = []
@@ -383,7 +397,7 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     b_mode, b_field = _parse_operand(operands[1], 'B')
 
     return RedcodeInstruction(
-        opcode=opcode,
+        opcode=canonical_opcode,
         modifier=modifier or DEFAULT_MODIFIER,
         a_mode=a_mode or DEFAULT_MODE,
         a_field=a_field,
@@ -406,12 +420,14 @@ def default_instruction() -> RedcodeInstruction:
 
 def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstruction:
     sanitized = instr.copy()
-    sanitized.opcode = sanitized.opcode.upper()
+    original_opcode = (sanitized.opcode or '').upper()
+    canonical_opcode = canonicalize_opcode(original_opcode)
+    sanitized.opcode = canonical_opcode
     sanitized.modifier = (sanitized.modifier or DEFAULT_MODIFIER).upper()
-    if sanitized.opcode in UNSUPPORTED_OPCODES:
-        raise ValueError(f"Opcode '{sanitized.opcode}' is not supported")
-    if sanitized.opcode not in SUPPORTED_OPCODES:
-        raise ValueError(f"Unknown opcode '{sanitized.opcode}'")
+    if canonical_opcode in UNSUPPORTED_OPCODES:
+        raise ValueError(f"Opcode '{original_opcode}' is not supported")
+    if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
+        raise ValueError(f"Unknown opcode '{original_opcode}'")
     sanitized.a_mode = sanitized.a_mode if sanitized.a_mode in ADDRESSING_MODES else DEFAULT_MODE
     sanitized.b_mode = sanitized.b_mode if sanitized.b_mode in ADDRESSING_MODES else DEFAULT_MODE
     sanitized.a_field = corenorm(
