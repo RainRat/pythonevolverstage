@@ -297,7 +297,8 @@ ADDRESSING_MODES.update({'$', '#', '@', '<', '>', '*', '{', '}'})
 
 CANONICAL_SUPPORTED_OPCODES = {
     'DAT', 'MOV', 'ADD', 'SUB', 'MUL', 'DIV', 'MOD',
-    'JMP', 'JMZ', 'JMN', 'DJN', 'CMP', 'SEQ', 'SNE', 'SLT', 'SPL', 'NOP',
+    'JMP', 'JMZ', 'JMN', 'DJN', 'CMP', 'SEQ', 'SNE', 'SLT', 'SPL',
+    'NOP',  # Extended spec opcode supported by the C++ worker.
 }
 OPCODE_ALIASES = {
     'SEQ': 'CMP',

@@ -530,6 +530,13 @@ public:
                     case X: if (dst.a_field == 0 && dst.b_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
+            // ICWS'94 spec text (lines 0725-0735) describes JMN.I/DJN.I as taking the
+            // branch only when both target fields are non-zero (logical AND). The
+            // official reference emulator (EMI94.c, line 1211) and the published
+            // jmn_djn_test.txt suite instead implement the branch when either field is
+            // non-zero (logical OR). We mirror EMI94's behaviour here to stay aligned
+            // with the de facto standard used by other emulators and the upstream
+            // tests.
             case JMN:
                 switch (instr.modifier) {
                     case A: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
