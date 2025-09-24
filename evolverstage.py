@@ -367,11 +367,11 @@ def _parse_operand(operand: str, operand_name: str):
     if not operand:
         raise ValueError(f"Missing {operand_name}-field operand")
     mode = operand[0]
-    if mode in ADDRESSING_MODES:
-        value_part = operand[1:]
-    else:
-        mode = DEFAULT_MODE
-        value_part = operand
+    if mode not in ADDRESSING_MODES:
+        raise ValueError(
+            f"Missing addressing mode for {operand_name}-field operand '{operand}'"
+        )
+    value_part = operand[1:]
     if not value_part.strip():
         raise ValueError(f"Missing value for {operand_name}-field operand")
     try:
@@ -380,7 +380,7 @@ def _parse_operand(operand: str, operand_name: str):
         raise ValueError(
             f"Invalid {operand_name}-field operand '{operand}': {exc}"
         ) from exc
-    return mode if mode else DEFAULT_MODE, value
+    return mode, value
 
 
 def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
@@ -406,7 +406,11 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     opcode_part, modifier_part = _split_opcode_token(opcode_token)
     opcode = opcode_part.upper()
     canonical_opcode = canonicalize_opcode(opcode)
-    modifier = modifier_part.upper() if modifier_part else DEFAULT_MODIFIER
+    if not modifier_part:
+        raise ValueError(
+            f"Instruction '{code_part}' is missing a modifier; expected opcode.modifier"
+        )
+    modifier = modifier_part.upper()
     idx += 1
 
     if canonical_opcode in UNSUPPORTED_OPCODES:
@@ -441,10 +445,10 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
 
     return RedcodeInstruction(
         opcode=canonical_opcode,
-        modifier=modifier or DEFAULT_MODIFIER,
-        a_mode=a_mode or DEFAULT_MODE,
+        modifier=modifier,
+        a_mode=a_mode,
         a_field=a_field,
-        b_mode=b_mode or DEFAULT_MODE,
+        b_mode=b_mode,
         b_field=b_field,
         label=label,
     )
@@ -466,13 +470,21 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
     original_opcode = (sanitized.opcode or '').upper()
     canonical_opcode = canonicalize_opcode(original_opcode)
     sanitized.opcode = canonical_opcode
-    sanitized.modifier = (sanitized.modifier or DEFAULT_MODIFIER).upper()
+    if not sanitized.modifier:
+        raise ValueError("Missing modifier for instruction")
+    sanitized.modifier = sanitized.modifier.upper()
     if canonical_opcode in UNSUPPORTED_OPCODES:
         raise ValueError(f"Opcode '{original_opcode}' is not supported")
     if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
         raise ValueError(f"Unknown opcode '{original_opcode}'")
-    sanitized.a_mode = sanitized.a_mode if sanitized.a_mode in ADDRESSING_MODES else DEFAULT_MODE
-    sanitized.b_mode = sanitized.b_mode if sanitized.b_mode in ADDRESSING_MODES else DEFAULT_MODE
+    if sanitized.a_mode not in ADDRESSING_MODES:
+        raise ValueError(
+            f"Invalid addressing mode '{sanitized.a_mode}' for A-field operand"
+        )
+    if sanitized.b_mode not in ADDRESSING_MODES:
+        raise ValueError(
+            f"Invalid addressing mode '{sanitized.b_mode}' for B-field operand"
+        )
     sanitized.a_field = corenorm(
         coremod(_ensure_int(sanitized.a_field), config.sanitize_list[arena]),
         config.coresize_list[arena],
