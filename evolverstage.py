@@ -128,11 +128,15 @@ def run_internal_battle(arena, cont1, cont2, coresize, cycles, processes, warlen
 
         # 3. Decode the result
         result_str = result_ptr.decode('utf-8')
+        if result_str.strip().startswith("ERROR:"):
+            raise RuntimeError(
+                f"C++ worker reported an error: {result_str.strip()}"
+            )
         return result_str
 
     except Exception as e:
         raise RuntimeError(
-            "An error occurred while running the internal battle"
+            f"An error occurred while running the internal battle: {e}"
         ) from e
 
 def read_config(key, data_type='int', default=None):
