@@ -111,7 +111,7 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
 
     arena_dir = tmp_path / "arena1"
     arena_dir.mkdir()
-    (arena_dir / "101.red").write_text("JMP 0, 0\n", encoding="utf-8")
+    (arena_dir / "101.red").write_text("JMP.F $0, $0\n", encoding="utf-8")
     (arena_dir / "202.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
@@ -133,3 +133,33 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
     scores = {parts[0]: int(parts[4]) for parts in (line.split() for line in lines)}
     assert scores["101"] > scores["202"]
     assert scores["202"] == 0
+
+
+def test_parse_instruction_requires_modifier():
+    from evolverstage import parse_redcode_instruction
+
+    with pytest.raises(ValueError, match="missing a modifier"):
+        parse_redcode_instruction("MOV $1, $2")
+
+
+def test_parse_instruction_requires_addressing_modes():
+    from evolverstage import parse_redcode_instruction
+
+    with pytest.raises(ValueError, match="addressing mode"):
+        parse_redcode_instruction("MOV.F 1, $2")
+
+
+def test_sanitize_instruction_rejects_invalid_modes():
+    from evolverstage import RedcodeInstruction, sanitize_instruction
+
+    instr = RedcodeInstruction(
+        opcode="MOV",
+        modifier="F",
+        a_mode="?",
+        a_field=0,
+        b_mode="$",
+        b_field=0,
+    )
+
+    with pytest.raises(ValueError, match=r"Invalid addressing mode '\?' for A-field operand"):
+        sanitize_instruction(instr, arena=0)
