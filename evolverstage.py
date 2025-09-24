@@ -73,17 +73,21 @@ Rules:
   -xp       Disable P-space
     '''
     nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
+    args = {
+        "-s": coresize,
+        "-c": cycles,
+        "-p": processes,
+        "-l": warlen,
+        "-d": wardistance,
+        "-r": battlerounds,
+    }
     cmd = [
         nmars_cmd,
         os.path.join(f"arena{arena}", f"{cont1}.red"),
         os.path.join(f"arena{arena}", f"{cont2}.red"),
-        "-s", str(coresize),
-        "-c", str(cycles),
-        "-p", str(processes),
-        "-l", str(warlen),
-        "-d", str(wardistance),
-        "-r", str(battlerounds)
-      ]
+    ]
+    for flag, value in args.items():
+        cmd.extend([flag, str(value)])
     result = subprocess.run(cmd, capture_output=True, text=True)
     return result.stdout
   except FileNotFoundError as e:
@@ -452,6 +456,19 @@ def choose_random_mode() -> str:
         return random.choice(INSTR_MODES)
     return DEFAULT_MODE
 
+
+def generate_random_instruction(arena: int) -> RedcodeInstruction:
+    num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+    num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+    return RedcodeInstruction(
+        opcode=choose_random_opcode(),
+        modifier=choose_random_modifier(),
+        a_mode=choose_random_mode(),
+        a_field=num1,
+        b_mode=choose_random_mode(),
+        b_field=num2,
+    )
+
 def create_directory_if_not_exists(directory):
     if not os.path.exists(directory):
         os.mkdir(directory)
@@ -466,15 +483,8 @@ if ALREADYSEEDED==False:
           for j in range(1, WARLEN_LIST[arena]+1):
             #Biasing toward more viable warriors: 3 in 4 chance of choosing an address within the warrior.
             #Same bias in mutation.
-            num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-            num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-            opcode = choose_random_opcode()
-            modifier = choose_random_modifier()
-            a_mode = choose_random_mode()
-            b_mode = choose_random_mode()
-            a_field = str(corenorm(coremod(num1, SANITIZE_LIST[arena]), CORESIZE_LIST[arena]))
-            b_field = str(corenorm(coremod(num2, SANITIZE_LIST[arena]), CORESIZE_LIST[arena]))
-            f.write(f"{opcode}.{modifier} {a_mode}{a_field},{b_mode}{b_field}\n")
+            instruction = generate_random_instruction(arena)
+            f.write(instruction_to_line(instruction, arena))
 
 starttime=time.time() #time in seconds
 era=-1
@@ -645,16 +655,7 @@ while(True):
     chosen_marble=random.choice(bag)
     if chosen_marble==Marble.MAJOR_MUTATION: #completely random
       print("Major mutation")
-      num1=weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-      num2=weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-      instruction=RedcodeInstruction(
-        opcode=choose_random_opcode(),
-        modifier=choose_random_modifier(),
-        a_mode=choose_random_mode(),
-        a_field=num1,
-        b_mode=choose_random_mode(),
-        b_field=num2,
-      )
+      instruction=generate_random_instruction(arena)
     elif chosen_marble==Marble.NAB_INSTRUCTION and (LAST_ARENA!=0):
       #nab instruction from another arena. Doesn't make sense if not multiple arenas
       donor_arena=random.randint(0, LAST_ARENA)
