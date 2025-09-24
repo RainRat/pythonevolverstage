@@ -224,13 +224,12 @@ Instruction parse_line(const std::string& line) {
     std::string a_str;
     std::string b_str;
     size_t comma_pos = operands_str.find(',');
-    if (comma_pos != std::string::npos) {
-        a_str = trim(operands_str.substr(0, comma_pos));
-        b_str = trim(operands_str.substr(comma_pos + 1));
-    } else {
-        a_str = trim(operands_str);
-        b_str = "$0"; // Default for missing B-field
+    if (comma_pos == std::string::npos) {
+        throw std::runtime_error("Missing B-field operand in line: " + original_line);
     }
+
+    a_str = trim(operands_str.substr(0, comma_pos));
+    b_str = trim(operands_str.substr(comma_pos + 1));
 
     if (a_str.empty()) {
         throw std::runtime_error("Missing A-field operand in line: " + original_line);
