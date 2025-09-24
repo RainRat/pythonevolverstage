@@ -297,7 +297,7 @@ ADDRESSING_MODES.update({'$', '#', '@', '<', '>', '*', '{', '}'})
 
 CANONICAL_SUPPORTED_OPCODES = {
     'DAT', 'MOV', 'ADD', 'SUB', 'MUL', 'DIV', 'MOD',
-    'JMP', 'JMZ', 'JMN', 'DJN', 'CMP', 'SNE', 'SLT', 'SPL', 'NOP',
+    'JMP', 'JMZ', 'JMN', 'DJN', 'CMP', 'SEQ', 'SNE', 'SLT', 'SPL', 'NOP',
 }
 OPCODE_ALIASES = {
     'SEQ': 'CMP',

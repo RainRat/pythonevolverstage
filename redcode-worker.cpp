@@ -83,9 +83,10 @@ const std::map<std::string, Modifier> MODIFIER_MAP = {
 // Reverse lookups for logging
 const char* OPCODE_NAMES[] = {
     "DAT", "MOV", "ADD", "SUB", "MUL", "DIV", "MOD",
-    "JMP", "JMZ", "JMN", "DJN", "CMP", "SLT", "SPL",
+    "JMP", "JMZ", "JMN", "DJN", "CMP/SEQ", "SLT", "SPL",
     "SNE", "NOP", "ORG"
 };
+// Note: The CMP entry also covers the SEQ alias, which canonicalizes to CMP.
 
 const char* MODIFIER_NAMES[] = {
     "A", "B", "AB", "BA", "F", "X", "I"
