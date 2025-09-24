@@ -21,6 +21,10 @@ The cpp program:
 
 **Both the Python and CPP should gracefully exit or throw an exception if there is an error or unexpected input. If the program exits, the last-known good warriors are still on the disk and nothing is lost. If the program does things like declaring battles a draw, or making assumptions about the redcode that are not what is actually written, it could corrupt the whole run.**
 
+Testing requirements:
+
+- Run the full Python and C++ test suites with `pytest tests/test_evolverstage.py tests/test_redcode_worker.py` before finishing.
+
 Adherence to spec:
 
 Not supported:
