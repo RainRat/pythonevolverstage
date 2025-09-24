@@ -364,33 +364,29 @@ private:
             return true;
         };
 
-        bool success = true;
-
         switch (modifier) {
             case A:
-                success &= apply(dst.a_field, src.a_field);
-                break;
+                return apply(dst.a_field, src.a_field);
             case B:
-                success &= apply(dst.b_field, src.b_field);
-                break;
+                return apply(dst.b_field, src.b_field);
             case AB:
-                success &= apply(dst.b_field, src.a_field);
-                break;
+                return apply(dst.b_field, src.a_field);
             case BA:
-                success &= apply(dst.a_field, src.b_field);
-                break;
+                return apply(dst.a_field, src.b_field);
             case F:
-            case I:
-                success &= apply(dst.a_field, src.a_field);
-                success &= apply(dst.b_field, src.b_field);
-                break;
-            case X:
-                success &= apply(dst.a_field, src.b_field);
-                success &= apply(dst.b_field, src.a_field);
-                break;
+            case I: {
+                bool a_ok = apply(dst.a_field, src.a_field);
+                bool b_ok = apply(dst.b_field, src.b_field);
+                return a_ok && b_ok;
+            }
+            case X: {
+                bool a_ok = apply(dst.a_field, src.b_field);
+                bool b_ok = apply(dst.b_field, src.a_field);
+                return a_ok && b_ok;
+            }
         }
 
-        return success;
+        return true;
     }
 
 public:
@@ -415,6 +411,7 @@ public:
         if (instr.a_mode == IMMEDIATE) {
             a_addr_final = pc;
             src = instr;
+            src.b_field = instr.a_field;
         } else if (instr.a_mode == DIRECT) {
             a_addr_final = intermediate_a_addr;
             src = memory[a_addr_final];

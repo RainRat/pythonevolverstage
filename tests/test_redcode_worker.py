@@ -1,37 +1,13 @@
 import os
-import subprocess
-import ctypes
 import pathlib
+import sys
+import textwrap
 
-def compile_worker():
-    subprocess.run([
-        "g++",
-        "-std=c++17",
-        "-shared",
-        "-fPIC",
-        str(pathlib.Path(__file__).resolve().parents[1] / "redcode-worker.cpp"),
-        "-o",
-        "redcode_worker.so",
-    ], check=True, cwd=pathlib.Path(__file__).resolve().parents[1])
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
-
-def load_worker():
-    compile_worker()
-    lib_path = pathlib.Path(__file__).resolve().parents[1] / "redcode_worker.so"
-    lib = ctypes.CDLL(str(lib_path))
-    lib.run_battle.argtypes = [
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_char_p,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-        ctypes.c_int,
-    ]
-    lib.run_battle.restype = ctypes.c_char_p
-    return lib
+from test_support import load_worker
 
 
 def get_scores(result_str):
@@ -47,7 +23,7 @@ def test_validate_self_tie():
     lib = load_worker()
     base_path = pathlib.Path(__file__).resolve().parents[1]
     code_path = base_path / "Validate1_1R_assembled.txt"
-    with open(code_path, "r") as f:
+    with open(code_path, "r", encoding="utf-8") as f:
         code = f.read()
     rounds = 5
     result = lib.run_battle(
@@ -119,3 +95,72 @@ def test_battle_stops_once_outcome_decided():
         "Battle should stop once the outcome is locked; "
         f"expected leader score {expected_score} for {expected_rounds_played} rounds, got {w1_score}"
     )
+
+
+def test_div_instruction_completes_remaining_fields(monkeypatch, tmp_path):
+    lib = load_worker()
+    warrior = textwrap.dedent(
+        """
+        JMP.B $4, $0
+        DAT.F #0, #0
+        DAT.F #0, #5
+        DAT.F #10, #20
+        SPL.B $3, $0
+        DIV.F $-3, $-2
+        JMP.B $6, $0
+        SNE.B #20, $-4
+        JMP.B $-1, $0
+        SEQ.B #4, $-6
+        JMP.B $2, $0
+        MOV.B #1, $-10
+        JMP.B $0, $0
+        """
+    ).strip() + "\n"
+    opponent = "JMP 0, 0\n"
+    trace_file = tmp_path / "div_trace.txt"
+    monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        opponent.encode(), 2,
+        8000, 200, 8000, 1, 1
+    ).decode()
+    trace_text = trace_file.read_text(encoding="utf-8")
+    assert not result.startswith("ERROR:"), result
+    assert "DIV.F" in trace_text
+    assert "MOV.B #1, $-10" in trace_text
+
+
+def test_jmn_djn_use_or_logic(monkeypatch, tmp_path):
+    lib = load_worker()
+    warrior = textwrap.dedent(
+        """
+        JMP.B $5, $0
+        DAT.F #0, #0
+        DAT.F #0, #0
+        DAT.F #1, #0
+        DAT.F #1, #2
+        JMN.I $3, $-2
+        MOV.B #2, $-5
+        JMP.B $2, $0
+        MOV.B #1, $-7
+        DJN.I $3, $-5
+        MOV.B #2, $-8
+        JMP.B $2, $0
+        MOV.B #1, $-10
+        DAT.F #0, #0
+        """
+    ).strip() + "\n"
+    opponent = "JMP 0, 0\n"
+    trace_file = tmp_path / "jmn_djn_trace.txt"
+    monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        opponent.encode(), 2,
+        8000, 200, 8000, 1, 1
+    ).decode()
+    trace_text = trace_file.read_text(encoding="utf-8")
+    assert not result.startswith("ERROR:"), result
+    assert "JMN.I" in trace_text
+    assert "DJN.I" in trace_text
+    assert trace_text.count("MOV.B #1") >= 2
+    assert "MOV.B #2" not in trace_text
