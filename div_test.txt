@@ -1,0 +1,85 @@
+;redcode
+;name Multi-Field DIV/MOD by Zero Logic Test (v4 - Final)
+;author Gemini
+;strategy
+; This warrior tests the execution logic of multi-field instructions
+; when one field causes a process-terminating error. This version uses
+; a simplified, robust polling loop.
+;
+; HOW IT WORKS:
+; 1. The program uses SPL to create a child process.
+; 2. The parent process executes a DIV.F instruction where the A-field
+; division is by zero (error) but the B-field division is valid. The
+; parent process terminates.
+; 3. The child process enters a "wait_loop", repeatedly checking if the B-field
+; of the destination is still its original value (20). As long as it is,
+; it loops back on itself.
+; 4. Once the value has changed, the loop terminates, and the child proceeds
+; to check if the new value is correct (4).
+;
+; RESULTS INTERPRETATION:
+; After execution, inspect the B-field of the 'flag_result' instruction:
+; - If flag_result.B == 1 -> Correct (Field-Complete) Logic: The valid B-field
+; division was completed before the process terminated.
+; - If flag_result.B == 0 -> Flawed (Early-Termination) Logic.
+        ORG     start
+
+
+; --- Data Section ---
+flag_result DAT.F #0, #0
+div_source DAT.F #0, #5
+div_dest DAT.F #10, #20
+; --- Code Section ---
+start:
+; Create a child process to observe the results.
+SPL observer
+; Parent process executes this and terminates.
+; A-Field: 10 / 0 -> ERROR
+; B-Field: 20 / 5 -> 4 (This should complete)
+DIV.F   div_source, div_dest
+
+; This line is never reached by the parent.
+JMP     halt
+
+
+observer:
+; Child process starts here.
+wait_loop:
+; Check if the B-field of our target is still its original value of 20.
+SNE.B #20, div_dest
+; SNE (Skip if Not Equal) will skip the next JMP if the value has changed.
+; If the value is still 20, the JMP is executed, and we loop.
+JMP     wait_loop
+
+; This point is only reached when div_dest.B is no longer 20.
+; Now, we check if the new value is the correct result of 4.
+SEQ.B   #4, div_dest
+
+; SEQ (Skip if Equal) will skip the final JMP if the value is 4.
+; If the value is not 4, the JMP is taken, and the test fails.
+JMP     halt
+
+; This line is only reached if the B-field is 4. Test is successful.
+; Set the flag to 1.
+MOV.B   #1, flag_result
+
+
+halt:
+; The test is complete. Loop indefinitely.
+JMP halt
+        END     start
+
+;--- Result of running program in pMars:
+
+;00000   DAT.F  #     0, #     0
+;00001   DAT.F  #     0, #     5
+;00002   DAT.F  #    10, #     4
+;00003   SPL.B  $     3, $     0
+;00004   DIV.F  $    -3, $    -2
+;00005   JMP.B  $     6, $     0
+;00006   SNE.B  #    20, $    -4
+;00007   JMP.B  $    -1, $     0
+;00008   SEQ.B  #     4, $    -6
+;00009   JMP.B  $     2, $     0
+;00010   MOV.B  #     1, $   -10
+;00011   JMP.B  $     0, $     0

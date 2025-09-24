@@ -1,0 +1,13 @@
+       ORG      START
+       DAT.F  #     0, #     0
+       DAT.F  #     0, #     5
+       DAT.F  #    10, #    20
+START  SPL.B  $     3, $     0
+       DIV.F  $    -3, $    -2
+       JMP.B  $     6, $     0
+       SNE.B  #    20, $    -4
+       JMP.B  $    -1, $     0
+       SEQ.B  #     4, $    -6
+       JMP.B  $     2, $     0
+       MOV.B  #     1, $   -10
+       JMP.B  $     0, $     0

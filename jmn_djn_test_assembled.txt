@@ -1,0 +1,14 @@
+       ORG      START
+       DAT.F  #     0, #     0
+       DAT.F  #     0, #     0
+       DAT.F  #     1, #     0
+       DAT.F  #     1, #     2
+START  JMN.I  $     3, $    -2
+       MOV.B  #     2, $    -5
+       JMP.B  $     2, $     0
+       MOV.B  #     1, $    -7
+       DJN.I  $     3, $    -5
+       MOV.B  #     2, $    -8
+       JMP.B  $     2, $     0
+       MOV.B  #     1, $   -10
+       DAT.F  #     0, #     0
