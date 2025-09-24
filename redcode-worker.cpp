@@ -434,29 +434,31 @@ public:
                         normalize_field(target);
                         return true;
                     };
+                    bool should_kill = false;
                     switch (instr.modifier) {
                         case A:
-                            if (!perform_division(dst.a_field, src.a_field)) return;
+                            should_kill |= !perform_division(dst.a_field, src.a_field);
                             break;
                         case B:
-                            if (!perform_division(dst.b_field, src.b_field)) return;
+                            should_kill |= !perform_division(dst.b_field, src.b_field);
                             break;
                         case AB:
-                            if (!perform_division(dst.b_field, src.a_field)) return;
+                            should_kill |= !perform_division(dst.b_field, src.a_field);
                             break;
                         case BA:
-                            if (!perform_division(dst.a_field, src.b_field)) return;
+                            should_kill |= !perform_division(dst.a_field, src.b_field);
                             break;
                         case F:
                         case I:
-                            if (!perform_division(dst.a_field, src.a_field)) return;
-                            if (!perform_division(dst.b_field, src.b_field)) return;
+                            should_kill |= !perform_division(dst.a_field, src.a_field);
+                            should_kill |= !perform_division(dst.b_field, src.b_field);
                             break;
                         case X:
-                            if (!perform_division(dst.a_field, src.b_field)) return;
-                            if (!perform_division(dst.b_field, src.a_field)) return;
+                            should_kill |= !perform_division(dst.a_field, src.b_field);
+                            should_kill |= !perform_division(dst.b_field, src.a_field);
                             break;
                     }
+                    if (should_kill) return;
                 }
                 break;
             case MOD:
@@ -469,29 +471,31 @@ public:
                         normalize_field(target);
                         return true;
                     };
+                    bool should_kill = false;
                     switch (instr.modifier) {
                         case A:
-                            if (!perform_modulo(dst.a_field, src.a_field)) return;
+                            should_kill |= !perform_modulo(dst.a_field, src.a_field);
                             break;
                         case B:
-                            if (!perform_modulo(dst.b_field, src.b_field)) return;
+                            should_kill |= !perform_modulo(dst.b_field, src.b_field);
                             break;
                         case AB:
-                            if (!perform_modulo(dst.b_field, src.a_field)) return;
+                            should_kill |= !perform_modulo(dst.b_field, src.a_field);
                             break;
                         case BA:
-                            if (!perform_modulo(dst.a_field, src.b_field)) return;
+                            should_kill |= !perform_modulo(dst.a_field, src.b_field);
                             break;
                         case F:
                         case I:
-                            if (!perform_modulo(dst.a_field, src.a_field)) return;
-                            if (!perform_modulo(dst.b_field, src.b_field)) return;
+                            should_kill |= !perform_modulo(dst.a_field, src.a_field);
+                            should_kill |= !perform_modulo(dst.b_field, src.b_field);
                             break;
                         case X:
-                            if (!perform_modulo(dst.a_field, src.b_field)) return;
-                            if (!perform_modulo(dst.b_field, src.a_field)) return;
+                            should_kill |= !perform_modulo(dst.a_field, src.b_field);
+                            should_kill |= !perform_modulo(dst.b_field, src.a_field);
                             break;
                     }
+                    if (should_kill) return;
                 }
                 break;
             case CMP:
