@@ -17,6 +17,12 @@ const int DEFAULT_MAX_PROCESSES = 8000;
 const int DEFAULT_MAX_WARRIOR_LENGTH = 100;
 const int DEFAULT_MIN_DISTANCE = 100;
 
+const int MAX_CORE_SIZE = 55440;
+const int MAX_CYCLES = 500000;
+const int MAX_PROCESSES = 10000;
+const int MAX_WARRIOR_LENGTH = 200;
+const int MAX_MIN_DISTANCE = 200;
+
 // --- Enums for Redcode ---
 
 enum Opcode {
@@ -284,6 +290,11 @@ std::vector<Instruction> parse_warrior(const std::string& code) {
         }
         try {
             warrior_code.push_back(parse_line(trimmed));
+            if (warrior_code.size() > static_cast<size_t>(MAX_WARRIOR_LENGTH)) {
+                throw std::runtime_error(
+                    "Warrior exceeds maximum length of " + std::to_string(MAX_WARRIOR_LENGTH) + " instructions"
+                );
+            }
         } catch (const std::exception& e) {
             throw std::runtime_error(
                 "Error parsing warrior at line " + std::to_string(line_number) + ": " + e.what()
@@ -619,6 +630,38 @@ public:
 
 
 // --- Battle Manager ---
+void validate_battle_parameters(int core_size, int max_cycles, int max_processes, int min_distance, int rounds) {
+    if (core_size < 2) {
+        throw std::runtime_error("Core size must be at least 2");
+    }
+    if (core_size > MAX_CORE_SIZE) {
+        throw std::runtime_error(
+            "Core size exceeds maximum supported value of " + std::to_string(MAX_CORE_SIZE)
+        );
+    }
+    if (max_cycles <= 0 || max_cycles > MAX_CYCLES) {
+        throw std::runtime_error(
+            "Max cycles must be between 1 and " + std::to_string(MAX_CYCLES)
+        );
+    }
+    if (max_processes <= 0 || max_processes > MAX_PROCESSES) {
+        throw std::runtime_error(
+            "Max processes must be between 1 and " + std::to_string(MAX_PROCESSES)
+        );
+    }
+    if (min_distance < 0 || min_distance > MAX_MIN_DISTANCE) {
+        throw std::runtime_error(
+            "Min distance must be between 0 and " + std::to_string(MAX_MIN_DISTANCE)
+        );
+    }
+    if (min_distance > core_size / 2) {
+        throw std::runtime_error("Min distance is too large for the given core size");
+    }
+    if (rounds <= 0) {
+        throw std::runtime_error("Number of rounds must be positive");
+    }
+}
+
 extern "C" {
     const char* run_battle(
         const char* warrior1_code, int w1_id,
@@ -628,8 +671,24 @@ extern "C" {
     ) {
         static std::string response;
         try {
+            if (!warrior1_code || !warrior2_code) {
+                throw std::runtime_error("Null warrior source provided");
+            }
+
+            validate_battle_parameters(core_size, max_cycles, max_processes, min_distance, rounds);
+
             auto w1_instrs = parse_warrior(warrior1_code);
             auto w2_instrs = parse_warrior(warrior2_code);
+
+            if (w1_instrs.empty()) {
+                throw std::runtime_error("Warrior 1 contains no executable instructions");
+            }
+            if (w2_instrs.empty()) {
+                throw std::runtime_error("Warrior 2 contains no executable instructions");
+            }
+            if (static_cast<int>(w1_instrs.size()) > core_size || static_cast<int>(w2_instrs.size()) > core_size) {
+                throw std::runtime_error("Warrior length exceeds core size");
+            }
 
             std::random_device rd;
             std::mt19937 gen(rd());
