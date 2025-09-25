@@ -48,6 +48,122 @@ class EvolverConfig:
     run_final_tournament: bool
 
 
+def validate_config(config: EvolverConfig, config_path: Optional[str] = None) -> None:
+    if config.last_arena is None:
+        raise ValueError("LAST_ARENA must be specified in the configuration.")
+
+    arena_count = config.last_arena + 1
+    if arena_count <= 0:
+        raise ValueError(
+            "LAST_ARENA must be greater than or equal to 0 (implies at least one arena)."
+        )
+
+    per_arena_lists = {
+        "CORESIZE_LIST": config.coresize_list,
+        "SANITIZE_LIST": config.sanitize_list,
+        "CYCLES_LIST": config.cycles_list,
+        "PROCESSES_LIST": config.processes_list,
+        "WARLEN_LIST": config.warlen_list,
+        "WARDISTANCE_LIST": config.wardistance_list,
+    }
+
+    for name, values in per_arena_lists.items():
+        if len(values) != arena_count:
+            raise ValueError(
+                f"{name} must contain {arena_count} entries (one for each arena),"
+                f" but {len(values)} value(s) were provided."
+            )
+
+    if config.numwarriors is None or config.numwarriors <= 0:
+        raise ValueError("NUMWARRIORS must be a positive integer.")
+
+    if not config.battlerounds_list:
+        raise ValueError("BATTLEROUNDS_LIST must contain at least one value.")
+
+    era_count = len(config.battlerounds_list)
+
+    era_lists = {
+        "NOTHING_LIST": config.nothing_list,
+        "RANDOM_LIST": config.random_list,
+        "NAB_LIST": config.nab_list,
+        "MINI_MUT_LIST": config.mini_mut_list,
+        "MICRO_MUT_LIST": config.micro_mut_list,
+        "LIBRARY_LIST": config.library_list,
+        "MAGIC_NUMBER_LIST": config.magic_number_list,
+        "ARCHIVE_LIST": config.archive_list,
+        "UNARCHIVE_LIST": config.unarchive_list,
+        "CROSSOVERRATE_LIST": config.crossoverrate_list,
+        "TRANSPOSITIONRATE_LIST": config.transpositionrate_list,
+        "PREFER_WINNER_LIST": config.prefer_winner_list,
+    }
+
+    for name, values in era_lists.items():
+        if len(values) != era_count:
+            raise ValueError(
+                f"{name} must contain {era_count} entries (one for each era),"
+                f" but {len(values)} value(s) were provided."
+            )
+
+    marble_probability_limits = {
+        "NOTHING_LIST": config.nothing_list,
+        "RANDOM_LIST": config.random_list,
+        "NAB_LIST": config.nab_list,
+        "MINI_MUT_LIST": config.mini_mut_list,
+        "MICRO_MUT_LIST": config.micro_mut_list,
+        "LIBRARY_LIST": config.library_list,
+        "MAGIC_NUMBER_LIST": config.magic_number_list,
+    }
+
+    for name, values in marble_probability_limits.items():
+        for value in values:
+            if value < 0:
+                raise ValueError(f"Values in {name} cannot be negative (found {value}).")
+            if value > 100000:
+                raise ValueError(
+                    f"Values in {name} appear unreasonably large (found {value});"
+                    " please double-check the configuration."
+                )
+
+    for era_index in range(era_count):
+        total_weight = sum(values[era_index] for values in marble_probability_limits.values())
+        if total_weight <= 0:
+            raise ValueError(
+                "Marble bag probabilities for era "
+                f"{era_index + 1} must sum to a positive value."
+            )
+
+    base_path = os.getcwd()
+    if config_path:
+        config_directory = os.path.dirname(os.path.abspath(config_path))
+        if config_directory:
+            base_path = config_directory
+
+    required_directories = [os.path.join(base_path, f"arena{i}") for i in range(arena_count)]
+    required_directories.append(os.path.join(base_path, "archive"))
+
+    if not os.path.isdir(base_path):
+        raise FileNotFoundError(
+            f"Configuration directory '{base_path}' does not exist or is not a directory."
+        )
+
+    for directory in required_directories:
+        if os.path.isdir(directory):
+            if not os.access(directory, os.W_OK):
+                raise PermissionError(
+                    f"Directory '{directory}' is not writable."
+                )
+        else:
+            parent_dir = os.path.dirname(directory) or base_path
+            if not os.access(parent_dir, os.W_OK):
+                raise PermissionError(
+                    f"Missing permissions to create directory '{directory}'."
+                )
+            if config.alreadyseeded:
+                raise FileNotFoundError(
+                    f"Required directory '{directory}' does not exist but ALREADYSEEDED is true."
+                )
+
+
 def load_configuration(path: str) -> EvolverConfig:
     parser = configparser.ConfigParser()
     read_files = parser.read(path)
@@ -69,7 +185,7 @@ def load_configuration(path: str) -> EvolverConfig:
         }
         return data_type_mapping.get(data_type, lambda x: x.strip() or None)(value)
 
-    return EvolverConfig(
+    config = EvolverConfig(
         battle_engine=_read_config('BATTLE_ENGINE', data_type='string', default='external') or 'external',
         last_arena=_read_config('LAST_ARENA', data_type='int'),
         coresize_list=_read_config('CORESIZE_LIST', data_type='int_list') or [],
@@ -102,6 +218,8 @@ def load_configuration(path: str) -> EvolverConfig:
         instr_modif=_read_config('INSTR_MODIF', data_type='string_list') or [],
         run_final_tournament=_read_config('RUN_FINAL_TOURNAMENT', data_type='bool', default=False) or False,
     )
+    validate_config(config, config_path=path)
+    return config
 
 class DataLogger:
     def __init__(self, filename):

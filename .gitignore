@@ -2,10 +2,12 @@
 *.csv
 nmars*.*
 pmars*.*
-arena?/
+arena?/*
+!arena?/.gitkeep
 nunit.framework.dll
 SDL.dll
-archive/
+archive/*
+!archive/.gitkeep
 instructions.txt
 *.bak
 nano.txt
