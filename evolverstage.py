@@ -284,6 +284,13 @@ def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool =
             warriors.append(int(splittedline[0]))
     if len(scores) < 2:
         raise RuntimeError("Battle engine output did not include scores for both warriors")
+    expected_warriors = {cont1, cont2}
+    returned_warriors = set(warriors)
+    if returned_warriors != expected_warriors:
+        raise RuntimeError(
+            "Battle engine returned mismatched warrior IDs: "
+            f"expected {sorted(expected_warriors)}, got {sorted(returned_warriors)}"
+        )
     if verbose:
         print(numline)
     return warriors, scores
@@ -596,8 +603,10 @@ def choose_random_mode() -> str:
 def generate_random_instruction(arena: int) -> RedcodeInstruction:
     num1 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
     num2 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
+    opcode = choose_random_opcode()
+    canonical_opcode = canonicalize_opcode(opcode)
     return RedcodeInstruction(
-        opcode=choose_random_opcode(),
+        opcode=canonical_opcode,
         modifier=choose_random_modifier(),
         a_mode=choose_random_mode(),
         a_field=num1,
