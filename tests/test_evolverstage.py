@@ -22,7 +22,7 @@ def test_load_configuration_parses_types(tmp_path):
             """
             [DEFAULT]
             BATTLE_ENGINE = internal
-            LAST_ARENA = 2
+            LAST_ARENA = 1
             CORESIZE_LIST = 8000, 8192
             SANITIZE_LIST = 0,1
             CYCLES_LIST = 1000, 2000
@@ -30,23 +30,23 @@ def test_load_configuration_parses_types(tmp_path):
             WARLEN_LIST = 20, 40
             WARDISTANCE_LIST = 5, 7
             NUMWARRIORS = 50
-            ALREADYSEEDED = true
+            ALREADYSEEDED = false
             CLOCK_TIME = 12.5
             BATTLE_LOG_FILE = logs.csv
             FINAL_ERA_ONLY = false
-            NOTHING_LIST = 1,2,3
+            NOTHING_LIST = 1,2
             RANDOM_LIST = 4,5
-            NAB_LIST = 6
-            MINI_MUT_LIST = 7
-            MICRO_MUT_LIST = 8
-            LIBRARY_LIST = 9, 10
-            MAGIC_NUMBER_LIST = 11
-            ARCHIVE_LIST = 12
-            UNARCHIVE_LIST = 13
+            NAB_LIST = 6,7
+            MINI_MUT_LIST = 8,9
+            MICRO_MUT_LIST = 10,11
+            LIBRARY_LIST = 12, 13
+            MAGIC_NUMBER_LIST = 14, 15
+            ARCHIVE_LIST = 16,17
+            UNARCHIVE_LIST = 18,19
             LIBRARY_PATH = ./library
-            CROSSOVERRATE_LIST = 14
-            TRANSPOSITIONRATE_LIST = 15
-            BATTLEROUNDS_LIST = 16, 32
+            CROSSOVERRATE_LIST = 20,21
+            TRANSPOSITIONRATE_LIST = 22,23
+            BATTLEROUNDS_LIST = 24, 48
             PREFER_WINNER_LIST = true, false
             INSTR_SET = MOV, ADD
             INSTR_MODES = #, $
@@ -59,7 +59,7 @@ def test_load_configuration_parses_types(tmp_path):
 
     config = load_configuration(str(config_path))
     assert config.battle_engine == "internal"
-    assert config.last_arena == 2
+    assert config.last_arena == 1
     assert config.coresize_list == [8000, 8192]
     assert config.sanitize_list == [0, 1]
     assert config.cycles_list == [1000, 2000]
@@ -67,27 +67,145 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.warlen_list == [20, 40]
     assert config.wardistance_list == [5, 7]
     assert config.numwarriors == 50
-    assert config.alreadyseeded is True
+    assert config.alreadyseeded is False
     assert pytest.approx(config.clock_time, rel=1e-6) == 12.5
     assert config.battle_log_file == "logs.csv"
     assert config.final_era_only is False
-    assert config.nothing_list == [1, 2, 3]
+    assert config.nothing_list == [1, 2]
     assert config.random_list == [4, 5]
-    assert config.nab_list == [6]
-    assert config.mini_mut_list == [7]
-    assert config.micro_mut_list == [8]
-    assert config.library_list == [9, 10]
-    assert config.magic_number_list == [11]
-    assert config.archive_list == [12]
-    assert config.unarchive_list == [13]
+    assert config.nab_list == [6, 7]
+    assert config.mini_mut_list == [8, 9]
+    assert config.micro_mut_list == [10, 11]
+    assert config.library_list == [12, 13]
+    assert config.magic_number_list == [14, 15]
+    assert config.archive_list == [16, 17]
+    assert config.unarchive_list == [18, 19]
     assert config.library_path == "./library"
-    assert config.crossoverrate_list == [14]
-    assert config.transpositionrate_list == [15]
-    assert config.battlerounds_list == [16, 32]
+    assert config.crossoverrate_list == [20, 21]
+    assert config.transpositionrate_list == [22, 23]
+    assert config.battlerounds_list == [24, 48]
     assert config.prefer_winner_list == [True, False]
     assert config.instr_set == ["MOV", "ADD"]
     assert config.instr_modes == ["#", "$"]
     assert config.instr_modif == ["A", "B"]
+
+
+def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            LAST_ARENA = 1
+            CORESIZE_LIST = 8000
+            SANITIZE_LIST = 80, 81
+            CYCLES_LIST = 1000, 2000
+            PROCESSES_LIST = 8, 8
+            WARLEN_LIST = 20, 20
+            WARDISTANCE_LIST = 5, 5
+            NUMWARRIORS = 10
+            ALREADYSEEDED = false
+            BATTLEROUNDS_LIST = 1, 1
+            NOTHING_LIST = 1, 1
+            RANDOM_LIST = 1, 1
+            NAB_LIST = 0, 0
+            MINI_MUT_LIST = 0, 0
+            MICRO_MUT_LIST = 0, 0
+            LIBRARY_LIST = 0, 0
+            MAGIC_NUMBER_LIST = 0, 0
+            ARCHIVE_LIST = 0, 0
+            UNARCHIVE_LIST = 0, 0
+            CROSSOVERRATE_LIST = 1, 1
+            TRANSPOSITIONRATE_LIST = 1, 1
+            PREFER_WINNER_LIST = false, false
+            """
+        ).strip()
+    )
+
+    from evolverstage import load_configuration
+
+    with pytest.raises(ValueError, match="CORESIZE_LIST"):
+        load_configuration(str(config_path))
+
+
+def test_load_configuration_rejects_negative_marble_counts(tmp_path):
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            LAST_ARENA = 0
+            CORESIZE_LIST = 8000
+            SANITIZE_LIST = 80
+            CYCLES_LIST = 1000
+            PROCESSES_LIST = 8
+            WARLEN_LIST = 20
+            WARDISTANCE_LIST = 5
+            NUMWARRIORS = 10
+            ALREADYSEEDED = false
+            BATTLEROUNDS_LIST = 5
+            NOTHING_LIST = 1
+            RANDOM_LIST = 0
+            NAB_LIST = -1
+            MINI_MUT_LIST = 0
+            MICRO_MUT_LIST = 0
+            LIBRARY_LIST = 0
+            MAGIC_NUMBER_LIST = 0
+            ARCHIVE_LIST = 0
+            UNARCHIVE_LIST = 0
+            CROSSOVERRATE_LIST = 1
+            TRANSPOSITIONRATE_LIST = 1
+            PREFER_WINNER_LIST = false
+            """
+        ).strip()
+    )
+
+    from evolverstage import load_configuration
+
+    with pytest.raises(ValueError, match="NAB_LIST"):
+        load_configuration(str(config_path))
+
+
+def test_load_configuration_checks_seeded_directories(tmp_path):
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            LAST_ARENA = 1
+            CORESIZE_LIST = 8000, 8000
+            SANITIZE_LIST = 80, 80
+            CYCLES_LIST = 1000, 1000
+            PROCESSES_LIST = 8, 8
+            WARLEN_LIST = 20, 20
+            WARDISTANCE_LIST = 5, 5
+            NUMWARRIORS = 10
+            ALREADYSEEDED = true
+            BATTLEROUNDS_LIST = 5, 5
+            NOTHING_LIST = 1,1
+            RANDOM_LIST = 1,1
+            NAB_LIST = 0,0
+            MINI_MUT_LIST = 0,0
+            MICRO_MUT_LIST = 0,0
+            LIBRARY_LIST = 0,0
+            MAGIC_NUMBER_LIST = 0,0
+            ARCHIVE_LIST = 0,0
+            UNARCHIVE_LIST = 0,0
+            CROSSOVERRATE_LIST = 1,1
+            TRANSPOSITIONRATE_LIST = 1,1
+            PREFER_WINNER_LIST = false,false
+            """
+        ).strip()
+    )
+
+    (tmp_path / "arena0").mkdir()
+    # Intentionally leave arena1 missing
+    (tmp_path / "archive").mkdir()
+
+    from evolverstage import load_configuration
+
+    with pytest.raises(FileNotFoundError, match="arena1"):
+        load_configuration(str(config_path))
 
 
 def test_data_logger_writes_header_once(tmp_path):
