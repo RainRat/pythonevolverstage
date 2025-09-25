@@ -245,21 +245,28 @@ Instruction parse_line(const std::string& line) {
         throw std::runtime_error("Missing B-field operand in line: " + original_line);
     }
 
-    if (std::string("#$*@{}<>").find(a_str[0]) != std::string::npos) {
-        instr.a_mode = get_mode(a_str[0]);
-        instr.a_field = parse_numeric_field(trim(a_str.substr(1)), "line: " + original_line);
-    } else {
-        instr.a_mode = DIRECT;
-        instr.a_field = parse_numeric_field(a_str, "line: " + original_line);
-    }
+    auto parse_operand = [&](const std::string& operand,
+                             const char* operand_name,
+                             AddressMode& mode_target,
+                             int& field_target) {
+        if (operand.empty()) {
+            throw std::runtime_error(std::string("Missing ") + operand_name +
+                                     "-field operand in line: " + original_line);
+        }
 
-    if (std::string("#$*@{}<>").find(b_str[0]) != std::string::npos) {
-        instr.b_mode = get_mode(b_str[0]);
-        instr.b_field = parse_numeric_field(trim(b_str.substr(1)), "line: " + original_line);
-    } else {
-        instr.b_mode = DIRECT;
-        instr.b_field = parse_numeric_field(b_str, "line: " + original_line);
-    }
+        constexpr const char* VALID_MODES = "#$*@{}<>";
+        if (std::string(VALID_MODES).find(operand[0]) == std::string::npos) {
+            throw std::runtime_error(std::string("Missing addressing mode prefix in ") +
+                                     operand_name + "-field operand in line: " +
+                                     original_line);
+        }
+
+        mode_target = get_mode(operand[0]);
+        field_target = parse_numeric_field(trim(operand.substr(1)), "line: " + original_line);
+    };
+
+    parse_operand(a_str, "A", instr.a_mode, instr.a_field);
+    parse_operand(b_str, "B", instr.b_mode, instr.b_field);
 
     return instr;
 }
