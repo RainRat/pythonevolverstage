@@ -35,5 +35,5 @@ Not supported:
 
 Supported:
 -NOP: in the Extended spec, so it is supported.
--SNE, SEQ: in the Extended spec, so it is supported. 
+-SNE, SEQ: in the Extended spec, so it is supported. SEQ is an alias for CMP, but CMP is more commonly used, so SEQ will be accepted as input, but internally only CMP is used.
 -`{`, `}` and `*` modes: in the Extended spec, so it is supported.
