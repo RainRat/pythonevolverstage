@@ -149,6 +149,42 @@ def test_parse_instruction_requires_addressing_modes():
         parse_redcode_instruction("MOV.F 1, $2")
 
 
+def test_parse_instruction_requires_addressing_modes_for_both_operands():
+    from evolverstage import parse_redcode_instruction
+
+    with pytest.raises(ValueError, match="addressing mode"):
+        parse_redcode_instruction("MOV.F 1,2")
+
+
+def test_parse_instruction_supports_compact_whitespace():
+    from evolverstage import parse_redcode_instruction
+
+    parsed = parse_redcode_instruction("MOV.F$1,$2")
+
+    assert parsed is not None
+    assert parsed.opcode == "MOV"
+    assert parsed.modifier == "F"
+    assert parsed.a_mode == "$"
+    assert parsed.a_field == 1
+    assert parsed.b_mode == "$"
+    assert parsed.b_field == 2
+
+
+def test_parse_instruction_allows_spaces_around_modifier_separator():
+    from evolverstage import parse_redcode_instruction
+
+    parsed = parse_redcode_instruction("label MOV . F $-3,$4")
+
+    assert parsed is not None
+    assert parsed.label == "label"
+    assert parsed.opcode == "MOV"
+    assert parsed.modifier == "F"
+    assert parsed.a_mode == "$"
+    assert parsed.a_field == -3
+    assert parsed.b_mode == "$"
+    assert parsed.b_field == 4
+
+
 def test_sanitize_instruction_rejects_invalid_modes():
     from evolverstage import RedcodeInstruction, sanitize_instruction
 

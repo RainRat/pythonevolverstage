@@ -10,7 +10,7 @@ import ctypes
 import platform
 import re
 from dataclasses import dataclass
-from typing import Optional
+from typing import List, Optional
 
 
 @dataclass
@@ -375,7 +375,7 @@ class RedcodeInstruction:
 
 def _tokenize_instruction(line: str):
     tokens = []
-    current = []
+    current: List[str] = []
     for ch in line:
         if ch.isspace():
             if current:
@@ -386,6 +386,11 @@ def _tokenize_instruction(line: str):
                 tokens.append(''.join(current))
                 current = []
             tokens.append(',')
+        elif ch in ADDRESSING_MODES and current and (
+            current[-1].isalnum() or current[-1] in '._:'
+        ):
+            tokens.append(''.join(current))
+            current = [ch]
         else:
             current.append(ch)
     if current:
@@ -451,6 +456,18 @@ def _parse_operand(operand: str, operand_name: str):
     return mode, value
 
 
+_INSTRUCTION_HEADER_RE = re.compile(
+    r"""
+    ^
+    (?P<opcode>[A-Za-z]+)
+    (?:\s*\.\s*(?P<modifier>[A-Za-z]+))?
+    (?P<rest>.*)
+    $
+    """,
+    re.VERBOSE,
+)
+
+
 def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     if not line:
         return None
@@ -462,16 +479,21 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
         return None
 
     label: Optional[str] = None
-    idx = 0
     if len(tokens) >= 2 and not _is_opcode_token(tokens[0]) and _is_opcode_token(tokens[1]):
         label = tokens[0]
-        idx = 1
 
-    if idx >= len(tokens):
-        return None
+    remaining = code_part
+    if label is not None:
+        remaining = code_part[len(label) :].lstrip()
 
-    opcode_token = tokens[idx]
-    opcode_part, modifier_part = _split_opcode_token(opcode_token)
+    header_match = _INSTRUCTION_HEADER_RE.match(remaining)
+    if not header_match:
+        raise ValueError(f"Unable to parse instruction '{code_part}'")
+
+    opcode_part = header_match.group('opcode')
+    modifier_part = header_match.group('modifier')
+    rest = header_match.group('rest') or ''
+
     opcode = opcode_part.upper()
     canonical_opcode = canonicalize_opcode(opcode)
     if not modifier_part:
@@ -479,26 +501,31 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
             f"Instruction '{code_part}' is missing a modifier; expected opcode.modifier"
         )
     modifier = modifier_part.upper()
-    idx += 1
 
     if canonical_opcode in UNSUPPORTED_OPCODES:
         raise ValueError(f"Opcode '{opcode}' is not supported")
     if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
         raise ValueError(f"Unknown opcode '{opcode}'")
 
+    operand_tokens = _tokenize_instruction(rest)
     operands = []
     current_operand = ''
-    while idx < len(tokens):
-        tok = tokens[idx]
+    idx = 0
+    while idx < len(operand_tokens):
+        tok = operand_tokens[idx]
         idx += 1
         if tok == ',':
             operands.append(current_operand)
             current_operand = ''
         else:
             current_operand += tok
-    if current_operand or (tokens and tokens[-1] == ','):
+    if current_operand or (operand_tokens and operand_tokens[-1] == ','):
         operands.append(current_operand)
 
+    if not operands:
+        raise ValueError(
+            f"Instruction '{code_part}' is missing operands; expected two operands"
+        )
     if len(operands) < 2:
         raise ValueError(
             f"Instruction '{code_part}' is missing operands; expected two operands"
