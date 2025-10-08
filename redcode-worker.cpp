@@ -188,21 +188,22 @@ Instruction parse_line(const std::string& line) {
         throw std::runtime_error("Missing opcode in line: " + original_line);
     }
 
-    std::string opcode_token;
-    std::string modifier_token;
-    bool has_modifier = false;
-    size_t dot_pos = opcode_full.find('.');
-    if (dot_pos != std::string::npos) {
-        opcode_token = opcode_full.substr(0, dot_pos);
-        modifier_token = opcode_full.substr(dot_pos + 1);
-        has_modifier = true;
-    } else {
-        opcode_token = opcode_full;
+    std::string opcode_upper = to_upper_copy(opcode_full);
+    if (opcode_upper == "ORG") {
+        throw std::runtime_error("Unsupported pseudo-opcode 'ORG' in line: " + original_line);
     }
 
+    size_t dot_pos = opcode_full.find('.');
+    if (dot_pos == std::string::npos) {
+        throw std::runtime_error("Missing modifier for opcode '" + opcode_full + "' in line: " + original_line);
+    }
+
+    std::string opcode_token = opcode_full.substr(0, dot_pos);
+    std::string modifier_token = opcode_full.substr(dot_pos + 1);
+
     std::string opcode_str = to_upper_copy(opcode_token);
-    std::string modifier_lookup = has_modifier ? to_upper_copy(modifier_token) : "F";
-    std::string modifier_display = has_modifier ? modifier_token : "F";
+    std::string modifier_lookup = to_upper_copy(modifier_token);
+    std::string modifier_display = modifier_token;
 
     if (opcode_str == "ORG") {
         throw std::runtime_error("Unsupported pseudo-opcode 'ORG' in line: " + original_line);
@@ -408,6 +409,34 @@ private:
         return true;
     }
 
+    template <typename FieldPredicate, typename InstructionPredicate, typename Combiner>
+    bool check_condition(const Instruction& src,
+                         const Instruction& dst,
+                         Modifier modifier,
+                         FieldPredicate field_pred,
+                         InstructionPredicate instr_pred,
+                         Combiner combine) const {
+        switch (modifier) {
+            case A:
+                return field_pred(src.a_field, dst.a_field);
+            case B:
+                return field_pred(src.b_field, dst.b_field);
+            case AB:
+                return field_pred(src.a_field, dst.b_field);
+            case BA:
+                return field_pred(src.b_field, dst.a_field);
+            case F:
+                return combine(field_pred(src.a_field, dst.a_field),
+                               field_pred(src.b_field, dst.b_field));
+            case X:
+                return combine(field_pred(src.a_field, dst.b_field),
+                               field_pred(src.b_field, dst.a_field));
+            case I:
+                return instr_pred(src, dst);
+        }
+        return false;
+    }
+
 public:
     void execute(WarriorProcess process, int read_limit, int write_limit, int max_processes) {
         int pc = process.pc;
@@ -504,35 +533,48 @@ public:
                 }
                 break;
             case CMP:
-                switch (instr.modifier) {
-                    case A: if (src.a_field == dst.a_field) skip = true; break;
-                    case B: if (src.b_field == dst.b_field) skip = true; break;
-                    case AB: if (src.a_field == dst.b_field) skip = true; break;
-                    case BA: if (src.b_field == dst.a_field) skip = true; break;
-                    case F: if (src.a_field == dst.a_field && src.b_field == dst.b_field) skip = true; break;
-                    case X: if (src.a_field == dst.b_field && src.b_field == dst.a_field) skip = true; break;
-                    case I: if (src == dst) skip = true; break;
+                {
+                    auto equals = [](int lhs, int rhs) { return lhs == rhs; };
+                    auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
+                    skip = check_condition(
+                        src,
+                        dst,
+                        instr.modifier,
+                        equals,
+                        [](const Instruction& lhs, const Instruction& rhs) { return lhs == rhs; },
+                        combine_and
+                    );
                 }
                 break;
             case SNE:
-                switch (instr.modifier) {
-                    case A: if (src.a_field != dst.a_field) skip = true; break;
-                    case B: if (src.b_field != dst.b_field) skip = true; break;
-                    case AB: if (src.a_field != dst.b_field) skip = true; break;
-                    case BA: if (src.b_field != dst.a_field) skip = true; break;
-                    case F: if (src.a_field != dst.a_field || src.b_field != dst.b_field) skip = true; break;
-                    case X: if (src.a_field != dst.b_field || src.b_field != dst.a_field) skip = true; break;
-                    case I: if (!(src == dst)) skip = true; break;
+                {
+                    auto not_equals = [](int lhs, int rhs) { return lhs != rhs; };
+                    auto combine_or = [](bool lhs, bool rhs) { return lhs || rhs; };
+                    skip = check_condition(
+                        src,
+                        dst,
+                        instr.modifier,
+                        not_equals,
+                        [](const Instruction& lhs, const Instruction& rhs) { return !(lhs == rhs); },
+                        combine_or
+                    );
                 }
                 break;
             case SLT:
-                switch (instr.modifier) {
-                    case A: if (src.a_field < dst.a_field) skip = true; break;
-                    case B: if (src.b_field < dst.b_field) skip = true; break;
-                    case AB: if (src.a_field < dst.b_field) skip = true; break;
-                    case BA: if (src.b_field < dst.a_field) skip = true; break;
-                    case F: case I: if (src.a_field < dst.a_field && src.b_field < dst.b_field) skip = true; break;
-                    case X: if (src.a_field < dst.b_field && src.b_field < dst.a_field) skip = true; break;
+                {
+                    auto less_than = [](int lhs, int rhs) { return lhs < rhs; };
+                    auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
+                    skip = check_condition(
+                        src,
+                        dst,
+                        instr.modifier,
+                        less_than,
+                        [less_than, combine_and](const Instruction& lhs, const Instruction& rhs) {
+                            return combine_and(less_than(lhs.a_field, rhs.a_field),
+                                               less_than(lhs.b_field, rhs.b_field));
+                        },
+                        combine_and
+                    );
                 }
                 break;
             case JMP:
