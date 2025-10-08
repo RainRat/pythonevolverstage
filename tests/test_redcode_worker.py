@@ -79,7 +79,7 @@ def test_org_pseudo_opcode_rejected():
 
 def test_battle_stops_once_outcome_decided():
     lib = load_worker()
-    dominant_warrior = "JMP $0, $0\n"
+    dominant_warrior = "JMP.B $0, $0\n"
     fragile_warrior = "DAT.F #0, #0\n"
     rounds = 100
     result = lib.run_battle(
@@ -116,7 +116,7 @@ def test_div_instruction_completes_remaining_fields(monkeypatch, tmp_path):
         JMP.B $0, $0
         """
     ).strip() + "\n"
-    opponent = "JMP $0, $0\n"
+    opponent = "JMP.B $0, $0\n"
     trace_file = tmp_path / "div_trace.txt"
     monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
     result = lib.run_battle(
@@ -150,7 +150,7 @@ def test_jmn_djn_use_or_logic(monkeypatch, tmp_path):
         DAT.F #0, #0
         """
     ).strip() + "\n"
-    opponent = "JMP $0, $0\n"
+    opponent = "JMP.B $0, $0\n"
     trace_file = tmp_path / "jmn_djn_trace.txt"
     monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
     result = lib.run_battle(
