@@ -107,11 +107,11 @@ CMake is the recommended build system because it selects the correct compiler an
 2.  Run CMake: `cmake ..`
 3.  Compile: `cmake --build .`
 
-This will place the compiled library (`redcode_worker.so`, `.dll`, or `.dylib`) in the project's root directory.
+The provided CMake configuration emits the compiled library (`redcode_worker.so`, `.dll`, or `.dylib`) in the project's root directory.
 
 ### Building with g++
 
-If you prefer compiling directly with `g++`, use the following command:
+If you prefer compiling directly with `g++`, use the following command (replace the output extension with `.dll` on Windows or `.dylib` on macOS):
 
 ```
 g++ -std=c++17 -shared -fPIC redcode-worker.cpp -o redcode_worker.so
