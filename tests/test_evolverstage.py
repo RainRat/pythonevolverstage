@@ -75,7 +75,8 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.numwarriors == 50
     assert config.alreadyseeded is False
     assert pytest.approx(config.clock_time, rel=1e-6) == 12.5
-    assert config.battle_log_file == "logs.csv"
+    assert config.base_path == str(config_path.parent)
+    assert config.battle_log_file == os.path.abspath(config_path.with_name("logs.csv"))
     assert config.final_era_only is False
     assert config.nothing_list == [1, 2]
     assert config.random_list == [4, 5]
@@ -86,7 +87,7 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.magic_number_list == [14, 15]
     assert config.archive_list == [16, 17]
     assert config.unarchive_list == [18, 19]
-    assert config.library_path == "./library"
+    assert config.library_path == os.path.abspath(config_path.with_name("library"))
     assert config.crossoverrate_list == [20, 21]
     assert config.transpositionrate_list == [22, 23]
     assert config.battlerounds_list == [24, 48]
@@ -236,9 +237,9 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
 
     importlib.reload(evolverstage)
 
-    evolverstage.set_active_config(
-        evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
-    )
+    config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+    config.base_path = str(tmp_path)
+    evolverstage.set_active_config(config)
 
     arena_dir = tmp_path / "arena1"
     arena_dir.mkdir()

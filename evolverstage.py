@@ -19,6 +19,7 @@ from typing import List, Optional, cast
 class EvolverConfig:
     battle_engine: str
     last_arena: int
+    base_path: str
     coresize_list: list[int]
     sanitize_list: list[int]
     cycles_list: list[int]
@@ -199,8 +200,8 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
                 f"TRANSPOSITIONRATE_LIST[{idx}] must be at least 1 (got {value})."
             )
 
-    base_path = os.getcwd()
-    if config_path:
+    base_path = getattr(config, "base_path", None) or os.getcwd()
+    if config_path and not getattr(config, "base_path", None):
         config_directory = os.path.dirname(os.path.abspath(config_path))
         if config_directory:
             base_path = config_directory
@@ -240,6 +241,8 @@ def load_configuration(path: str) -> EvolverConfig:
     if not read_files:
         raise FileNotFoundError(f"Configuration file '{path}' not found")
 
+    base_path = os.path.dirname(os.path.abspath(path)) or os.getcwd()
+
     def _read_config(key: str, data_type: str = 'int', default=None):
         value = parser['DEFAULT'].get(key, fallback=default)
         if value in (None, ''):
@@ -269,9 +272,18 @@ def load_configuration(path: str) -> EvolverConfig:
     if not writelimit_list:
         writelimit_list = list(coresize_list)
 
+    battle_log_file = _read_config('BATTLE_LOG_FILE', data_type='string')
+    if battle_log_file and not os.path.isabs(battle_log_file):
+        battle_log_file = os.path.abspath(os.path.join(base_path, battle_log_file))
+
+    library_path = _read_config('LIBRARY_PATH', data_type='string')
+    if library_path and not os.path.isabs(library_path):
+        library_path = os.path.abspath(os.path.join(base_path, library_path))
+
     config = EvolverConfig(
         battle_engine=_read_config('BATTLE_ENGINE', data_type='string', default='external') or 'external',
         last_arena=_read_config('LAST_ARENA', data_type='int'),
+        base_path=base_path,
         coresize_list=coresize_list,
         sanitize_list=sanitize_list,
         cycles_list=cycles_list,
@@ -283,7 +295,7 @@ def load_configuration(path: str) -> EvolverConfig:
         numwarriors=_read_config('NUMWARRIORS', data_type='int'),
         alreadyseeded=_read_config('ALREADYSEEDED', data_type='bool'),
         clock_time=_read_config('CLOCK_TIME', data_type='float'),
-        battle_log_file=_read_config('BATTLE_LOG_FILE', data_type='string'),
+        battle_log_file=battle_log_file,
         final_era_only=_read_config('FINAL_ERA_ONLY', data_type='bool'),
         nothing_list=_read_config('NOTHING_LIST', data_type='int_list') or [],
         random_list=_read_config('RANDOM_LIST', data_type='int_list') or [],
@@ -294,7 +306,7 @@ def load_configuration(path: str) -> EvolverConfig:
         magic_number_list=_read_config('MAGIC_NUMBER_LIST', data_type='int_list') or [],
         archive_list=_read_config('ARCHIVE_LIST', data_type='int_list') or [],
         unarchive_list=_read_config('UNARCHIVE_LIST', data_type='int_list') or [],
-        library_path=_read_config('LIBRARY_PATH', data_type='string'),
+        library_path=library_path,
         crossoverrate_list=_read_config('CROSSOVERRATE_LIST', data_type='int_list') or [],
         transpositionrate_list=_read_config('TRANSPOSITIONRATE_LIST', data_type='int_list') or [],
         battlerounds_list=_read_config('BATTLEROUNDS_LIST', data_type='int_list') or [],
@@ -377,10 +389,11 @@ Rules:
         "-d": wardistance,
         "-r": battlerounds,
     }
+    arena_dir = os.path.join(config.base_path, f"arena{arena}")
     cmd = [
         nmars_cmd,
-        os.path.join(f"arena{arena}", f"{cont1}.red"),
-        os.path.join(f"arena{arena}", f"{cont2}.red"),
+        os.path.join(arena_dir, f"{cont1}.red"),
+        os.path.join(arena_dir, f"{cont2}.red"),
     ]
     for flag, value in args.items():
         cmd.extend([flag, str(value)])
@@ -411,8 +424,9 @@ def run_internal_battle(
 
     try:
         # 1. Read warrior files
-        w1_path = os.path.join(f"arena{arena}", f"{cont1}.red")
-        w2_path = os.path.join(f"arena{arena}", f"{cont2}.red")
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
+        w1_path = os.path.join(arena_dir, f"{cont1}.red")
+        w2_path = os.path.join(arena_dir, f"{cont2}.red")
         with open(w1_path, 'r') as f:
             w1_code = f.read()
         with open(w2_path, 'r') as f:
@@ -895,7 +909,7 @@ def run_final_tournament(config: EvolverConfig):
     final_era_index = max(0, len(config.battlerounds_list) - 1)
     print("\n================ Final Tournament ================")
     for arena in range(0, config.last_arena + 1):
-        arena_dir = f"arena{arena}"
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
         if not os.path.isdir(arena_dir):
             print(f"Arena {arena} directory '{arena_dir}' not found. Skipping.")
             continue
@@ -973,24 +987,29 @@ def determine_winner_and_loser(
 def handle_archiving(
     winner: int, loser: int, arena: int, era: int, config: EvolverConfig
 ) -> bool:
+    arena_dir = os.path.join(config.base_path, f"arena{arena}")
+    archive_dir = os.path.join(config.base_path, "archive")
     if config.archive_list[era] != 0 and random.randint(1, config.archive_list[era]) == 1:
         print("storing in archive")
-        with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
+        with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
             winlines = fw.readlines()
         archive_filename = f"{random.randint(1, 9999)}.red"
-        with open(os.path.join("archive", archive_filename), "w") as fd:
+        create_directory_if_not_exists(archive_dir)
+        with open(os.path.join(archive_dir, archive_filename), "w") as fd:
             fd.writelines(winlines)
 
     if config.unarchive_list[era] != 0 and random.randint(1, config.unarchive_list[era]) == 1:
         print("unarchiving")
-        archive_files = os.listdir("archive")
+        if not os.path.isdir(archive_dir):
+            return False
+        archive_files = os.listdir(archive_dir)
         if not archive_files:
             return False
-        with open(os.path.join("archive", random.choice(archive_files))) as fs:
+        with open(os.path.join(archive_dir, random.choice(archive_files))) as fs:
             sourcelines = fs.readlines()
 
         instructions_written = 0
-        with open(os.path.join(f"arena{arena}", f"{loser}.red"), "w") as fl:
+        with open(os.path.join(arena_dir, f"{loser}.red"), "w") as fl:
             for line in sourcelines:
                 instruction = parse_redcode_instruction(line)
                 if instruction is None:
@@ -1017,12 +1036,13 @@ def breed_offspring(
     data_logger: DataLogger,
     scores: list[int],
 ):
-    with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
+    arena_dir = os.path.join(config.base_path, f"arena{arena}")
+    with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
         winlines = fw.readlines()
 
     randomwarrior = str(random.randint(1, config.numwarriors))
     print("winner will breed with " + randomwarrior)
-    with open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r") as fr:
+    with open(os.path.join(arena_dir, f"{randomwarrior}.red"), "r") as fr:
         ranlines = fr.readlines()
 
     if random.randint(1, config.transpositionrate_list[era]) == 1:
@@ -1051,7 +1071,7 @@ def breed_offspring(
     magic_number = weighted_random_number(
         config.coresize_list[arena], config.warlen_list[arena]
     )
-    with open(os.path.join(f"arena{arena}", f"{loser}.red"), "w") as fl:
+    with open(os.path.join(arena_dir, f"{loser}.red"), "w") as fl:
         for i in range(0, config.warlen_list[arena]):
             if random.randint(1, config.crossoverrate_list[era]) == 1:
                 pickingfrom = 2 if pickingfrom == 1 else 1
@@ -1075,7 +1095,9 @@ def breed_offspring(
                     donor_arena = random.randint(0, config.last_arena)
                 print("Nab instruction from arena " + str(donor_arena))
                 donor_file = os.path.join(
-                    f"arena{donor_arena}", f"{random.randint(1, config.numwarriors)}.red"
+                    config.base_path,
+                    f"arena{donor_arena}",
+                    f"{random.randint(1, config.numwarriors)}.red",
                 )
                 with open(donor_file, "r") as donor_handle:
                     donor_lines = donor_handle.readlines()
@@ -1193,12 +1215,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if not active_config.alreadyseeded:
         print("Seeding")
-        create_directory_if_not_exists("archive")
+        archive_dir = os.path.join(active_config.base_path, "archive")
+        create_directory_if_not_exists(archive_dir)
         for arena in range(0, active_config.last_arena + 1):
-            create_directory_if_not_exists(f"arena{arena}")
+            arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
+            create_directory_if_not_exists(arena_dir)
             for warrior_id in range(1, active_config.numwarriors + 1):
                 with open(
-                    os.path.join(f"arena{arena}", f"{warrior_id}.red"), "w"
+                    os.path.join(arena_dir, f"{warrior_id}.red"), "w"
                 ) as warrior_file:
                     for _ in range(1, active_config.warlen_list[arena] + 1):
                         instruction = generate_random_instruction(arena)
