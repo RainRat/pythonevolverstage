@@ -596,7 +596,8 @@ public:
             // jmn_djn_test.txt suite instead implement the branch when either field is
             // non-zero (logical OR). We mirror EMI94's behaviour here to stay aligned
             // with the de facto standard used by other emulators and the upstream
-            // tests.
+            // tests. This policy is documented in AGENTS.md so contributors know that
+            // both the Python and C++ implementations intentionally follow EMI94.
             case JMN:
                 switch (instr.modifier) {
                     case A: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;

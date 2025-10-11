@@ -1,5 +1,7 @@
+import argparse
 import random
 import os
+import sys
 import time
 #import psutil #Not currently active. See bottom of code for how it could be used.
 import configparser
@@ -10,13 +12,14 @@ import ctypes
 import platform
 import re
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, cast
 
 
 @dataclass
 class EvolverConfig:
     battle_engine: str
     last_arena: int
+    base_path: str
     coresize_list: list[int]
     sanitize_list: list[int]
     cycles_list: list[int]
@@ -50,6 +53,27 @@ class EvolverConfig:
     run_final_tournament: bool
 
 
+class _ConfigNotLoaded:
+    def __getattr__(self, item: str):
+        raise RuntimeError(
+            "Active evolver configuration has not been set. Call set_active_config() "
+            "or main() before using module-level helpers."
+        )
+
+
+config = cast(EvolverConfig, _ConfigNotLoaded())
+
+
+def set_active_config(new_config: EvolverConfig) -> None:
+    global config
+    config = new_config
+    _rebuild_instruction_tables(new_config)
+
+
+def get_active_config() -> EvolverConfig:
+    return config
+
+
 def validate_config(config: EvolverConfig, config_path: Optional[str] = None) -> None:
     if config.last_arena is None:
         raise ValueError("LAST_ARENA must be specified in the configuration.")
@@ -80,15 +104,24 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
 
     for idx in range(arena_count):
         core_size = config.coresize_list[idx]
+        sanitize_limit = config.sanitize_list[idx]
         read_limit = config.readlimit_list[idx]
         write_limit = config.writelimit_list[idx]
+
+        if sanitize_limit < 1 or sanitize_limit > core_size:
+            raise ValueError(
+                f"SANITIZE_LIST[{idx + 1}] must be between 1 and the arena's core size "
+                f"(got {sanitize_limit})."
+            )
         if read_limit <= 0 or read_limit > core_size:
             raise ValueError(
-                "READLIMIT_LIST entries must be between 1 and the arena's core size."
+                f"READLIMIT_LIST[{idx + 1}] must be between 1 and the arena's core size "
+                f"(got {read_limit})."
             )
         if write_limit <= 0 or write_limit > core_size:
             raise ValueError(
-                "WRITELIMIT_LIST entries must be between 1 and the arena's core size."
+                f"WRITELIMIT_LIST[{idx + 1}] must be between 1 and the arena's core size "
+                f"(got {write_limit})."
             )
 
     if config.numwarriors is None or config.numwarriors <= 0:
@@ -96,6 +129,12 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
 
     if not config.battlerounds_list:
         raise ValueError("BATTLEROUNDS_LIST must contain at least one value.")
+
+    for idx, rounds in enumerate(config.battlerounds_list, start=1):
+        if rounds < 1:
+            raise ValueError(
+                f"BATTLEROUNDS_LIST[{idx}] must be at least 1 (got {rounds})."
+            )
 
     era_count = len(config.battlerounds_list)
 
@@ -149,8 +188,20 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
                 f"{era_index + 1} must sum to a positive value."
             )
 
-    base_path = os.getcwd()
-    if config_path:
+    for idx, value in enumerate(config.crossoverrate_list, start=1):
+        if value < 1:
+            raise ValueError(
+                f"CROSSOVERRATE_LIST[{idx}] must be at least 1 (got {value})."
+            )
+
+    for idx, value in enumerate(config.transpositionrate_list, start=1):
+        if value < 1:
+            raise ValueError(
+                f"TRANSPOSITIONRATE_LIST[{idx}] must be at least 1 (got {value})."
+            )
+
+    base_path = getattr(config, "base_path", None) or os.getcwd()
+    if config_path and not getattr(config, "base_path", None):
         config_directory = os.path.dirname(os.path.abspath(config_path))
         if config_directory:
             base_path = config_directory
@@ -180,12 +231,17 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
                     f"Required directory '{directory}' does not exist but ALREADYSEEDED is true."
                 )
 
+    if config.clock_time is None or config.clock_time <= 0:
+        raise ValueError("CLOCK_TIME must be a positive number of hours.")
+
 
 def load_configuration(path: str) -> EvolverConfig:
     parser = configparser.ConfigParser()
     read_files = parser.read(path)
     if not read_files:
         raise FileNotFoundError(f"Configuration file '{path}' not found")
+
+    base_path = os.path.dirname(os.path.abspath(path)) or os.getcwd()
 
     def _read_config(key: str, data_type: str = 'int', default=None):
         value = parser['DEFAULT'].get(key, fallback=default)
@@ -216,9 +272,18 @@ def load_configuration(path: str) -> EvolverConfig:
     if not writelimit_list:
         writelimit_list = list(coresize_list)
 
+    battle_log_file = _read_config('BATTLE_LOG_FILE', data_type='string')
+    if battle_log_file and not os.path.isabs(battle_log_file):
+        battle_log_file = os.path.abspath(os.path.join(base_path, battle_log_file))
+
+    library_path = _read_config('LIBRARY_PATH', data_type='string')
+    if library_path and not os.path.isabs(library_path):
+        library_path = os.path.abspath(os.path.join(base_path, library_path))
+
     config = EvolverConfig(
         battle_engine=_read_config('BATTLE_ENGINE', data_type='string', default='external') or 'external',
         last_arena=_read_config('LAST_ARENA', data_type='int'),
+        base_path=base_path,
         coresize_list=coresize_list,
         sanitize_list=sanitize_list,
         cycles_list=cycles_list,
@@ -230,7 +295,7 @@ def load_configuration(path: str) -> EvolverConfig:
         numwarriors=_read_config('NUMWARRIORS', data_type='int'),
         alreadyseeded=_read_config('ALREADYSEEDED', data_type='bool'),
         clock_time=_read_config('CLOCK_TIME', data_type='float'),
-        battle_log_file=_read_config('BATTLE_LOG_FILE', data_type='string'),
+        battle_log_file=battle_log_file,
         final_era_only=_read_config('FINAL_ERA_ONLY', data_type='bool'),
         nothing_list=_read_config('NOTHING_LIST', data_type='int_list') or [],
         random_list=_read_config('RANDOM_LIST', data_type='int_list') or [],
@@ -241,7 +306,7 @@ def load_configuration(path: str) -> EvolverConfig:
         magic_number_list=_read_config('MAGIC_NUMBER_LIST', data_type='int_list') or [],
         archive_list=_read_config('ARCHIVE_LIST', data_type='int_list') or [],
         unarchive_list=_read_config('UNARCHIVE_LIST', data_type='int_list') or [],
-        library_path=_read_config('LIBRARY_PATH', data_type='string'),
+        library_path=library_path,
         crossoverrate_list=_read_config('CROSSOVERRATE_LIST', data_type='int_list') or [],
         transpositionrate_list=_read_config('TRANSPOSITIONRATE_LIST', data_type='int_list') or [],
         battlerounds_list=_read_config('BATTLEROUNDS_LIST', data_type='int_list') or [],
@@ -324,10 +389,11 @@ Rules:
         "-d": wardistance,
         "-r": battlerounds,
     }
+    arena_dir = os.path.join(config.base_path, f"arena{arena}")
     cmd = [
         nmars_cmd,
-        os.path.join(f"arena{arena}", f"{cont1}.red"),
-        os.path.join(f"arena{arena}", f"{cont2}.red"),
+        os.path.join(arena_dir, f"{cont1}.red"),
+        os.path.join(arena_dir, f"{cont2}.red"),
     ]
     for flag, value in args.items():
         cmd.extend([flag, str(value)])
@@ -358,8 +424,9 @@ def run_internal_battle(
 
     try:
         # 1. Read warrior files
-        w1_path = os.path.join(f"arena{arena}", f"{cont1}.red")
-        w2_path = os.path.join(f"arena{arena}", f"{cont2}.red")
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
+        w1_path = os.path.join(arena_dir, f"{cont1}.red")
+        w2_path = os.path.join(arena_dir, f"{cont2}.red")
         with open(w1_path, 'r') as f:
             w1_code = f.read()
         with open(w2_path, 'r') as f:
@@ -464,12 +531,10 @@ def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool =
         print(numline)
     return warriors, scores
 
-config = load_configuration('settings.ini')
-
 DEFAULT_MODE = '$'
 DEFAULT_MODIFIER = 'F'
-ADDRESSING_MODES = set(config.instr_modes) if config.instr_modes else set()
-ADDRESSING_MODES.update({'$', '#', '@', '<', '>', '*', '{', '}'})
+BASE_ADDRESSING_MODES = {'$', '#', '@', '<', '>', '*', '{', '}'}
+ADDRESSING_MODES: set[str] = set(BASE_ADDRESSING_MODES)
 
 CANONICAL_SUPPORTED_OPCODES = {
     'DAT', 'MOV', 'ADD', 'SUB', 'MUL', 'DIV', 'MOD',
@@ -486,24 +551,39 @@ UNSUPPORTED_OPCODES = {'LDP', 'STP'}
 def canonicalize_opcode(opcode: str) -> str:
     return OPCODE_ALIASES.get(opcode, opcode)
 
-GENERATION_OPCODE_POOL = []
-_invalid_generation_opcodes = set()
-if config.instr_set:
-    for instr in config.instr_set:
+
+GENERATION_OPCODE_POOL: list[str] = []
+
+
+def _rebuild_instruction_tables(active_config: EvolverConfig) -> None:
+    global ADDRESSING_MODES, GENERATION_OPCODE_POOL
+
+    ADDRESSING_MODES = set(BASE_ADDRESSING_MODES)
+    if active_config.instr_modes:
+        ADDRESSING_MODES.update(
+            mode.strip() for mode in active_config.instr_modes if mode.strip()
+        )
+
+    invalid_generation_opcodes = set()
+    GENERATION_OPCODE_POOL = []
+    for instr in active_config.instr_set or []:
         normalized = instr.strip().upper()
         if not normalized:
             continue
         canonical_opcode = OPCODE_ALIASES.get(normalized, normalized)
-        if canonical_opcode in UNSUPPORTED_OPCODES or canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
-            _invalid_generation_opcodes.add(normalized)
+        if (
+            canonical_opcode in UNSUPPORTED_OPCODES
+            or canonical_opcode not in CANONICAL_SUPPORTED_OPCODES
+        ):
+            invalid_generation_opcodes.add(normalized)
             continue
         GENERATION_OPCODE_POOL.append(canonical_opcode)
-if _invalid_generation_opcodes:
-    raise ValueError(
-        "Unsupported opcodes specified in INSTR_SET: "
-        + ', '.join(sorted(_invalid_generation_opcodes))
-    )
-del _invalid_generation_opcodes
+
+    if invalid_generation_opcodes:
+        raise ValueError(
+            "Unsupported opcodes specified in INSTR_SET: "
+            + ', '.join(sorted(invalid_generation_opcodes))
+        )
 
 def weighted_random_number(size, length):
     if random.randint(1,4)==1:
@@ -829,7 +909,7 @@ def run_final_tournament(config: EvolverConfig):
     final_era_index = max(0, len(config.battlerounds_list) - 1)
     print("\n================ Final Tournament ================")
     for arena in range(0, config.last_arena + 1):
-        arena_dir = f"arena{arena}"
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
         if not os.path.isdir(arena_dir):
             print(f"Arena {arena} directory '{arena_dir}' not found. Skipping.")
             continue
@@ -868,6 +948,18 @@ def run_final_tournament(config: EvolverConfig):
         )
 
 
+def _build_marble_bag(era: int, config: EvolverConfig) -> list[Marble]:
+    return (
+        [Marble.DO_NOTHING] * config.nothing_list[era]
+        + [Marble.MAJOR_MUTATION] * config.random_list[era]
+        + [Marble.NAB_INSTRUCTION] * config.nab_list[era]
+        + [Marble.MINOR_MUTATION] * config.mini_mut_list[era]
+        + [Marble.MICRO_MUTATION] * config.micro_mut_list[era]
+        + [Marble.INSTRUCTION_LIBRARY] * config.library_list[era]
+        + [Marble.MAGIC_NUMBER_MUTATION] * config.magic_number_list[era]
+    )
+
+
 def select_opponents(num_warriors: int) -> tuple[int, int]:
     cont1 = random.randint(1, num_warriors)
     cont2 = cont1
@@ -895,24 +987,29 @@ def determine_winner_and_loser(
 def handle_archiving(
     winner: int, loser: int, arena: int, era: int, config: EvolverConfig
 ) -> bool:
+    arena_dir = os.path.join(config.base_path, f"arena{arena}")
+    archive_dir = os.path.join(config.base_path, "archive")
     if config.archive_list[era] != 0 and random.randint(1, config.archive_list[era]) == 1:
         print("storing in archive")
-        with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
+        with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
             winlines = fw.readlines()
         archive_filename = f"{random.randint(1, 9999)}.red"
-        with open(os.path.join("archive", archive_filename), "w") as fd:
+        create_directory_if_not_exists(archive_dir)
+        with open(os.path.join(archive_dir, archive_filename), "w") as fd:
             fd.writelines(winlines)
 
     if config.unarchive_list[era] != 0 and random.randint(1, config.unarchive_list[era]) == 1:
         print("unarchiving")
-        archive_files = os.listdir("archive")
+        if not os.path.isdir(archive_dir):
+            return False
+        archive_files = os.listdir(archive_dir)
         if not archive_files:
             return False
-        with open(os.path.join("archive", random.choice(archive_files))) as fs:
+        with open(os.path.join(archive_dir, random.choice(archive_files))) as fs:
             sourcelines = fs.readlines()
 
         instructions_written = 0
-        with open(os.path.join(f"arena{arena}", f"{loser}.red"), "w") as fl:
+        with open(os.path.join(arena_dir, f"{loser}.red"), "w") as fl:
             for line in sourcelines:
                 instruction = parse_redcode_instruction(line)
                 if instruction is None:
@@ -939,12 +1036,13 @@ def breed_offspring(
     data_logger: DataLogger,
     scores: list[int],
 ):
-    with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
+    arena_dir = os.path.join(config.base_path, f"arena{arena}")
+    with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
         winlines = fw.readlines()
 
     randomwarrior = str(random.randint(1, config.numwarriors))
     print("winner will breed with " + randomwarrior)
-    with open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r") as fr:
+    with open(os.path.join(arena_dir, f"{randomwarrior}.red"), "r") as fr:
         ranlines = fr.readlines()
 
     if random.randint(1, config.transpositionrate_list[era]) == 1:
@@ -973,7 +1071,7 @@ def breed_offspring(
     magic_number = weighted_random_number(
         config.coresize_list[arena], config.warlen_list[arena]
     )
-    with open(os.path.join(f"arena{arena}", f"{loser}.red"), "w") as fl:
+    with open(os.path.join(arena_dir, f"{loser}.red"), "w") as fl:
         for i in range(0, config.warlen_list[arena]):
             if random.randint(1, config.crossoverrate_list[era]) == 1:
                 pickingfrom = 2 if pickingfrom == 1 else 1
@@ -997,7 +1095,9 @@ def breed_offspring(
                     donor_arena = random.randint(0, config.last_arena)
                 print("Nab instruction from arena " + str(donor_arena))
                 donor_file = os.path.join(
-                    f"arena{donor_arena}", f"{random.randint(1, config.numwarriors)}.red"
+                    config.base_path,
+                    f"arena{donor_arena}",
+                    f"{random.randint(1, config.numwarriors)}.red",
                 )
                 with open(donor_file, "r") as donor_handle:
                     donor_lines = donor_handle.readlines()
@@ -1072,87 +1172,133 @@ def breed_offspring(
         bred_with=randomwarrior,
     )
 
-if os.getenv("PYTHONEVOLVER_SKIP_MAIN") == "1":
-    pass
-else:
-    if not config.alreadyseeded:
-      print("Seeding")
-      create_directory_if_not_exists("archive")
-      for arena in range (0,config.last_arena+1):
-        create_directory_if_not_exists(f"arena{arena}")
-        for i in range(1, config.numwarriors+1):
-          with open(os.path.join(f"arena{arena}", f"{i}.red"), "w") as f:
-              for j in range(1, config.warlen_list[arena]+1):
-                #Biasing toward more viable warriors: 3 in 4 chance of choosing an address within the warrior.
-                #Same bias in mutation.
-                instruction = generate_random_instruction(arena)
-                f.write(instruction_to_line(instruction, arena))
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="Python Evolver Stage")
+    parser.add_argument(
+        "--config",
+        default="settings.ini",
+        help="Path to configuration INI file (default: settings.ini)",
+    )
+    parser.add_argument(
+        "--engine",
+        choices=["internal", "external"],
+        help="Override the configured battle engine",
+    )
+    parser.add_argument(
+        "--final-tournament",
+        action="store_true",
+        help="Force a final tournament once the evolution loop completes",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        help="Seed the RNG for reproducible runs",
+    )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print battle engine output while evolving",
+    )
 
-    starttime=time.time() #time in seconds
-    era=-1
-    data_logger = DataLogger(filename=config.battle_log_file)
+    args = parser.parse_args(argv)
+
+    active_config = load_configuration(args.config)
+    if args.engine:
+        active_config.battle_engine = args.engine
+    if args.final_tournament:
+        active_config.run_final_tournament = True
+
+    set_active_config(active_config)
+
+    if args.seed is not None:
+        random.seed(args.seed)
+
+    if not active_config.alreadyseeded:
+        print("Seeding")
+        archive_dir = os.path.join(active_config.base_path, "archive")
+        create_directory_if_not_exists(archive_dir)
+        for arena in range(0, active_config.last_arena + 1):
+            arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
+            create_directory_if_not_exists(arena_dir)
+            for warrior_id in range(1, active_config.numwarriors + 1):
+                with open(
+                    os.path.join(arena_dir, f"{warrior_id}.red"), "w"
+                ) as warrior_file:
+                    for _ in range(1, active_config.warlen_list[arena] + 1):
+                        instruction = generate_random_instruction(arena)
+                        warrior_file.write(instruction_to_line(instruction, arena))
+
+    start_time = time.time()
+    era = -1
+    data_logger = DataLogger(filename=active_config.battle_log_file)
     bag: list[Marble] = []
     interrupted = False
+    era_count = len(active_config.battlerounds_list)
+    era_duration = active_config.clock_time / era_count
 
     try:
-      while(True):
-        #before we do anything, determine which era we are in.
-        prevera=era
-        curtime=time.time()
-        runtime_in_hours=(curtime-starttime)/60/60
-        era=0
-        if runtime_in_hours>config.clock_time*(1/3):
-          era=1
-        if runtime_in_hours>config.clock_time*(2/3):
-          era=2
-        if runtime_in_hours>config.clock_time:
-          print("Clock time exceeded. Ending evolution loop.")
-          break
-        if config.final_era_only==True:
-          era=2
-        if era!=prevera:
-          print(f"************** Switching from era {prevera + 1} to {era + 1} *******************")
-          bag = [Marble.DO_NOTHING]*config.nothing_list[era] + [Marble.MAJOR_MUTATION]*config.random_list[era] + \
-                [Marble.NAB_INSTRUCTION]*config.nab_list[era] + [Marble.MINOR_MUTATION]*config.mini_mut_list[era] + \
-                [Marble.MICRO_MUTATION]*config.micro_mut_list[era] + [Marble.INSTRUCTION_LIBRARY]*config.library_list[era] + \
-                [Marble.MAGIC_NUMBER_MUTATION]*config.magic_number_list[era]
+        while True:
+            previous_era = era
+            runtime_in_hours = (time.time() - start_time) / 3600
 
-        print ("{0:.2f}".format(config.clock_time-runtime_in_hours) + \
-               " hours remaining ({0:.2f}%".format(runtime_in_hours/config.clock_time*100)+" complete) Era: "+str(era+1))
+            if runtime_in_hours > active_config.clock_time:
+                print("Clock time exceeded. Ending evolution loop.")
+                break
 
-        arena = random.randint(0, config.last_arena)
-        cont1, cont2 = select_opponents(config.numwarriors)
-        warriors, scores = execute_battle(arena, cont1, cont2, era)
-        winner, loser = determine_winner_and_loser(warriors, scores)
+            if active_config.final_era_only:
+                era = era_count - 1
+            else:
+                era = min(int(runtime_in_hours / era_duration), era_count - 1)
 
-        if handle_archiving(winner, loser, arena, era, config):
-          continue
+            if era != previous_era:
+                print(
+                    f"************** Switching from era {previous_era + 1} to {era + 1} *******************"
+                )
+                bag = _build_marble_bag(era, active_config)
 
-        breed_offspring(
-          winner,
-          loser,
-          arena,
-          era,
-          config,
-          bag,
-          data_logger,
-          scores,
-        )
+            hours_remaining = active_config.clock_time - runtime_in_hours
+            percent_complete = runtime_in_hours / active_config.clock_time * 100
+            print(
+                f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) Era: {era + 1}"
+            )
+
+            arena_index = random.randint(0, active_config.last_arena)
+            cont1, cont2 = select_opponents(active_config.numwarriors)
+            warriors, scores = execute_battle(
+                arena_index,
+                cont1,
+                cont2,
+                era,
+                verbose=args.verbose,
+            )
+            winner, loser = determine_winner_and_loser(warriors, scores)
+
+            if handle_archiving(winner, loser, arena_index, era, active_config):
+                continue
+
+            breed_offspring(
+                winner,
+                loser,
+                arena_index,
+                era,
+                active_config,
+                bag,
+                data_logger,
+                scores,
+            )
 
     except KeyboardInterrupt:
-      print("Evolution interrupted by user.")
-      interrupted = True
+        print("Evolution interrupted by user.")
+        interrupted = True
 
     if not interrupted:
-      print("Evolution loop completed.")
+        print("Evolution loop completed.")
 
-    if config.run_final_tournament:
-      run_final_tournament(config)
+    if active_config.run_final_tournament:
+        run_final_tournament(active_config)
 
-    #  time.sleep(3) #uncomment this for simple proportion of sleep if you're using computer for something else
+    return 0
 
-    #experimental. detect if computer being used and yield to other processes.
-    #  while psutil.cpu_percent()>30: #I'm not sure what percentage of CPU usage to watch for. Probably depends
-                                      # from computer to computer and personal taste.
-    #    print("High CPU Usage. Pausing for 3 seconds.")
-    #    time.sleep(3)
+
+if __name__ == "__main__" and os.getenv("PYTHONEVOLVER_SKIP_MAIN") != "1":
+    sys.exit(main())

@@ -18,6 +18,8 @@ MOV.I {-3,*-3
 
 The cpp program:
 -should safely exit if it encounters a problem, but is not responsible for making assumptions about what was intended.
+-returns strings that begin with `"ERROR:"` when invalid warriors or parameters are detected. The Python runner treats these as
+ fatal errors and raises an exception so the run halts cleanly.
 
 **Both the Python and CPP should gracefully exit or throw an exception if there is an error or unexpected input. If the program exits, the last-known good warriors are still on the disk and nothing is lost. If the program does things like declaring battles a draw, or making assumptions about the redcode that are not what is actually written, it could corrupt the whole run.**
 
@@ -29,11 +31,12 @@ Adherence to spec:
 
 Not supported:
 -Battles between more than 2 warriors at a time.
--Read/Write limits: the cpp has this feature, but none of the tourneys use it, so it is absent from the Python, and the cpp code is untested.
 -ORG pseudo-opcode: All of the warriors being evolved start at the first instruction to be easier to combine. If the Python or CPP encounters one, an error should be raised and the run halted.
 -LDP/STP opcodes: Listed in the extended draft, but it doesn't work well with evolution, so not supported
 
 Supported:
+-Read/Write limits: enforced in both the Python and C++ implementations. Configuration files that request limits outside the core size are rejected during validation.
+-JMN.I/DJN.I: we mirror the EMI94 reference implementation's "logical OR" semantics for multi-field tests. This matches the upstream test suite and avoids surprising contributors who compare against EMI94 or pMars.
 -NOP: in the Extended spec, so it is supported.
 -SNE, SEQ: in the Extended spec, so it is supported. SEQ is an alias for CMP, but CMP is more commonly used, so SEQ will be accepted as input, but internally only CMP is used.
 -`{`, `}` and `*` modes: in the Extended spec, so it is supported.
