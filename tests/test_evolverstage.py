@@ -14,6 +14,12 @@ os.environ.setdefault("PYTHONEVOLVER_SKIP_MAIN", "1")
 
 from test_support import compile_worker
 
+import evolverstage
+
+DEFAULT_SETTINGS_PATH = PROJECT_ROOT / "settings.ini"
+_DEFAULT_CONFIG = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+evolverstage.set_active_config(_DEFAULT_CONFIG)
+
 
 def test_load_configuration_parses_types(tmp_path):
     config_path = tmp_path / "config.ini"
@@ -24,7 +30,7 @@ def test_load_configuration_parses_types(tmp_path):
             BATTLE_ENGINE = internal
             LAST_ARENA = 1
             CORESIZE_LIST = 8000, 8192
-            SANITIZE_LIST = 0,1
+            SANITIZE_LIST = 80, 81
             CYCLES_LIST = 1000, 2000
             PROCESSES_LIST = 8, 16
             WARLEN_LIST = 20, 40
@@ -61,7 +67,7 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.battle_engine == "internal"
     assert config.last_arena == 1
     assert config.coresize_list == [8000, 8192]
-    assert config.sanitize_list == [0, 1]
+    assert config.sanitize_list == [80, 81]
     assert config.cycles_list == [1000, 2000]
     assert config.processes_list == [8, 16]
     assert config.warlen_list == [20, 40]
@@ -105,6 +111,7 @@ def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
             WARDISTANCE_LIST = 5, 5
             NUMWARRIORS = 10
             ALREADYSEEDED = false
+            CLOCK_TIME = 1
             BATTLEROUNDS_LIST = 1, 1
             NOTHING_LIST = 1, 1
             RANDOM_LIST = 1, 1
@@ -143,6 +150,7 @@ def test_load_configuration_rejects_negative_marble_counts(tmp_path):
             WARDISTANCE_LIST = 5
             NUMWARRIORS = 10
             ALREADYSEEDED = false
+            CLOCK_TIME = 1
             BATTLEROUNDS_LIST = 5
             NOTHING_LIST = 1
             RANDOM_LIST = 0
@@ -181,6 +189,7 @@ def test_load_configuration_checks_seeded_directories(tmp_path):
             WARDISTANCE_LIST = 5, 5
             NUMWARRIORS = 10
             ALREADYSEEDED = true
+            CLOCK_TIME = 1
             BATTLEROUNDS_LIST = 5, 5
             NOTHING_LIST = 1,1
             RANDOM_LIST = 1,1
@@ -226,6 +235,10 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
     import evolverstage
 
     importlib.reload(evolverstage)
+
+    evolverstage.set_active_config(
+        evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+    )
 
     arena_dir = tmp_path / "arena1"
     arena_dir.mkdir()
