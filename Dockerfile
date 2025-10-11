@@ -10,8 +10,11 @@ WORKDIR /app
 # Copy project files
 COPY . .
 
-# Build the optional C++ worker library
-RUN g++ -std=c++17 -shared -fPIC redcode-worker.cpp -o redcode_worker.so
+# Build the optional C++ worker library using CMake
+RUN mkdir -p build \
+    && cd build \
+    && cmake .. \
+    && cmake --build .
 
 # Default command runs the evolver
 CMD ["python", "evolverstage.py"]

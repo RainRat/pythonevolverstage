@@ -10,6 +10,7 @@ from enum import Enum
 import csv
 import ctypes
 import platform
+from pathlib import Path
 import re
 from dataclasses import dataclass
 from typing import List, Optional, cast
@@ -342,25 +343,90 @@ class Marble(Enum):
 
 # --- C++ Worker Library Loading ---
 CPP_WORKER_LIB = None
-try:
-    lib_name = "redcode_worker.so"
-    if platform.system() == "Windows":
-        lib_name = "redcode_worker.dll"
-    elif platform.system() == "Darwin":
-        lib_name = "redcode_worker.dylib"
 
-    lib_path = os.path.abspath(lib_name)
-    CPP_WORKER_LIB = ctypes.CDLL(lib_path)
 
-    CPP_WORKER_LIB.run_battle.argtypes = [
-        ctypes.c_char_p, ctypes.c_int,
-        ctypes.c_char_p, ctypes.c_int,
-        ctypes.c_int, ctypes.c_int, ctypes.c_int,
-        ctypes.c_int, ctypes.c_int,
-        ctypes.c_int, ctypes.c_int, ctypes.c_int,
+def _worker_library_extension() -> str:
+    system = platform.system()
+    if system == "Windows":
+        return ".dll"
+    if system == "Darwin":
+        return ".dylib"
+    return ".so"
+
+
+def _candidate_worker_paths() -> list[Path]:
+    lib_name = f"redcode_worker{_worker_library_extension()}"
+    module_dir = Path(__file__).resolve().parent
+    project_root = module_dir.parent
+    candidates: list[Path] = [
+        (module_dir / lib_name).resolve(),
+        (project_root / lib_name).resolve(),
     ]
-    CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
-    print("Successfully loaded C++ Redcode worker.")
+
+    env_override = os.environ.get("REDCODE_WORKER_PATH")
+    if env_override:
+        env_path = Path(env_override).expanduser()
+        try:
+            candidates.append(env_path.resolve(strict=False))
+        except RuntimeError:
+            candidates.append(env_path)
+        if env_path.is_dir():
+            try:
+                candidates.append((env_path / lib_name).resolve(strict=False))
+            except RuntimeError:
+                candidates.append(env_path / lib_name)
+
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_candidates = []
+    for path in candidates:
+        try:
+            key = path if path.is_absolute() else path.resolve(strict=False)
+        except RuntimeError:
+            key = path
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_candidates.append(path)
+    return unique_candidates
+
+
+def _format_candidate(path: Path) -> str:
+    try:
+        resolved = path if path.is_absolute() else path.resolve(strict=False)
+    except RuntimeError:
+        resolved = path
+    return str(resolved)
+
+
+try:
+    candidates = _candidate_worker_paths()
+    loaded_path: Optional[Path] = None
+    for candidate in candidates:
+        try:
+            CPP_WORKER_LIB = ctypes.CDLL(str(candidate))
+            loaded_path = candidate
+            break
+        except OSError:
+            continue
+
+    if CPP_WORKER_LIB is not None and loaded_path is not None:
+        CPP_WORKER_LIB.run_battle.argtypes = [
+            ctypes.c_char_p, ctypes.c_int,
+            ctypes.c_char_p, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ]
+        CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
+        print(
+            "Successfully loaded C++ Redcode worker from "
+            f"{_format_candidate(loaded_path)}."
+        )
+    else:
+        tried_paths = ", ".join(_format_candidate(path) for path in candidates)
+        print(f"Could not load C++ Redcode worker. Tried: {tried_paths}")
+        print("Internal battle engine will not be available.")
 except Exception as e:
     print(f"Could not load C++ Redcode worker: {e}")
     print("Internal battle engine will not be available.")
