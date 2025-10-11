@@ -20,7 +20,7 @@ const int DEFAULT_MIN_DISTANCE = 100;
 const int MAX_CORE_SIZE = 55440;
 const int MAX_CYCLES = 500000;
 const int MAX_PROCESSES = 10000;
-const int MAX_WARRIOR_LENGTH = 200;
+const int MAX_WARRIOR_LENGTH = MAX_CORE_SIZE;
 const int MAX_MIN_DISTANCE = 200;
 
 // --- Enums for Redcode ---
@@ -679,7 +679,16 @@ public:
 
 
 // --- Battle Manager ---
-void validate_battle_parameters(int core_size, int max_cycles, int max_processes, int min_distance, int rounds) {
+void validate_battle_parameters(
+    int core_size,
+    int max_cycles,
+    int max_processes,
+    int read_limit,
+    int write_limit,
+    int min_distance,
+    int max_warrior_length,
+    int rounds
+) {
     if (core_size < 2) {
         throw std::runtime_error("Core size must be at least 2");
     }
@@ -698,6 +707,12 @@ void validate_battle_parameters(int core_size, int max_cycles, int max_processes
             "Max processes must be between 1 and " + std::to_string(MAX_PROCESSES)
         );
     }
+    if (read_limit <= 0 || read_limit > core_size) {
+        throw std::runtime_error("Read limit must be between 1 and the core size");
+    }
+    if (write_limit <= 0 || write_limit > core_size) {
+        throw std::runtime_error("Write limit must be between 1 and the core size");
+    }
     if (min_distance < 0 || min_distance > MAX_MIN_DISTANCE) {
         throw std::runtime_error(
             "Min distance must be between 0 and " + std::to_string(MAX_MIN_DISTANCE)
@@ -705,6 +720,14 @@ void validate_battle_parameters(int core_size, int max_cycles, int max_processes
     }
     if (min_distance > core_size / 2) {
         throw std::runtime_error("Min distance is too large for the given core size");
+    }
+    if (max_warrior_length <= 0 || max_warrior_length > MAX_WARRIOR_LENGTH) {
+        throw std::runtime_error(
+            "Max warrior length must be between 1 and " + std::to_string(MAX_WARRIOR_LENGTH)
+        );
+    }
+    if (max_warrior_length > core_size) {
+        throw std::runtime_error("Max warrior length cannot exceed the core size");
     }
     if (rounds <= 0) {
         throw std::runtime_error("Number of rounds must be positive");
@@ -716,7 +739,8 @@ extern "C" {
         const char* warrior1_code, int w1_id,
         const char* warrior2_code, int w2_id,
         int core_size, int max_cycles, int max_processes,
-        int min_distance, int rounds
+        int read_limit, int write_limit,
+        int min_distance, int max_warrior_length, int rounds
     ) {
         static std::string response;
         try {
@@ -724,7 +748,16 @@ extern "C" {
                 throw std::runtime_error("Null warrior source provided");
             }
 
-            validate_battle_parameters(core_size, max_cycles, max_processes, min_distance, rounds);
+            validate_battle_parameters(
+                core_size,
+                max_cycles,
+                max_processes,
+                read_limit,
+                write_limit,
+                min_distance,
+                max_warrior_length,
+                rounds
+            );
 
             auto w1_instrs = parse_warrior(warrior1_code);
             auto w2_instrs = parse_warrior(warrior2_code);
@@ -735,8 +768,17 @@ extern "C" {
             if (w2_instrs.empty()) {
                 throw std::runtime_error("Warrior 2 contains no executable instructions");
             }
-            if (static_cast<int>(w1_instrs.size()) > core_size || static_cast<int>(w2_instrs.size()) > core_size) {
-                throw std::runtime_error("Warrior length exceeds core size");
+            if (static_cast<int>(w1_instrs.size()) > max_warrior_length) {
+                throw std::runtime_error(
+                    "Warrior 1 length exceeds the configured maximum of " +
+                    std::to_string(max_warrior_length)
+                );
+            }
+            if (static_cast<int>(w2_instrs.size()) > max_warrior_length) {
+                throw std::runtime_error(
+                    "Warrior 2 length exceeds the configured maximum of " +
+                    std::to_string(max_warrior_length)
+                );
             }
 
             std::random_device rd;
@@ -777,12 +819,12 @@ extern "C" {
                     if (!core.process_queues[0].empty()) {
                         WarriorProcess p = core.process_queues[0].front();
                         core.process_queues[0].pop_front();
-                        core.execute(p, core_size, core_size, max_processes);
+                        core.execute(p, read_limit, write_limit, max_processes);
                     }
                     if (!core.process_queues[1].empty()) {
                         WarriorProcess p = core.process_queues[1].front();
                         core.process_queues[1].pop_front();
-                        core.execute(p, core_size, core_size, max_processes);
+                        core.execute(p, read_limit, write_limit, max_processes);
                     }
                 }
 

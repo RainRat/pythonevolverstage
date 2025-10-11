@@ -241,6 +241,8 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
         coresize=8000,
         cycles=200,
         processes=8000,
+        readlimit=8000,
+        writelimit=8000,
         warlen=20,
         wardistance=1,
         battlerounds=10,

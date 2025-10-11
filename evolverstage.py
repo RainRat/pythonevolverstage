@@ -21,6 +21,8 @@ class EvolverConfig:
     sanitize_list: list[int]
     cycles_list: list[int]
     processes_list: list[int]
+    readlimit_list: list[int]
+    writelimit_list: list[int]
     warlen_list: list[int]
     wardistance_list: list[int]
     numwarriors: int
@@ -63,6 +65,8 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
         "SANITIZE_LIST": config.sanitize_list,
         "CYCLES_LIST": config.cycles_list,
         "PROCESSES_LIST": config.processes_list,
+        "READLIMIT_LIST": config.readlimit_list,
+        "WRITELIMIT_LIST": config.writelimit_list,
         "WARLEN_LIST": config.warlen_list,
         "WARDISTANCE_LIST": config.wardistance_list,
     }
@@ -72,6 +76,19 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
             raise ValueError(
                 f"{name} must contain {arena_count} entries (one for each arena),"
                 f" but {len(values)} value(s) were provided."
+            )
+
+    for idx in range(arena_count):
+        core_size = config.coresize_list[idx]
+        read_limit = config.readlimit_list[idx]
+        write_limit = config.writelimit_list[idx]
+        if read_limit <= 0 or read_limit > core_size:
+            raise ValueError(
+                "READLIMIT_LIST entries must be between 1 and the arena's core size."
+            )
+        if write_limit <= 0 or write_limit > core_size:
+            raise ValueError(
+                "WRITELIMIT_LIST entries must be between 1 and the arena's core size."
             )
 
     if config.numwarriors is None or config.numwarriors <= 0:
@@ -185,15 +202,31 @@ def load_configuration(path: str) -> EvolverConfig:
         }
         return data_type_mapping.get(data_type, lambda x: x.strip() or None)(value)
 
+    coresize_list = _read_config('CORESIZE_LIST', data_type='int_list') or []
+    sanitize_list = _read_config('SANITIZE_LIST', data_type='int_list') or []
+    cycles_list = _read_config('CYCLES_LIST', data_type='int_list') or []
+    processes_list = _read_config('PROCESSES_LIST', data_type='int_list') or []
+    readlimit_list = _read_config('READLIMIT_LIST', data_type='int_list')
+    writelimit_list = _read_config('WRITELIMIT_LIST', data_type='int_list')
+    warlen_list = _read_config('WARLEN_LIST', data_type='int_list') or []
+    wardistance_list = _read_config('WARDISTANCE_LIST', data_type='int_list') or []
+
+    if not readlimit_list:
+        readlimit_list = list(coresize_list)
+    if not writelimit_list:
+        writelimit_list = list(coresize_list)
+
     config = EvolverConfig(
         battle_engine=_read_config('BATTLE_ENGINE', data_type='string', default='external') or 'external',
         last_arena=_read_config('LAST_ARENA', data_type='int'),
-        coresize_list=_read_config('CORESIZE_LIST', data_type='int_list') or [],
-        sanitize_list=_read_config('SANITIZE_LIST', data_type='int_list') or [],
-        cycles_list=_read_config('CYCLES_LIST', data_type='int_list') or [],
-        processes_list=_read_config('PROCESSES_LIST', data_type='int_list') or [],
-        warlen_list=_read_config('WARLEN_LIST', data_type='int_list') or [],
-        wardistance_list=_read_config('WARDISTANCE_LIST', data_type='int_list') or [],
+        coresize_list=coresize_list,
+        sanitize_list=sanitize_list,
+        cycles_list=cycles_list,
+        processes_list=processes_list,
+        readlimit_list=readlimit_list,
+        writelimit_list=writelimit_list,
+        warlen_list=warlen_list,
+        wardistance_list=wardistance_list,
         numwarriors=_read_config('NUMWARRIORS', data_type='int'),
         alreadyseeded=_read_config('ALREADYSEEDED', data_type='bool'),
         clock_time=_read_config('CLOCK_TIME', data_type='float'),
@@ -257,8 +290,9 @@ try:
     CPP_WORKER_LIB.run_battle.argtypes = [
         ctypes.c_char_p, ctypes.c_int,
         ctypes.c_char_p, ctypes.c_int,
-        ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
-        ctypes.c_int
+        ctypes.c_int, ctypes.c_int, ctypes.c_int,
+        ctypes.c_int, ctypes.c_int,
+        ctypes.c_int, ctypes.c_int, ctypes.c_int,
     ]
     CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
     print("Successfully loaded C++ Redcode worker.")
@@ -305,7 +339,19 @@ Rules:
     print(f"An error occurred: {e}")
   return None
 
-def run_internal_battle(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
+def run_internal_battle(
+    arena,
+    cont1,
+    cont2,
+    coresize,
+    cycles,
+    processes,
+    readlimit,
+    writelimit,
+    warlen,
+    wardistance,
+    battlerounds,
+):
     if not CPP_WORKER_LIB:
         print("C++ worker not available. Cannot run internal battle. Returning a draw.")
         return f"{cont1} 0 0 0 0 scores\n{cont2} 0 0 0 0 scores"
@@ -328,7 +374,10 @@ def run_internal_battle(arena, cont1, cont2, coresize, cycles, processes, warlen
             coresize,
             cycles,
             processes,
+            readlimit,
+            writelimit,
             wardistance,
+            warlen,
             battlerounds
         )
 
@@ -358,6 +407,8 @@ def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool =
             config.coresize_list[arena],
             config.cycles_list[arena],
             config.processes_list[arena],
+            config.readlimit_list[arena],
+            config.writelimit_list[arena],
             config.warlen_list[arena],
             config.wardistance_list[arena],
             config.battlerounds_list[era],
