@@ -29,7 +29,7 @@ def test_validate_self_tie():
     result = lib.run_battle(
         code.encode(), 1,
         code.encode(), 2,
-        8000, 10000, 8000, 100, rounds
+        8000, 10000, 8000, 8000, 8000, 100, 100, rounds
     ).decode()
     w1_score, w2_score = get_scores(result)
     assert w1_score == w2_score == rounds, (
@@ -43,7 +43,7 @@ def test_invalid_operand_returns_error():
     result = lib.run_battle(
         invalid_code.encode(), 1,
         invalid_code.encode(), 2,
-        8000, 1000, 8000, 100, 1
+        8000, 1000, 8000, 8000, 8000, 100, 100, 1
     ).decode()
     assert result.startswith("ERROR:"), f"Expected error response, got: {result}"
     assert "Invalid numeric operand" in result
@@ -58,7 +58,7 @@ def test_mixed_case_warrior_with_inline_comments():
     result = lib.run_battle(
         warrior.encode(), 1,
         warrior.encode(), 2,
-        8000, 10, 8000, 1, 1
+        8000, 10, 8000, 8000, 8000, 1, 100, 1
     ).decode()
     assert not result.startswith("ERROR:"), f"Expected warrior to load, got: {result}"
     scores = get_scores(result)
@@ -71,7 +71,7 @@ def test_org_pseudo_opcode_rejected():
     result = lib.run_battle(
         warrior.encode(), 1,
         warrior.encode(), 2,
-        8000, 10, 8000, 1, 1
+        8000, 10, 8000, 8000, 8000, 1, 100, 1
     ).decode()
     assert result.startswith("ERROR:"), f"Expected ORG to be rejected, got: {result}"
     assert "Unsupported pseudo-opcode 'ORG'" in result
@@ -85,7 +85,7 @@ def test_battle_stops_once_outcome_decided():
     result = lib.run_battle(
         dominant_warrior.encode(), 1,
         fragile_warrior.encode(), 2,
-        8000, 50, 8000, 1, rounds
+        8000, 50, 8000, 8000, 8000, 1, 100, rounds
     ).decode()
     w1_score, w2_score = get_scores(result)
     assert w2_score == 0, f"Expected fragile warrior to lose every round, got scores {w1_score}, {w2_score}"
@@ -122,7 +122,7 @@ def test_div_instruction_completes_remaining_fields(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        8000, 200, 8000, 1, 1
+        8000, 200, 8000, 8000, 8000, 1, 100, 1
     ).decode()
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
@@ -156,7 +156,7 @@ def test_jmn_djn_use_or_logic(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        8000, 200, 8000, 1, 1
+        8000, 200, 8000, 8000, 8000, 1, 100, 1
     ).decode()
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
@@ -164,3 +164,38 @@ def test_jmn_djn_use_or_logic(monkeypatch, tmp_path):
     assert "DJN.I" in trace_text
     assert trace_text.count("MOV.B #1") >= 2
     assert "MOV.B #2" not in trace_text
+
+
+def test_custom_read_limit_folds_offsets(monkeypatch, tmp_path):
+    lib = load_worker()
+    warrior = textwrap.dedent(
+        """
+        MOV.I $3, $-1
+        MOV.I $4, $0
+        JMP.B $-2, $0
+        DAT.F #123, #456
+        """
+    ).strip() + "\n"
+    opponent = "JMP.B $0, $0\n"
+    trace_file = tmp_path / "fold_trace.txt"
+    monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        opponent.encode(), 2,
+        80, 200, 80, 6, 6, 1, 10, 1
+    ).decode()
+    assert not result.startswith("ERROR:"), result
+    trace_text = trace_file.read_text(encoding="utf-8")
+    assert "DAT.F #123, #456" in trace_text
+
+
+def test_warrior_exceeding_dynamic_length_is_rejected():
+    lib = load_worker()
+    warrior = ("JMP.B $0, $0\n" * 5).encode()
+    result = lib.run_battle(
+        warrior, 1,
+        warrior, 2,
+        80, 200, 80, 80, 80, 1, 3, 1
+    ).decode()
+    assert result.startswith("ERROR:"), result
+    assert "exceeds the configured maximum" in result
