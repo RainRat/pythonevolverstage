@@ -3,6 +3,7 @@ import os
 import pathlib
 import sys
 import textwrap
+from dataclasses import replace
 
 import pytest
 
@@ -97,6 +98,17 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.instr_modif == ["A", "B"]
 
 
+def test_validate_config_accepts_pmars_engine():
+    config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
+    evolverstage.validate_config(config)
+
+
+def test_validate_config_rejects_unknown_engine():
+    config = replace(_DEFAULT_CONFIG, battle_engine="unknown")
+    with pytest.raises(ValueError, match="BATTLE_ENGINE"):
+        evolverstage.validate_config(config)
+
+
 def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
     config_path = tmp_path / "config.ini"
     config_path.write_text(
@@ -173,6 +185,26 @@ def test_load_configuration_rejects_negative_marble_counts(tmp_path):
 
     with pytest.raises(ValueError, match="NAB_LIST"):
         load_configuration(str(config_path))
+
+
+def test_execute_battle_parses_pmars_output(monkeypatch):
+    temp_config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
+    sample_output = (
+        "Alpha by Example scores 10\n"
+        "Beta by Example scores 20\n"
+        "Results: 1 3 1\n"
+    )
+
+    monkeypatch.setattr(evolverstage, "run_pmars_command", lambda *args, **kwargs: sample_output)
+
+    evolverstage.set_active_config(temp_config)
+    try:
+        warriors, scores = evolverstage.execute_battle(0, 101, 202, 0, verbose=False)
+    finally:
+        evolverstage.set_active_config(_DEFAULT_CONFIG)
+
+    assert warriors == [101, 202]
+    assert scores == [10, 20]
 
 
 def test_load_configuration_checks_seeded_directories(tmp_path):

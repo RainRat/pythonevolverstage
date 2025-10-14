@@ -6,6 +6,7 @@ import time
 #import psutil #Not currently active. See bottom of code for how it could be used.
 import configparser
 import subprocess
+import shutil
 from enum import Enum
 import csv
 import ctypes
@@ -133,6 +134,14 @@ def get_active_config() -> EvolverConfig:
 def validate_config(config: EvolverConfig, config_path: Optional[str] = None) -> None:
     if config.last_arena is None:
         raise ValueError("LAST_ARENA must be specified in the configuration.")
+
+    valid_engines = {"external", "internal", "pmars"}
+    if config.battle_engine not in valid_engines:
+        raise ValueError(
+            "BATTLE_ENGINE must be one of "
+            + ", ".join(sorted(valid_engines))
+            + f" (got {config.battle_engine!r})."
+        )
 
     arena_count = config.last_arena + 1
     if arena_count <= 0:
@@ -328,6 +337,12 @@ def load_configuration(path: str) -> EvolverConfig:
     if not writelimit_list:
         writelimit_list = list(coresize_list)
 
+    battle_engine = _read_config('BATTLE_ENGINE', data_type='string', default='external')
+    if battle_engine:
+        battle_engine = battle_engine.strip().lower()
+    else:
+        battle_engine = 'external'
+
     battle_log_file = _read_config('BATTLE_LOG_FILE', data_type='string')
     if battle_log_file and not os.path.isabs(battle_log_file):
         battle_log_file = os.path.abspath(os.path.join(base_path, battle_log_file))
@@ -337,7 +352,7 @@ def load_configuration(path: str) -> EvolverConfig:
         library_path = os.path.abspath(os.path.join(base_path, library_path))
 
     config = EvolverConfig(
-        battle_engine=_read_config('BATTLE_ENGINE', data_type='string', default='external') or 'external',
+        battle_engine=battle_engine,
         last_arena=_read_config('LAST_ARENA', data_type='int'),
         base_path=base_path,
         coresize_list=coresize_list,
@@ -487,6 +502,46 @@ except Exception as e:
     print(f"Could not load C++ Redcode worker: {e}")
     print("Internal battle engine will not be available.")
 
+
+def _candidate_pmars_paths() -> list[str]:
+    exe_name = "pmars.exe" if os.name == "nt" else "pmars"
+    candidates: list[str] = []
+
+    env_override = os.environ.get("PMARS_CMD")
+    if env_override:
+        candidates.append(env_override)
+
+    detected = shutil.which(exe_name)
+    if detected:
+        candidates.append(detected)
+
+    project_root = Path(__file__).resolve().parent
+    candidates.append(str(project_root / "pMars" / exe_name))
+    candidates.append(str(project_root / "pMars" / "src" / exe_name))
+
+    try:
+        base_path = Path(config.base_path)
+    except Exception:
+        base_path = None
+    else:
+        candidates.append(str(base_path / "pMars" / exe_name))
+        candidates.append(str(base_path / "pMars" / "src" / exe_name))
+
+    candidates.append(exe_name)
+
+    unique_candidates: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        unique_candidates.append(candidate)
+
+    return unique_candidates
+
+
 def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
   try:
     '''
@@ -523,6 +578,53 @@ Rules:
     return result.stdout
   except FileNotFoundError as e:
     print(f"Unable to run {nmars_cmd}: {e}")
+  except subprocess.SubprocessError as e:
+    print(f"An error occurred: {e}")
+  return None
+
+
+def run_pmars_command(
+    arena,
+    cont1,
+    cont2,
+    coresize,
+    cycles,
+    processes,
+    warlen,
+    wardistance,
+    battlerounds,
+):
+  pmars_cmd = None
+  for candidate in _candidate_pmars_paths():
+    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+      pmars_cmd = candidate
+      break
+
+  if pmars_cmd is None:
+    pmars_cmd = "pmars.exe" if os.name == "nt" else "pmars"
+
+  arena_dir = os.path.join(config.base_path, f"arena{arena}")
+  cmd = [
+      pmars_cmd,
+      "-b",
+      "-r", str(battlerounds),
+      "-s", str(coresize),
+      "-c", str(cycles),
+      "-p", str(processes),
+      "-l", str(warlen),
+      "-d", str(wardistance),
+      os.path.join(arena_dir, f"{cont1}.red"),
+      os.path.join(arena_dir, f"{cont2}.red"),
+  ]
+
+  try:
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    output = result.stdout or ""
+    if not output and result.stderr:
+      output = result.stderr
+    return output
+  except FileNotFoundError as e:
+    print(f"Unable to run {pmars_cmd}: {e}")
   except subprocess.SubprocessError as e:
     print(f"An error occurred: {e}")
   return None
@@ -592,7 +694,8 @@ def run_internal_battle(
 
 
 def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool = True):
-    if config.battle_engine == 'internal':
+    engine = config.battle_engine
+    if engine == 'internal':
         raw_output = run_internal_battle(
             arena,
             cont1,
@@ -602,6 +705,18 @@ def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool =
             config.processes_list[arena],
             config.readlimit_list[arena],
             config.writelimit_list[arena],
+            config.warlen_list[arena],
+            config.wardistance_list[arena],
+            config.battlerounds_list[era],
+        )
+    elif engine == 'pmars':
+        raw_output = run_pmars_command(
+            arena,
+            cont1,
+            cont2,
+            config.coresize_list[arena],
+            config.cycles_list[arena],
+            config.processes_list[arena],
             config.warlen_list[arena],
             config.wardistance_list[arena],
             config.battlerounds_list[era],
@@ -634,18 +749,29 @@ def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool =
     if not output_lines:
         raise RuntimeError("Battle engine produced no output to parse")
 
+    is_pmars = engine == 'pmars'
     for line in output_lines:
         numline += 1
         if "scores" in line:
             if verbose:
                 print(line.strip())
-            splittedline = line.split()
-            if len(splittedline) < 5:
-                raise RuntimeError(f"Unexpected score line format: {line.strip()}")
-            scores.append(int(splittedline[4]))
-            warriors.append(int(splittedline[0]))
+            if is_pmars:
+                match = re.search(r"scores\s+(-?\d+)", line)
+                if not match:
+                    raise RuntimeError(
+                        f"Unexpected pMARS score line format: {line.strip()}"
+                    )
+                scores.append(int(match.group(1)))
+            else:
+                splittedline = line.split()
+                if len(splittedline) < 5:
+                    raise RuntimeError(f"Unexpected score line format: {line.strip()}")
+                scores.append(int(splittedline[4]))
+                warriors.append(int(splittedline[0]))
     if len(scores) < 2:
         raise RuntimeError("Battle engine output did not include scores for both warriors")
+    if is_pmars:
+        warriors = [cont1, cont2]
     expected_warriors = {cont1, cont2}
     returned_warriors = set(warriors)
     if returned_warriors != expected_warriors:
@@ -1384,7 +1510,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument(
         "--engine",
-        choices=["internal", "external"],
+        choices=["internal", "external", "pmars"],
         help="Override the configured battle engine",
     )
     parser.add_argument(
