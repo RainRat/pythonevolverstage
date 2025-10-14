@@ -91,3 +91,52 @@ Evolver output will now rewrite numbers either negative or positive, whichever i
 
 11. (New) Optional log file
 Results of battles saved so you can analyse your progress. Current fields are 'era', 'arena', 'winner', 'loser', 'score1', 'score2', and 'bred_with'. Edit BATTLE_LOG_FILE setting to choose a file name; comment out or leave blank for no log.
+
+12. Experimental CPU throttling support (disabled)
+        The source includes commented-out hooks to integrate with the `psutil` Python package so the evolver can pause itself when overall CPU usage is high. The feature is currently experimental and therefore disabled by default. To try it, install `psutil` (`pip install psutil`), uncomment the `import psutil` line near the top of `evolverstage.py`, and restore the commented loop at the bottom of the file that checks `psutil.cpu_percent()`. Adjust the threshold to suit your system.
+
+## Compiling `redcode-worker.cpp`
+
+An experimental C++ worker (`redcode-worker.cpp`) can be built as a shared library for use with the Python evolver.
+
+### Building with CMake (recommended)
+
+CMake is the recommended build system because it selects the correct compiler and linker flags for your platform automatically, making the process consistent across Windows, macOS, and Linux.
+
+1.  Create a build directory: `mkdir build && cd build`
+2.  Run CMake: `cmake ..`
+3.  Compile: `cmake --build .`
+
+The provided CMake configuration emits the compiled library (`redcode_worker.so`, `.dll`, or `.dylib`) in the project's root directory.
+
+### Building with g++
+
+If you prefer compiling directly with `g++`, use the following command (replace the output extension with `.dll` on Windows or `.dylib` on macOS):
+
+```
+g++ -std=c++17 -shared -fPIC redcode-worker.cpp -o redcode_worker.so
+```
+
+To trace each instruction executed by the worker, set the environment variable `REDCODE_TRACE_FILE` to a log file path before running:
+
+```
+export REDCODE_TRACE_FILE=trace.log
+```
+
+Omit the variable to disable tracing.
+
+## Docker
+
+A `Dockerfile` is provided to run the evolver in an isolated environment. Build the image with:
+
+```
+docker build -t corewar-evolver .
+```
+
+Run the evolver:
+
+```
+docker run --rm -it corewar-evolver
+```
+
+The build step compiles the optional C++ worker (`redcode-worker.cpp`) so the library is ready to use inside the container.

@@ -1,0 +1,17 @@
+.git
+build/
+archive/
+*.so
+*.csv
+nmars*.*
+pmars*.*
+arena?/
+nunit.framework.dll
+SDL.dll
+instructions.txt
+*.bak
+nano.txt
+both.txt
+std.txt
+tiny.txt
+tests/
