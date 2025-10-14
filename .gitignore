@@ -18,3 +18,9 @@ tiny.txt
 # Build artifacts
 build/
 *.so
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+CMakeFiles/
+__pycache__/
+redcode_worker.so
