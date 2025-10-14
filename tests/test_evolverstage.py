@@ -260,6 +260,7 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
         warlen=20,
         wardistance=1,
         battlerounds=10,
+        seed=42,
     )
 
     lines = result.strip().splitlines()
@@ -301,6 +302,7 @@ def test_run_internal_battle_requires_worker(tmp_path, monkeypatch):
                 warlen=20,
                 wardistance=1,
                 battlerounds=10,
+                seed=7,
             )
     finally:
         if previous_config is not None:
@@ -308,6 +310,101 @@ def test_run_internal_battle_requires_worker(tmp_path, monkeypatch):
         else:
             fallback_config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
             evolverstage.set_active_config(fallback_config)
+
+
+def test_micro_mutation_handler():
+    instruction = evolverstage.RedcodeInstruction(
+        opcode="MOV",
+        modifier="F",
+        a_mode="$",
+        a_field=5,
+        b_mode="$",
+        b_field=10,
+    )
+    evolverstage.set_rng_sequence([1, 1, 1, 2, 2, 1, 2, 2])
+    try:
+        instruction = evolverstage._apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        assert instruction.a_field == 6
+
+        instruction = evolverstage._apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        assert instruction.a_field == 5
+
+        instruction = evolverstage._apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        assert instruction.b_field == 11
+
+        instruction = evolverstage._apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        assert instruction.b_field == 10
+    finally:
+        evolverstage.set_rng_sequence([])
+
+
+def test_minor_mutation_handler(monkeypatch):
+    base_instruction = evolverstage.RedcodeInstruction(
+        opcode="MOV",
+        modifier="F",
+        a_mode="$",
+        a_field=1,
+        b_mode="$",
+        b_field=2,
+    )
+
+    monkeypatch.setattr(evolverstage, "GENERATION_OPCODE_POOL", ["MOV", "ADD"])
+    monkeypatch.setattr(evolverstage.config, "instr_modif", ["A", "B"])
+    monkeypatch.setattr(evolverstage.config, "instr_modes", ["#", "$"])
+    monkeypatch.setattr(evolverstage.config, "coresize_list", [10])
+    monkeypatch.setattr(evolverstage.config, "warlen_list", [5])
+
+    evolverstage.set_rng_sequence([1, 1, 2, 1, 3, 0, 4, 2, 3, 5, 0, 6, 1, -7])
+    try:
+        mutated = evolverstage._apply_minor_mutation(
+            base_instruction.copy(),
+            arena=0,
+            config=evolverstage.config,
+            _magic_number=0,
+        )
+        assert mutated.opcode == "ADD"
+
+        mutated = evolverstage._apply_minor_mutation(
+            base_instruction.copy(),
+            arena=0,
+            config=evolverstage.config,
+            _magic_number=0,
+        )
+        assert mutated.modifier == "B"
+
+        mutated = evolverstage._apply_minor_mutation(
+            base_instruction.copy(),
+            arena=0,
+            config=evolverstage.config,
+            _magic_number=0,
+        )
+        assert mutated.a_mode == "#"
+
+        mutated = evolverstage._apply_minor_mutation(
+            base_instruction.copy(),
+            arena=0,
+            config=evolverstage.config,
+            _magic_number=0,
+        )
+        assert mutated.a_field == 3
+
+        mutated = evolverstage._apply_minor_mutation(
+            base_instruction.copy(),
+            arena=0,
+            config=evolverstage.config,
+            _magic_number=0,
+        )
+        assert mutated.b_mode == "#"
+
+        mutated = evolverstage._apply_minor_mutation(
+            base_instruction.copy(),
+            arena=0,
+            config=evolverstage.config,
+            _magic_number=0,
+        )
+        assert mutated.b_field == -7
+    finally:
+        evolverstage.set_rng_sequence([])
 
 
 def test_parse_instruction_requires_modifier():

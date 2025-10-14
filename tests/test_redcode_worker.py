@@ -3,6 +3,8 @@ import pathlib
 import sys
 import textwrap
 
+import pytest
+
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -29,7 +31,7 @@ def test_validate_self_tie():
     result = lib.run_battle(
         code.encode(), 1,
         code.encode(), 2,
-        8000, 10000, 8000, 8000, 8000, 100, 100, rounds
+        8000, 10000, 8000, 8000, 8000, 100, 100, rounds, -1
     ).decode()
     w1_score, w2_score = get_scores(result)
     assert w1_score == w2_score == rounds, (
@@ -43,7 +45,7 @@ def test_invalid_operand_returns_error():
     result = lib.run_battle(
         invalid_code.encode(), 1,
         invalid_code.encode(), 2,
-        8000, 1000, 8000, 8000, 8000, 100, 100, 1
+        8000, 1000, 8000, 8000, 8000, 100, 100, 1, -1
     ).decode()
     assert result.startswith("ERROR:"), f"Expected error response, got: {result}"
     assert "Invalid numeric operand" in result
@@ -58,7 +60,7 @@ def test_mixed_case_warrior_with_inline_comments():
     result = lib.run_battle(
         warrior.encode(), 1,
         warrior.encode(), 2,
-        8000, 10, 8000, 8000, 8000, 1, 100, 1
+        8000, 10, 8000, 8000, 8000, 1, 100, 1, -1
     ).decode()
     assert not result.startswith("ERROR:"), f"Expected warrior to load, got: {result}"
     scores = get_scores(result)
@@ -71,7 +73,7 @@ def test_org_pseudo_opcode_rejected():
     result = lib.run_battle(
         warrior.encode(), 1,
         warrior.encode(), 2,
-        8000, 10, 8000, 8000, 8000, 1, 100, 1
+        8000, 10, 8000, 8000, 8000, 1, 100, 1, -1
     ).decode()
     assert result.startswith("ERROR:"), f"Expected ORG to be rejected, got: {result}"
     assert "Unsupported pseudo-opcode 'ORG'" in result
@@ -85,7 +87,7 @@ def test_battle_stops_once_outcome_decided():
     result = lib.run_battle(
         dominant_warrior.encode(), 1,
         fragile_warrior.encode(), 2,
-        8000, 50, 8000, 8000, 8000, 1, 100, rounds
+        8000, 50, 8000, 8000, 8000, 1, 100, rounds, -1
     ).decode()
     w1_score, w2_score = get_scores(result)
     assert w2_score == 0, f"Expected fragile warrior to lose every round, got scores {w1_score}, {w2_score}"
@@ -122,7 +124,7 @@ def test_div_instruction_completes_remaining_fields(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        8000, 200, 8000, 8000, 8000, 1, 100, 1
+        8000, 200, 8000, 8000, 8000, 1, 100, 1, -1
     ).decode()
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
@@ -156,7 +158,7 @@ def test_jmn_djn_use_or_logic(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        8000, 200, 8000, 8000, 8000, 1, 100, 1
+        8000, 200, 8000, 8000, 8000, 1, 100, 1, -1
     ).decode()
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
@@ -182,11 +184,59 @@ def test_custom_read_limit_folds_offsets(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        80, 200, 80, 6, 6, 1, 10, 1
+        80, 200, 80, 6, 6, 1, 10, 1, -1
     ).decode()
     assert not result.startswith("ERROR:"), result
     trace_text = trace_file.read_text(encoding="utf-8")
     assert "DAT.F #123, #456" in trace_text
+
+
+@pytest.mark.xfail(reason="Worker still mishandles MOV.B with immediate operands", strict=False)
+def test_mov_b_immediate_operand(monkeypatch, tmp_path):
+    lib = load_worker()
+    warrior = "MOV.B #123, @-1\nDAT.F #0, #0\n"
+    opponent = "DAT.F #0, #0\n"
+    trace_file = tmp_path / "mov_immediate_trace.txt"
+    monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        opponent.encode(), 2,
+        80, 200, 80, 6, 6, 1, 10, 1, 23
+    ).decode()
+    assert not result.startswith("ERROR:"), result
+    trace_text = trace_file.read_text(encoding="utf-8")
+    assert "DAT.F #0, #-2" in trace_text
+
+
+@pytest.mark.xfail(reason="Worker fold logic not yet fixed for negative boundary", strict=False)
+def test_fold_negative_boundary(monkeypatch, tmp_path):
+    lib = load_worker()
+    warrior = textwrap.dedent(
+        """
+        JMP.B $3, $0
+        DAT.F #111, #222
+        DAT.F #333, #444
+        MOV.I $4, $0
+        MOV.I $-3, $0
+        SPL.B $-2, $0
+        JMP.B $-2, $0
+        DAT.F #777, #888
+        DAT.F #999, #111
+        DAT.F #555, #666
+        """
+    ).strip() + "\n"
+    opponent = "JMP.B $0, $0\n"
+    trace_file = tmp_path / "fold_boundary_trace.txt"
+    monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        opponent.encode(), 2,
+        80, 200, 80, 6, 6, 1, 12, 1, 29
+    ).decode()
+    assert not result.startswith("ERROR:"), result
+    trace_text = trace_file.read_text(encoding="utf-8")
+    assert trace_text.count("DAT.F #111, #222") >= 2
+    assert "DAT.F #777, #888" not in trace_text
 
 
 def test_warrior_exceeding_dynamic_length_is_rejected():
@@ -195,7 +245,7 @@ def test_warrior_exceeding_dynamic_length_is_rejected():
     result = lib.run_battle(
         warrior, 1,
         warrior, 2,
-        80, 200, 80, 80, 80, 1, 3, 1
+        80, 200, 80, 80, 80, 1, 3, 1, -1
     ).decode()
     assert result.startswith("ERROR:"), result
     assert "exceeds the configured maximum" in result
