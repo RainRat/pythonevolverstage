@@ -1245,9 +1245,14 @@ def determine_winner_and_loser(
 
     if scores[1] == scores[0]:
         print("draw")
-        if random.randint(1, 2) == 1:
-            return warriors[1], warriors[0]
-        return warriors[0], warriors[1]
+        draw_selection = get_random_int(1, 2)
+        if draw_selection == 1:
+            winner = warriors[1]
+            loser = warriors[0]
+        else:
+            winner = warriors[0]
+            loser = warriors[1]
+        return winner, loser
     if scores[1] > scores[0]:
         return warriors[1], warriors[0]
     return warriors[0], warriors[1]
