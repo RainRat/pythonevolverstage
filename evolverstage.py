@@ -516,6 +516,7 @@ def _candidate_pmars_paths() -> list[str]:
         candidates.append(detected)
 
     project_root = Path(__file__).resolve().parent
+    candidates.append(str(project_root / "pMars" / exe_name))
     candidates.append(str(project_root / "pMars" / "src" / exe_name))
 
     try:
@@ -523,6 +524,7 @@ def _candidate_pmars_paths() -> list[str]:
     except Exception:
         base_path = None
     else:
+        candidates.append(str(base_path / "pMars" / exe_name))
         candidates.append(str(base_path / "pMars" / "src" / exe_name))
 
     candidates.append(exe_name)
