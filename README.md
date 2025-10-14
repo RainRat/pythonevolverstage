@@ -99,9 +99,16 @@ Results of battles saved so you can analyse your progress. Current fields are 'e
 
 An experimental C++ worker (`redcode-worker.cpp`) can be built as a shared library for use with the Python evolver.
 
+The easiest way to manage the build and test workflow is via the repository's `Makefile`:
+
+* `make build` configures and compiles the worker with CMake, emitting the shared library (`redcode_worker.so`, `.dll`, or `.dylib`) in the project root.
+* `make test` depends on `make build` and then runs the Python and C++ pytest suites (`tests/test_evolverstage.py` and `tests/test_redcode_worker.py`).
+* `make docker-build` wraps the Docker image build so the container can be prepared with a single command.
+* `make clean` removes the build directory and compiled shared libraries.
+
 ### Building with CMake (recommended)
 
-CMake is the recommended build system because it selects the correct compiler and linker flags for your platform automatically, making the process consistent across Windows, macOS, and Linux.
+CMake remains the recommended build system because it selects the correct compiler and linker flags for your platform automatically, making the process consistent across Windows, macOS, and Linux.
 
 1.  Create a build directory: `mkdir build && cd build`
 2.  Run CMake: `cmake ..`
@@ -127,7 +134,7 @@ Omit the variable to disable tracing.
 
 ## Docker
 
-A `Dockerfile` is provided to run the evolver in an isolated environment. Build the image with:
+A `Dockerfile` is provided to run the evolver in an isolated environment. Build the image with `make docker-build`, which wraps the command below:
 
 ```
 docker build -t corewar-evolver .
