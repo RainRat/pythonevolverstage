@@ -1,0 +1,41 @@
+;Demonstration of MOV with reference implementation:
+
+MOV.B #123, $5
+MOV.I #456, $7
+MOV.X #789, $9
+MOV.F #321, $11
+
+;Program "Unknown" (length 4) by "Anonymous"
+;
+;       ORG      START
+;START  MOV.B  #   123, $     5
+;       MOV.I  #   456, $     7
+;       MOV.X  #   789, $     9
+;       MOV.F  #   321, $    11
+;
+;00000   MOV.B  #   123, $     5
+;(cdb) s
+;00001   MOV.I  #   456, $     7
+;(cdb) s
+;00002   MOV.X  #   789, $     9
+;(cdb) s
+;00003   MOV.F  #   321, $    11
+(cdb) s
+00004
+;(cdb) l 0,15
+;00000   MOV.B  #   123, $     5
+;00001   MOV.I  #   456, $     7
+;00002   MOV.X  #   789, $     9
+;00003   MOV.F  #   321, $    11
+;00004
+;00005   DAT.F  $     0, $     5
+;00006
+;00007
+;00008   MOV.I  #   456, $     7
+;00009
+;00010
+;00011   DAT.F  $     9, $   789
+;00012
+;00013
+;00014   DAT.F  $   321, $    11
+;00015

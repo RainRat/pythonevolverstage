@@ -119,7 +119,7 @@ int fold(int offset, int limit) {
         return offset - limit;
     }
     // The negative boundary is inclusive, matching the Python implementation.
-    if (offset <= -half_limit) {
+    if (offset < -half_limit) {
         return offset + limit;
     }
     return offset;
@@ -465,9 +465,8 @@ public:
         int intermediate_a_addr = normalize(pc + primary_a_offset, core_size);
         if (instr.a_mode == IMMEDIATE) {
             a_addr_final = pc; // The address of the immediate operand is the current PC
-            src = {};           // Start with a default DAT instruction
-            src.a_field = instr.a_field;
-            // B-field is implicitly 0, which is correct for immediate operands.
+            src = memory[pc];   // Copy the current instruction.
+            src.a_field = instr.a_field; // The immediate value goes into the A-field of the source.
         } else if (instr.a_mode == DIRECT) {
             a_addr_final = intermediate_a_addr;
             src = memory[a_addr_final];

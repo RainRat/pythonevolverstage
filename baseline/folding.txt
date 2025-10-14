@@ -1,0 +1,36 @@
+;Demonstrates folding in reference implementation:
+
+DAT.F #-8001, #0
+DAT.F #-8000, #0
+DAT.F #-7999, #0
+DAT.F #-4001, #0
+DAT.F #-4000, #0
+DAT.F #-3999, #0
+DAT.F #-1, #0
+DAT.F #0, #0
+DAT.F #1, #0
+DAT.F #3999, #0
+DAT.F #4000, #0
+DAT.F #4001, #0
+DAT.F #7999, #0
+DAT.F #8000, #0
+DAT.F #8001, #0
+
+;After compilation in pMars
+
+;       ORG      START
+;START  DAT.F  #    -1, #     0
+;       DAT.F  #     0, #     0
+;       DAT.F  #     1, #     0
+;       DAT.F  #  3999, #     0
+;       DAT.F  #  4000, #     0
+;       DAT.F  # -3999, #     0
+;       DAT.F  #    -1, #     0
+;       DAT.F  #     0, #     0
+;       DAT.F  #     1, #     0
+;       DAT.F  #  3999, #     0
+;       DAT.F  #  4000, #     0
+;       DAT.F  # -3999, #     0
+;       DAT.F  #    -1, #     0
+;       DAT.F  #     0, #     0
+;       DAT.F  #     1, #     0

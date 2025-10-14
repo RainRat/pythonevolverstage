@@ -191,11 +191,10 @@ def test_custom_read_limit_folds_offsets(monkeypatch, tmp_path):
     assert "DAT.F #123, #456" in trace_text
 
 
-@pytest.mark.xfail(reason="Worker still mishandles MOV.B with immediate operands", strict=False)
 def test_mov_b_immediate_operand(monkeypatch, tmp_path):
     lib = load_worker()
-    warrior = "MOV.B #123, @-1\nDAT.F #0, #0\n"
-    opponent = "DAT.F #0, #0\n"
+    warrior = "MOV.B #123, @-1\nJMP.B $-2, $0\n"
+    opponent = "JMP.B $0, $0\n"
     trace_file = tmp_path / "mov_immediate_trace.txt"
     monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
     result = lib.run_battle(
@@ -205,10 +204,10 @@ def test_mov_b_immediate_operand(monkeypatch, tmp_path):
     ).decode()
     assert not result.startswith("ERROR:"), result
     trace_text = trace_file.read_text(encoding="utf-8")
-    assert "DAT.F #0, #-2" in trace_text
+    assert "MOV.B #123, @-1" in trace_text
+    assert "DAT.F $0, $-1" in trace_text
 
 
-@pytest.mark.xfail(reason="Worker fold logic not yet fixed for negative boundary", strict=False)
 def test_fold_negative_boundary(monkeypatch, tmp_path):
     lib = load_worker()
     warrior = textwrap.dedent(
