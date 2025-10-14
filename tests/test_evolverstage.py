@@ -269,6 +269,47 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
     assert scores["202"] == 0
 
 
+def test_run_internal_battle_requires_worker(tmp_path, monkeypatch):
+    import evolverstage
+
+    config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+    config.base_path = str(tmp_path)
+    try:
+        previous_config = evolverstage.get_active_config()
+    except RuntimeError:
+        previous_config = None
+    evolverstage.set_active_config(config)
+
+    arena_dir = tmp_path / "arena0"
+    arena_dir.mkdir()
+    (arena_dir / "1.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
+    (arena_dir / "2.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
+
+    monkeypatch.setattr(evolverstage, "CPP_WORKER_LIB", None)
+
+    try:
+        with pytest.raises(RuntimeError, match="Internal battle engine is required"):
+            evolverstage.run_internal_battle(
+                arena=0,
+                cont1=1,
+                cont2=2,
+                coresize=8000,
+                cycles=200,
+                processes=8000,
+                readlimit=8000,
+                writelimit=8000,
+                warlen=20,
+                wardistance=1,
+                battlerounds=10,
+            )
+    finally:
+        if previous_config is not None:
+            evolverstage.set_active_config(previous_config)
+        else:
+            fallback_config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+            evolverstage.set_active_config(fallback_config)
+
+
 def test_parse_instruction_requires_modifier():
     from evolverstage import parse_redcode_instruction
 
