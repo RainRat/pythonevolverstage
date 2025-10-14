@@ -10,11 +10,13 @@ WORKDIR /app
 # Copy project files
 COPY . .
 
-# Build the optional C++ worker library using CMake
+# Build the optional C++ worker library using CMake and compile the pMARS emulator
 RUN mkdir -p build \
     && cd build \
     && cmake .. \
-    && cmake --build .
+    && cmake --build . \
+    && make -C ../pMars/src \
+    && cp ../pMars/src/pmars /usr/local/bin/pmars
 
 # Default command runs the evolver
 CMD ["python", "evolverstage.py"]
