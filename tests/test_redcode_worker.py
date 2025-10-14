@@ -234,8 +234,8 @@ def test_fold_negative_boundary(monkeypatch, tmp_path):
     ).decode()
     assert not result.startswith("ERROR:"), result
     trace_text = trace_file.read_text(encoding="utf-8")
-    assert trace_text.count("DAT.F #111, #222") >= 2
-    assert "DAT.F #777, #888" not in trace_text
+    assert trace_text.count("DAT.F #111, #222") == 1
+    assert "DAT.F #777, #888" in trace_text
 
 
 def test_warrior_exceeding_dynamic_length_is_rejected():

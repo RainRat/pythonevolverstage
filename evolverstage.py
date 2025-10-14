@@ -1055,21 +1055,21 @@ def _apply_nab_instruction(
     )
 
     if not os.path.exists(donor_dir) or not os.path.exists(donor_file):
-        print("Donor warrior missing; using default instruction.")
-        return default_instruction()
+        print("Donor warrior missing; skipping mutation.")
+        return instruction
 
     try:
         with open(donor_file, "r") as donor_handle:
             donor_lines = donor_handle.readlines()
     except OSError:
-        print("Unable to read donor warrior; using default instruction.")
-        return default_instruction()
+        print("Unable to read donor warrior; skipping mutation.")
+        return instruction
 
     if donor_lines:
         return parse_instruction_or_default(_get_random_choice(donor_lines))
 
-    print("Donor warrior empty; using default instruction.")
-    return default_instruction()
+    print("Donor warrior empty; skipping mutation.")
+    return instruction
 
 
 def _apply_minor_mutation(
