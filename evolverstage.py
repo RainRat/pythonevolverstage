@@ -13,7 +13,7 @@ import platform
 from pathlib import Path
 import re
 from dataclasses import dataclass
-from typing import Callable, List, Optional, cast
+from typing import Callable, List, Optional, Sequence, TypeVar, cast
 
 
 @dataclass
@@ -63,6 +63,61 @@ class _ConfigNotLoaded:
 
 
 config = cast(EvolverConfig, _ConfigNotLoaded())
+
+
+_RNG_SEQUENCE: Optional[list[int]] = None
+_RNG_INDEX: int = 0
+
+
+T = TypeVar("T")
+
+
+def set_rng_sequence(sequence: list[int]) -> None:
+    """Set a deterministic RNG sequence for tests.
+
+    Passing an empty list disables deterministic behaviour and returns to the
+    standard :mod:`random` generator.
+    """
+
+    global _RNG_SEQUENCE, _RNG_INDEX
+    if sequence:
+        _RNG_SEQUENCE = list(sequence)
+    else:
+        _RNG_SEQUENCE = None
+    _RNG_INDEX = 0
+
+
+def get_random_int(min_val: int, max_val: int) -> int:
+    """Return a random integer within ``[min_val, max_val]``.
+
+    When a deterministic sequence is configured via :func:`set_rng_sequence`,
+    this function returns the next value from that sequence and validates that
+    it lies within the requested range.
+    """
+
+    if min_val > max_val:
+        raise ValueError("min_val cannot be greater than max_val")
+
+    global _RNG_SEQUENCE, _RNG_INDEX
+    if _RNG_SEQUENCE is not None:
+        if _RNG_INDEX >= len(_RNG_SEQUENCE):
+            raise RuntimeError("Deterministic RNG sequence exhausted")
+        value = _RNG_SEQUENCE[_RNG_INDEX]
+        _RNG_INDEX += 1
+        if value < min_val or value > max_val:
+            raise ValueError(
+                f"Deterministic RNG value {value} outside range [{min_val}, {max_val}]"
+            )
+        return value
+
+    return random.randint(min_val, max_val)
+
+
+def _get_random_choice(sequence: Sequence[T]) -> T:
+    if not sequence:
+        raise ValueError("Cannot choose from an empty sequence")
+    index = get_random_int(0, len(sequence) - 1)
+    return sequence[index]
 
 
 def set_active_config(new_config: EvolverConfig) -> None:
@@ -417,6 +472,7 @@ try:
             ctypes.c_int, ctypes.c_int, ctypes.c_int,
             ctypes.c_int, ctypes.c_int,
             ctypes.c_int, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int,
         ]
         CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
         print(
@@ -483,6 +539,7 @@ def run_internal_battle(
     warlen,
     wardistance,
     battlerounds,
+    seed: int = -1,
 ):
     if not CPP_WORKER_LIB:
         raise RuntimeError(
@@ -513,7 +570,8 @@ def run_internal_battle(
             writelimit,
             wardistance,
             warlen,
-            battlerounds
+            battlerounds,
+            seed,
         )
 
         if not result_ptr:
@@ -654,10 +712,10 @@ def _rebuild_instruction_tables(active_config: EvolverConfig) -> None:
         )
 
 def weighted_random_number(size, length):
-    if random.randint(1,4)==1:
-        return random.randint(-size, size)
+    if get_random_int(1, 4) == 1:
+        return get_random_int(-size, size)
     else:
-        return random.randint(-length, length)
+        return get_random_int(-length, length)
 
 #custom function, Python modulo doesn't work how we want with negative numbers
 def coremod(x, y):
@@ -928,19 +986,19 @@ def parse_instruction_or_default(line: str) -> RedcodeInstruction:
 
 def choose_random_opcode() -> str:
     if GENERATION_OPCODE_POOL:
-        return random.choice(GENERATION_OPCODE_POOL)
+        return _get_random_choice(GENERATION_OPCODE_POOL)
     return 'DAT'
 
 
 def choose_random_modifier() -> str:
     if config.instr_modif:
-        return random.choice(config.instr_modif).upper()
+        return _get_random_choice(config.instr_modif).upper()
     return DEFAULT_MODIFIER
 
 
 def choose_random_mode() -> str:
     if config.instr_modes:
-        return random.choice(config.instr_modes)
+        return _get_random_choice(config.instr_modes)
     return DEFAULT_MODE
 
 
@@ -985,15 +1043,15 @@ def _apply_nab_instruction(
     if config.last_arena == 0:
         return instruction
 
-    donor_arena = random.randint(0, config.last_arena)
+    donor_arena = get_random_int(0, config.last_arena)
     while donor_arena == arena and config.last_arena > 0:
-        donor_arena = random.randint(0, config.last_arena)
+        donor_arena = get_random_int(0, config.last_arena)
 
     print("Nab instruction from arena " + str(donor_arena))
     donor_dir = os.path.join(config.base_path, f"arena{donor_arena}")
     donor_file = os.path.join(
         donor_dir,
-        f"{random.randint(1, config.numwarriors)}.red",
+        f"{get_random_int(1, config.numwarriors)}.red",
     )
 
     if not os.path.exists(donor_dir) or not os.path.exists(donor_file):
@@ -1008,7 +1066,7 @@ def _apply_nab_instruction(
         return default_instruction()
 
     if donor_lines:
-        return parse_instruction_or_default(random.choice(donor_lines))
+        return parse_instruction_or_default(_get_random_choice(donor_lines))
 
     print("Donor warrior empty; using default instruction.")
     return default_instruction()
@@ -1021,7 +1079,7 @@ def _apply_minor_mutation(
     _magic_number: int,
 ) -> RedcodeInstruction:
     print("Minor mutation")
-    r = random.randint(1, 6)
+    r = get_random_int(1, 6)
     if r == 1:
         instruction.opcode = choose_random_opcode()
     elif r == 2:
@@ -1048,16 +1106,16 @@ def _apply_micro_mutation(
     _magic_number: int,
 ) -> RedcodeInstruction:
     print("Micro mutation")
-    if random.randint(1, 2) == 1:
+    if get_random_int(1, 2) == 1:
         current_value = _ensure_int(instruction.a_field)
-        if random.randint(1, 2) == 1:
+        if get_random_int(1, 2) == 1:
             current_value = current_value + 1
         else:
             current_value = current_value - 1
         instruction.a_field = current_value
     else:
         current_value = _ensure_int(instruction.b_field)
-        if random.randint(1, 2) == 1:
+        if get_random_int(1, 2) == 1:
             current_value = current_value + 1
         else:
             current_value = current_value - 1
@@ -1078,7 +1136,7 @@ def _apply_instruction_library(
     with open(config.library_path, "r") as library_handle:
         library_lines = library_handle.readlines()
     if library_lines:
-        return parse_instruction_or_default(random.choice(library_lines))
+        return parse_instruction_or_default(_get_random_choice(library_lines))
     return default_instruction()
 
 
@@ -1089,7 +1147,7 @@ def _apply_magic_number_mutation(
     magic_number: int,
 ) -> RedcodeInstruction:
     print("Magic number mutation")
-    if random.randint(1, 2) == 1:
+    if get_random_int(1, 2) == 1:
         instruction.a_field = magic_number
     else:
         instruction.b_field = magic_number
@@ -1200,23 +1258,23 @@ def handle_archiving(
 ) -> bool:
     arena_dir = os.path.join(config.base_path, f"arena{arena}")
     archive_dir = os.path.join(config.base_path, "archive")
-    if config.archive_list[era] != 0 and random.randint(1, config.archive_list[era]) == 1:
+    if config.archive_list[era] != 0 and get_random_int(1, config.archive_list[era]) == 1:
         print("storing in archive")
         with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
             winlines = fw.readlines()
-        archive_filename = f"{random.randint(1, 9999)}.red"
+        archive_filename = f"{get_random_int(1, 9999)}.red"
         create_directory_if_not_exists(archive_dir)
         with open(os.path.join(archive_dir, archive_filename), "w") as fd:
             fd.writelines(winlines)
 
-    if config.unarchive_list[era] != 0 and random.randint(1, config.unarchive_list[era]) == 1:
+    if config.unarchive_list[era] != 0 and get_random_int(1, config.unarchive_list[era]) == 1:
         print("unarchiving")
         if not os.path.isdir(archive_dir):
             return False
         archive_files = os.listdir(archive_dir)
         if not archive_files:
             return False
-        with open(os.path.join(archive_dir, random.choice(archive_files))) as fs:
+        with open(os.path.join(archive_dir, _get_random_choice(archive_files))) as fs:
             sourcelines = fs.readlines()
 
         instructions_written = 0
@@ -1251,17 +1309,18 @@ def breed_offspring(
     with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
         winlines = fw.readlines()
 
-    randomwarrior = str(random.randint(1, config.numwarriors))
+    randomwarrior = str(get_random_int(1, config.numwarriors))
     print("winner will breed with " + randomwarrior)
     with open(os.path.join(arena_dir, f"{randomwarrior}.red"), "r") as fr:
         ranlines = fr.readlines()
 
-    if random.randint(1, config.transpositionrate_list[era]) == 1:
+    if get_random_int(1, config.transpositionrate_list[era]) == 1:
         print("Transposition")
-        for _ in range(1, random.randint(1, int((config.warlen_list[arena] + 1) / 2))):
-            fromline = random.randint(0, config.warlen_list[arena] - 1)
-            toline = random.randint(0, config.warlen_list[arena] - 1)
-            if random.randint(1, 2) == 1:
+        transpositions = get_random_int(1, int((config.warlen_list[arena] + 1) / 2))
+        for _ in range(1, transpositions):
+            fromline = get_random_int(0, config.warlen_list[arena] - 1)
+            toline = get_random_int(0, config.warlen_list[arena] - 1)
+            if get_random_int(1, 2) == 1:
                 if fromline < len(winlines) and toline < len(winlines):
                     winlines[toline], winlines[fromline] = (
                         winlines[fromline],
@@ -1277,14 +1336,14 @@ def breed_offspring(
     if config.prefer_winner_list[era] is True:
         pickingfrom = 1
     else:
-        pickingfrom = random.randint(1, 2)
+        pickingfrom = get_random_int(1, 2)
 
     magic_number = weighted_random_number(
         config.coresize_list[arena], config.warlen_list[arena]
     )
     with open(os.path.join(arena_dir, f"{loser}.red"), "w") as fl:
         for i in range(0, config.warlen_list[arena]):
-            if random.randint(1, config.crossoverrate_list[era]) == 1:
+            if get_random_int(1, config.crossoverrate_list[era]) == 1:
                 pickingfrom = 2 if pickingfrom == 1 else 1
 
             if pickingfrom == 1:
@@ -1293,7 +1352,7 @@ def breed_offspring(
                 source_line = ranlines[i] if i < len(ranlines) else ""
 
             instruction = parse_instruction_or_default(source_line)
-            chosen_marble = random.choice(bag)
+            chosen_marble = _get_random_choice(bag)
             handler = MUTATION_HANDLERS.get(chosen_marble)
             if handler:
                 instruction = handler(instruction, arena, config, magic_number)

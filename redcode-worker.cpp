@@ -741,7 +741,8 @@ extern "C" {
         const char* warrior2_code, int w2_id,
         int core_size, int max_cycles, int max_processes,
         int read_limit, int write_limit,
-        int min_distance, int max_warrior_length, int rounds
+        int min_distance, int max_warrior_length, int rounds,
+        int seed
     ) {
         static std::string response;
         try {
@@ -782,8 +783,13 @@ extern "C" {
                 );
             }
 
-            std::random_device rd;
-            std::mt19937 gen(rd());
+            std::mt19937 gen;
+            if (seed >= 0) {
+                gen.seed(static_cast<std::mt19937::result_type>(seed));
+            } else {
+                std::random_device rd;
+                gen.seed(rd());
+            }
             const char* trace_file = std::getenv("REDCODE_TRACE_FILE");
 
             int w1_score = 0;
