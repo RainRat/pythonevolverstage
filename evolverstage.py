@@ -13,7 +13,7 @@ import platform
 from pathlib import Path
 import re
 from dataclasses import dataclass
-from typing import List, Optional, cast
+from typing import Callable, List, Optional, cast
 
 
 @dataclass
@@ -485,8 +485,10 @@ def run_internal_battle(
     battlerounds,
 ):
     if not CPP_WORKER_LIB:
-        print("C++ worker not available. Cannot run internal battle. Returning a draw.")
-        return f"{cont1} 0 0 0 0 scores\n{cont2} 0 0 0 0 scores"
+        raise RuntimeError(
+            "Internal battle engine is required by the configuration but the "
+            "C++ worker library is not loaded."
+        )
 
     try:
         # 1. Read warrior files
@@ -961,6 +963,149 @@ def create_directory_if_not_exists(directory):
         os.mkdir(directory)
 
 
+MutationHandler = Callable[[RedcodeInstruction, int, EvolverConfig, int], RedcodeInstruction]
+
+
+def _apply_major_mutation(
+    _instruction: RedcodeInstruction,
+    arena: int,
+    _config: EvolverConfig,
+    _magic_number: int,
+) -> RedcodeInstruction:
+    print("Major mutation")
+    return generate_random_instruction(arena)
+
+
+def _apply_nab_instruction(
+    instruction: RedcodeInstruction,
+    arena: int,
+    config: EvolverConfig,
+    _magic_number: int,
+) -> RedcodeInstruction:
+    if config.last_arena == 0:
+        return instruction
+
+    donor_arena = random.randint(0, config.last_arena)
+    while donor_arena == arena and config.last_arena > 0:
+        donor_arena = random.randint(0, config.last_arena)
+
+    print("Nab instruction from arena " + str(donor_arena))
+    donor_dir = os.path.join(config.base_path, f"arena{donor_arena}")
+    donor_file = os.path.join(
+        donor_dir,
+        f"{random.randint(1, config.numwarriors)}.red",
+    )
+
+    if not os.path.exists(donor_dir) or not os.path.exists(donor_file):
+        print("Donor warrior missing; using default instruction.")
+        return default_instruction()
+
+    try:
+        with open(donor_file, "r") as donor_handle:
+            donor_lines = donor_handle.readlines()
+    except OSError:
+        print("Unable to read donor warrior; using default instruction.")
+        return default_instruction()
+
+    if donor_lines:
+        return parse_instruction_or_default(random.choice(donor_lines))
+
+    print("Donor warrior empty; using default instruction.")
+    return default_instruction()
+
+
+def _apply_minor_mutation(
+    instruction: RedcodeInstruction,
+    arena: int,
+    config: EvolverConfig,
+    _magic_number: int,
+) -> RedcodeInstruction:
+    print("Minor mutation")
+    r = random.randint(1, 6)
+    if r == 1:
+        instruction.opcode = choose_random_opcode()
+    elif r == 2:
+        instruction.modifier = choose_random_modifier()
+    elif r == 3:
+        instruction.a_mode = choose_random_mode()
+    elif r == 4:
+        instruction.a_field = weighted_random_number(
+            config.coresize_list[arena], config.warlen_list[arena]
+        )
+    elif r == 5:
+        instruction.b_mode = choose_random_mode()
+    elif r == 6:
+        instruction.b_field = weighted_random_number(
+            config.coresize_list[arena], config.warlen_list[arena]
+        )
+    return instruction
+
+
+def _apply_micro_mutation(
+    instruction: RedcodeInstruction,
+    _arena: int,
+    _config: EvolverConfig,
+    _magic_number: int,
+) -> RedcodeInstruction:
+    print("Micro mutation")
+    if random.randint(1, 2) == 1:
+        current_value = _ensure_int(instruction.a_field)
+        if random.randint(1, 2) == 1:
+            current_value = current_value + 1
+        else:
+            current_value = current_value - 1
+        instruction.a_field = current_value
+    else:
+        current_value = _ensure_int(instruction.b_field)
+        if random.randint(1, 2) == 1:
+            current_value = current_value + 1
+        else:
+            current_value = current_value - 1
+        instruction.b_field = current_value
+    return instruction
+
+
+def _apply_instruction_library(
+    instruction: RedcodeInstruction,
+    _arena: int,
+    config: EvolverConfig,
+    _magic_number: int,
+) -> RedcodeInstruction:
+    if not config.library_path or not os.path.exists(config.library_path):
+        return instruction
+
+    print("Instruction library")
+    with open(config.library_path, "r") as library_handle:
+        library_lines = library_handle.readlines()
+    if library_lines:
+        return parse_instruction_or_default(random.choice(library_lines))
+    return default_instruction()
+
+
+def _apply_magic_number_mutation(
+    instruction: RedcodeInstruction,
+    _arena: int,
+    _config: EvolverConfig,
+    magic_number: int,
+) -> RedcodeInstruction:
+    print("Magic number mutation")
+    if random.randint(1, 2) == 1:
+        instruction.a_field = magic_number
+    else:
+        instruction.b_field = magic_number
+    return instruction
+
+
+MUTATION_HANDLERS: dict[Marble, MutationHandler] = {
+    Marble.MAJOR_MUTATION: _apply_major_mutation,
+    Marble.NAB_INSTRUCTION: _apply_nab_instruction,
+    Marble.MINOR_MUTATION: _apply_minor_mutation,
+    Marble.MICRO_MUTATION: _apply_micro_mutation,
+    Marble.INSTRUCTION_LIBRARY: _apply_instruction_library,
+    Marble.MAGIC_NUMBER_MUTATION: _apply_magic_number_mutation,
+}
+
+
 def run_final_tournament(config: EvolverConfig):
     if config.last_arena < 0:
         print("No arenas configured. Skipping final tournament.")
@@ -1149,81 +1294,9 @@ def breed_offspring(
 
             instruction = parse_instruction_or_default(source_line)
             chosen_marble = random.choice(bag)
-            if chosen_marble == Marble.MAJOR_MUTATION:
-                print("Major mutation")
-                instruction = generate_random_instruction(arena)
-            elif (
-                chosen_marble == Marble.NAB_INSTRUCTION
-                and config.last_arena != 0
-            ):
-                donor_arena = random.randint(0, config.last_arena)
-                while donor_arena == arena:
-                    donor_arena = random.randint(0, config.last_arena)
-                print("Nab instruction from arena " + str(donor_arena))
-                donor_file = os.path.join(
-                    config.base_path,
-                    f"arena{donor_arena}",
-                    f"{random.randint(1, config.numwarriors)}.red",
-                )
-                with open(donor_file, "r") as donor_handle:
-                    donor_lines = donor_handle.readlines()
-                if donor_lines:
-                    instruction = parse_instruction_or_default(random.choice(donor_lines))
-                else:
-                    instruction = default_instruction()
-            elif chosen_marble == Marble.MINOR_MUTATION:
-                print("Minor mutation")
-                r = random.randint(1, 6)
-                if r == 1:
-                    instruction.opcode = choose_random_opcode()
-                elif r == 2:
-                    instruction.modifier = choose_random_modifier()
-                elif r == 3:
-                    instruction.a_mode = choose_random_mode()
-                elif r == 4:
-                    instruction.a_field = weighted_random_number(
-                        config.coresize_list[arena], config.warlen_list[arena]
-                    )
-                elif r == 5:
-                    instruction.b_mode = choose_random_mode()
-                elif r == 6:
-                    instruction.b_field = weighted_random_number(
-                        config.coresize_list[arena], config.warlen_list[arena]
-                    )
-            elif chosen_marble == Marble.MICRO_MUTATION:
-                print("Micro mutation")
-                if random.randint(1, 2) == 1:
-                    current_value = _ensure_int(instruction.a_field)
-                    if random.randint(1, 2) == 1:
-                        current_value = current_value + 1
-                    else:
-                        current_value = current_value - 1
-                    instruction.a_field = current_value
-                else:
-                    current_value = _ensure_int(instruction.b_field)
-                    if random.randint(1, 2) == 1:
-                        current_value = current_value + 1
-                    else:
-                        current_value = current_value - 1
-                    instruction.b_field = current_value
-            elif (
-                chosen_marble == Marble.INSTRUCTION_LIBRARY
-                and config.library_path
-                and os.path.exists(config.library_path)
-            ):
-                print("Instruction library")
-                with open(config.library_path, "r") as library_handle:
-                    library_lines = library_handle.readlines()
-                if library_lines:
-                    instruction = parse_instruction_or_default(random.choice(library_lines))
-                else:
-                    instruction = default_instruction()
-            elif chosen_marble == Marble.MAGIC_NUMBER_MUTATION:
-                print("Magic number mutation")
-                if random.randint(1, 2) == 1:
-                    instruction.a_field = magic_number
-                else:
-                    instruction.b_field = magic_number
+            handler = MUTATION_HANDLERS.get(chosen_marble)
+            if handler:
+                instruction = handler(instruction, arena, config, magic_number)
 
             fl.write(instruction_to_line(instruction, arena))
             magic_number = magic_number - 1
