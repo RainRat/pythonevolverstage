@@ -119,7 +119,7 @@ int fold(int offset, int limit) {
         return offset - limit;
     }
     // The negative boundary is inclusive, matching the Python implementation.
-    if (offset < -half_limit) {
+    if (offset <= -half_limit) {
         return offset + limit;
     }
     return offset;
