@@ -115,8 +115,13 @@ int fold(int offset, int limit) {
     // Folds an offset to be within the range [-limit/2, limit/2]
     // This is equivalent to the corenorm function in the Python script.
     int half_limit = limit / 2;
-    if (offset > half_limit) return offset - limit;
-    if (offset <= -half_limit) return offset + limit; // Note: Asymmetric range
+    if (offset > half_limit) {
+        return offset - limit;
+    }
+    // The negative boundary is inclusive, matching the Python implementation.
+    if (offset <= -half_limit) {
+        return offset + limit;
+    }
     return offset;
 }
 
@@ -395,14 +400,16 @@ private:
                 return apply(dst.a_field, src.b_field);
             case F:
             case I: {
+                // We must evaluate both operations, so we can't short-circuit.
+                // A bitwise AND ensures both sides are evaluated.
                 bool a_ok = apply(dst.a_field, src.a_field);
                 bool b_ok = apply(dst.b_field, src.b_field);
-                return a_ok && b_ok;
+                return a_ok & b_ok;
             }
             case X: {
                 bool a_ok = apply(dst.a_field, src.b_field);
                 bool b_ok = apply(dst.b_field, src.a_field);
-                return a_ok && b_ok;
+                return a_ok & b_ok;
             }
         }
 
@@ -457,9 +464,10 @@ public:
         int primary_a_offset = fold(instr.a_field, read_limit);
         int intermediate_a_addr = normalize(pc + primary_a_offset, core_size);
         if (instr.a_mode == IMMEDIATE) {
-            a_addr_final = pc;
-            src = instr;
-            src.b_field = instr.a_field;
+            a_addr_final = pc; // The address of the immediate operand is the current PC
+            src = {};           // Start with a default DAT instruction
+            src.a_field = instr.a_field;
+            // B-field is implicitly 0, which is correct for immediate operands.
         } else if (instr.a_mode == DIRECT) {
             a_addr_final = intermediate_a_addr;
             src = memory[a_addr_final];

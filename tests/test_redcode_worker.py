@@ -129,7 +129,7 @@ def test_div_instruction_completes_remaining_fields(monkeypatch, tmp_path):
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
     assert "DIV.F" in trace_text
-    assert "MOV.B #1, $-10" in trace_text
+    assert "SNE.B #20, $-4" in trace_text
 
 
 def test_jmn_djn_use_or_logic(monkeypatch, tmp_path):
