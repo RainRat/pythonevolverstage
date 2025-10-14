@@ -40,3 +40,6 @@ Supported:
 -NOP: in the Extended spec, so it is supported.
 -SNE, SEQ: in the Extended spec, so it is supported. SEQ is an alias for CMP, but CMP is more commonly used, so SEQ will be accepted as input, but internally only CMP is used.
 -`{`, `}` and `*` modes: in the Extended spec, so it is supported.
+
+Submodules:
+-The official latest pMars source code has been included under pMars. It may be a future project to add it as an alternate emulation engine. For now, it can be compiled or browsed to resolve ambiguities about intended execution.

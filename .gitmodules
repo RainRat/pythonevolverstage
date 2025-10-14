@@ -1,0 +1,3 @@
+[submodule "pMars"]
+	path = pMars
+	url = https://github.com/mbarbon/pMARS.git
