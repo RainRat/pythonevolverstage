@@ -1,8 +1,8 @@
 FROM python:3.11-slim
 
-# Install build tools for the C++ worker
+# Install build tools and dependencies for the C++ worker and pMARS emulator
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    g++ cmake make \
+    g++ cmake make libncurses-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
