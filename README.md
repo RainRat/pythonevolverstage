@@ -147,3 +147,50 @@ docker run --rm -it corewar-evolver
 ```
 
 The build step compiles the optional C++ worker (`redcode-worker.cpp`) so the library is ready to use inside the container.
+
+### Running on Windows 11 with Docker Desktop and WSL
+
+Docker Desktop integrates with WSL 2, so you can build and run the container from either a WSL terminal (Ubuntu, Debian, etc.)
+or from PowerShell. The workflow below keeps your project files inside the WSL distribution, which avoids path-conversion edge
+cases and gives the best filesystem performance when training warriors.
+
+1. Install [Docker Desktop for Windows](https://docs.docker.com/desktop/install/windows-install/) and ensure that:
+   * **Use the WSL 2 based engine** is enabled in Docker Desktop's settings.
+   * At least one Linux distribution is installed in WSL (e.g., Ubuntu) and is enabled for Docker integration.
+2. Open the WSL distribution (for example, launch "Ubuntu" from the Start menu) and clone this repository inside the Linux
+   filesystem:
+
+   ```bash
+   git clone https://github.com/<your-account>/pythonevolverstage.git
+   cd pythonevolverstage
+   ```
+
+3. Build the Docker image from the WSL prompt:
+
+   ```bash
+   make docker-build
+   ```
+
+   The `docker` CLI from WSL communicates with the Windows Docker Desktop engine, so no additional setup is required.
+
+4. Start the evolver inside a container. The `docker-run` make target wraps the recommended command:
+
+   ```bash
+   make docker-run
+   ```
+
+   To persist results such as evolved warriors or logs on the host, mount the project directory into the container when you run
+   it:
+
+   ```bash
+   docker run --rm -it -v "$(pwd):/app" corewar-evolver
+   ```
+
+   Windows PowerShell users can run the same command outside WSL by replacing `$(pwd)` with `${PWD}`:
+
+   ```powershell
+   docker run --rm -it -v "${PWD}:/app" corewar-evolver
+   ```
+
+   In either environment, the evolver runs with the repository checked out at `/app` inside the container, so any modifications
+   you make to configuration files (for example, `settings.ini`) are automatically visible to the running process.
