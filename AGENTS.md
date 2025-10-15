@@ -43,3 +43,4 @@ Supported:
 
 Submodules:
 -The official latest pMars source code has been included under pMars. It may be a future project to add it as an alternate emulation engine. For now, it can be compiled or browsed to resolve ambiguities about intended execution.
+-Instruction semantics should match pMARS. When adding or updating instruction-level tests, treat pMARS as the reference implementation and prefer its behaviour over existing expectations if they disagree.
