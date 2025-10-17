@@ -51,6 +51,23 @@ def test_invalid_operand_returns_error():
     assert "Invalid numeric operand" in result
 
 
+def test_large_configuration_limits_are_supported():
+    lib = load_worker()
+    warrior = "DAT.F #0, #0\n"
+    core_size = 200_000
+    max_cycles = 1_000_000
+    max_processes = 120_000
+    min_distance = core_size // 3
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        warrior.encode(), 2,
+        core_size, max_cycles, max_processes,
+        core_size, core_size,
+        min_distance, core_size, 10, -1
+    ).decode()
+    assert not result.startswith("ERROR:"), result
+
+
 def test_mixed_case_warrior_with_inline_comments():
     lib = load_worker()
     warrior = (
@@ -97,6 +114,19 @@ def test_battle_stops_once_outcome_decided():
         "Battle should stop once the outcome is locked; "
         f"expected leader score {expected_score} for {expected_rounds_played} rounds, got {w1_score}"
     )
+
+
+def test_round_limit_is_enforced():
+    lib = load_worker()
+    warrior = "DAT.F #0, #0\n"
+    excessive_rounds = 200_000
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        warrior.encode(), 2,
+        8000, 1000, 8000, 8000, 8000, 100, 100, excessive_rounds, -1
+    ).decode()
+    assert result.startswith("ERROR:"), f"Expected error response, got: {result}"
+    assert "Number of rounds must be between" in result
 
 
 def test_div_instruction_completes_remaining_fields(monkeypatch, tmp_path):
