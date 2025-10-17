@@ -296,7 +296,9 @@ def test_execute_battle_parses_pmars_output(monkeypatch):
         "Results: 1 3 1\n"
     )
 
-    monkeypatch.setattr(evolverstage, "run_pmars_command", lambda *args, **kwargs: sample_output)
+    monkeypatch.setattr(
+        evolverstage, "_run_external_command", lambda *args, **kwargs: sample_output
+    )
 
     evolverstage.set_active_config(temp_config)
     try:
