@@ -444,7 +444,7 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
     if config.last_arena is None:
         raise ValueError("LAST_ARENA must be specified in the configuration.")
 
-    valid_engines = {"external", "internal", "pmars"}
+    valid_engines = {"nmars", "internal", "pmars"}
     if config.battle_engine not in valid_engines:
         raise ValueError(
             "BATTLE_ENGINE must be one of "
@@ -735,11 +735,13 @@ def load_configuration(path: str) -> EvolverConfig:
     if not writelimit_list:
         writelimit_list = list(coresize_list)
 
-    battle_engine = _read_config('BATTLE_ENGINE', data_type='string', default='external')
+    battle_engine = _read_config('BATTLE_ENGINE', data_type='string', default='nmars')
     if battle_engine:
         battle_engine = battle_engine.strip().lower()
+        if battle_engine == 'external':
+            battle_engine = 'nmars'
     else:
-        battle_engine = 'external'
+        battle_engine = 'nmars'
 
     battle_log_file = _read_config('BATTLE_LOG_FILE', data_type='string')
     if battle_log_file:
@@ -1934,55 +1936,63 @@ def run_final_tournament(config: EvolverConfig):
 
     tournament_start = time.time()
     battles_completed = 0
-    for arena, warrior_ids in arenas_to_run:
-        total_scores = {warrior_id: 0 for warrior_id in warrior_ids}
+    try:
+        for arena, warrior_ids in arenas_to_run:
+            total_scores = {warrior_id: 0 for warrior_id in warrior_ids}
 
-        for idx, cont1 in enumerate(warrior_ids):
-            for cont2 in warrior_ids[idx + 1 :]:
-                warriors, scores = execute_battle(
-                    arena,
-                    cont1,
-                    cont2,
-                    final_era_index,
-                    verbose=False,
-                    battlerounds_override=1,
-                )
-                for warrior_id, score in zip(warriors, scores):
-                    total_scores[warrior_id] = total_scores.get(warrior_id, 0) + score
-
-                battles_completed += 1
-                percent_complete = (
-                    battles_completed / total_battles * 100 if total_battles else 100.0
-                )
-                progress_line = (
-                    f"Final Tournament Progress: {battles_completed}/{total_battles} "
-                    f"battles ({percent_complete:.2f}% complete)"
-                )
-                if len(warriors) >= 2 and len(scores) >= 2:
-                    battle_line = (
-                        f"Arena {arena} | {warriors[0]} ({scores[0]}) vs "
-                        f"{warriors[1]} ({scores[1]})"
+            for idx, cont1 in enumerate(warrior_ids):
+                for cont2 in warrior_ids[idx + 1 :]:
+                    warriors, scores = execute_battle(
+                        arena,
+                        cont1,
+                        cont2,
+                        final_era_index,
+                        verbose=False,
+                        battlerounds_override=1,
                     )
-                else:
-                    battle_line = f"Arena {arena} battle in progress"
-                console_update_status(progress_line, battle_line)
+                    for warrior_id, score in zip(warriors, scores):
+                        total_scores[warrior_id] = total_scores.get(warrior_id, 0) + score
 
-        console_clear_status()
-        console_log(
-            f"\nArena {arena} final standings:",
-            minimum_level=VerbosityLevel.TERSE,
-        )
-        rankings = sorted(total_scores.items(), key=lambda item: item[1], reverse=True)
-        for position, (warrior_id, score) in enumerate(rankings, start=1):
+                    battles_completed += 1
+                    percent_complete = (
+                        battles_completed / total_battles * 100 if total_battles else 100.0
+                    )
+                    progress_line = (
+                        f"Final Tournament Progress: {battles_completed}/{total_battles} "
+                        f"battles ({percent_complete:.2f}% complete)"
+                    )
+                    if len(warriors) >= 2 and len(scores) >= 2:
+                        battle_line = (
+                            f"Arena {arena} | {warriors[0]} ({scores[0]}) vs "
+                            f"{warriors[1]} ({scores[1]})"
+                        )
+                    else:
+                        battle_line = f"Arena {arena} battle in progress"
+                    console_update_status(progress_line, battle_line)
+
+            console_clear_status()
             console_log(
-                f"{position}. Warrior {warrior_id}: {score} points",
+                f"\nArena {arena} final standings:",
                 minimum_level=VerbosityLevel.TERSE,
             )
-        champion_id, champion_score = rankings[0]
+            rankings = sorted(total_scores.items(), key=lambda item: item[1], reverse=True)
+            for position, (warrior_id, score) in enumerate(rankings, start=1):
+                console_log(
+                    f"{position}. Warrior {warrior_id}: {score} points",
+                    minimum_level=VerbosityLevel.TERSE,
+                )
+            champion_id, champion_score = rankings[0]
+            console_log(
+                f"Champion: Warrior {champion_id} with {champion_score} points",
+                minimum_level=VerbosityLevel.TERSE,
+            )
+    except KeyboardInterrupt:
+        console_clear_status()
         console_log(
-            f"Champion: Warrior {champion_id} with {champion_score} points",
+            "Final tournament interrupted by user.",
             minimum_level=VerbosityLevel.TERSE,
         )
+        return
 
     console_clear_status()
     duration = time.time() - tournament_start
@@ -2186,7 +2196,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     )
     parser.add_argument(
         "--engine",
-        choices=["internal", "external", "pmars"],
+        choices=["internal", "nmars", "pmars"],
         help="Override the configured battle engine",
     )
     parser.add_argument(
@@ -2260,7 +2270,8 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     try:
         while True:
             previous_era = era
-            runtime_in_hours = (time.time() - start_time) / 3600
+            runtime_seconds = time.time() - start_time
+            runtime_in_hours = runtime_seconds / 3600
 
             if runtime_in_hours > active_config.clock_time:
                 console_clear_status()
@@ -2291,15 +2302,22 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
 
             arena_index = random.randint(0, active_config.last_arena)
             cont1, cont2 = select_opponents(active_config.numwarriors)
-            hours_remaining = active_config.clock_time - runtime_in_hours
-            percent_complete = runtime_in_hours / active_config.clock_time * 100
+            if active_config.clock_time:
+                seconds_remaining = max(
+                    (active_config.clock_time - runtime_in_hours) * 3600,
+                    0.0,
+                )
+                percent_complete = runtime_in_hours / active_config.clock_time * 100
+            else:
+                seconds_remaining = 0.0
+                percent_complete = 100.0
             display_era = era + 1
             pending_battle_line = (
                 "Battle: "
                 f"Era {display_era}, Arena {arena_index} | {cont1} vs {cont2} | Running..."
             )
             progress_line = (
-                f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
+                f"{_format_duration(seconds_remaining)} remaining ({percent_complete:.2f}% complete) "
                 f"Era: {display_era}"
             )
             console_update_status(progress_line, pending_battle_line)
@@ -2333,15 +2351,21 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 winner, loser, arena_index, era, active_config
             )
             if archiving_result.events:
-                runtime_in_hours = (time.time() - start_time) / 3600
-                hours_remaining = max(active_config.clock_time - runtime_in_hours, 0.0)
-                percent_complete = (
-                    runtime_in_hours / active_config.clock_time * 100
-                    if active_config.clock_time
-                    else 100.0
-                )
+                runtime_seconds = time.time() - start_time
+                runtime_in_hours = runtime_seconds / 3600
+                if active_config.clock_time:
+                    seconds_remaining = max(
+                        (active_config.clock_time - runtime_in_hours) * 3600,
+                        0.0,
+                    )
+                    percent_complete = (
+                        runtime_in_hours / active_config.clock_time * 100
+                    )
+                else:
+                    seconds_remaining = 0.0
+                    percent_complete = 100.0
                 progress_line = (
-                    f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
+                    f"{_format_duration(seconds_remaining)} remaining ({percent_complete:.2f}% complete) "
                     f"Era: {display_era}"
                 )
                 console_clear_status()
@@ -2387,19 +2411,22 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             )
 
             runtime_in_hours = (time.time() - start_time) / 3600
-            hours_remaining = max(active_config.clock_time - runtime_in_hours, 0.0)
-            percent_complete = (
-                runtime_in_hours / active_config.clock_time * 100
-                if active_config.clock_time
-                else 100.0
-            )
+            if active_config.clock_time:
+                seconds_remaining = max(
+                    (active_config.clock_time - runtime_in_hours) * 3600,
+                    0.0,
+                )
+                percent_complete = runtime_in_hours / active_config.clock_time * 100
+            else:
+                seconds_remaining = 0.0
+                percent_complete = 100.0
             battle_line = (
                 "Battle: "
                 f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
                 f"| Partner: {partner_id}"
             )
             progress_line = (
-                f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
+                f"{_format_duration(seconds_remaining)} remaining ({percent_complete:.2f}% complete) "
                 f"Era: {display_era}"
             )
             console_update_status(progress_line, battle_line)
