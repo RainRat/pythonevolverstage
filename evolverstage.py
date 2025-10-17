@@ -14,8 +14,8 @@ import platform
 from pathlib import Path
 import re
 import warnings
-from dataclasses import dataclass
-from typing import Callable, List, Optional, Sequence, TypeVar, cast
+from dataclasses import dataclass, field
+from typing import Callable, List, Literal, Optional, Sequence, TypeVar, cast
 
 
 @dataclass
@@ -1466,6 +1466,16 @@ MUTATION_HANDLERS: dict[Marble, MutationHandler] = {
 }
 
 
+def _format_duration(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.2f} seconds"
+    minutes, secs = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{int(minutes)} minutes {secs:.2f} seconds"
+    hours, minutes = divmod(minutes, 60)
+    return f"{int(hours)} hours {int(minutes)} minutes {secs:.2f} seconds"
+
+
 def run_final_tournament(config: EvolverConfig):
     status_display.clear()
     if config.last_arena < 0:
@@ -1505,6 +1515,7 @@ def run_final_tournament(config: EvolverConfig):
         print("No arenas with enough warriors for the final tournament.")
         return
 
+    tournament_start = time.time()
     battles_completed = 0
     for arena, warrior_ids in arenas_to_run:
         total_scores = {warrior_id: 0 for warrior_id in warrior_ids}
@@ -1550,6 +1561,8 @@ def run_final_tournament(config: EvolverConfig):
         )
 
     status_display.clear()
+    duration = time.time() - tournament_start
+    print(f"Final tournament completed in {_format_duration(duration)}.")
 
 
 def _build_marble_bag(era: int, config: EvolverConfig) -> list[Marble]:
@@ -1592,28 +1605,49 @@ def determine_winner_and_loser(
     return warriors[0], warriors[1], False
 
 
+@dataclass
+class ArchivingEvent:
+    action: Literal["archived", "unarchived"]
+    warrior_id: int
+    archive_filename: Optional[str] = None
+
+
+@dataclass
+class ArchivingResult:
+    skip_breeding: bool = False
+    events: list[ArchivingEvent] = field(default_factory=list)
+
+
 def handle_archiving(
     winner: int, loser: int, arena: int, era: int, config: EvolverConfig
-) -> bool:
+) -> ArchivingResult:
     arena_dir = os.path.join(config.base_path, f"arena{arena}")
     archive_dir = os.path.join(config.base_path, "archive")
+    events: list[ArchivingEvent] = []
+
     if config.archive_list[era] != 0 and get_random_int(1, config.archive_list[era]) == 1:
-        print("storing in archive")
         with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
             winlines = fw.readlines()
         archive_filename = f"{get_random_int(1, 9999)}.red"
         create_directory_if_not_exists(archive_dir)
         with open(os.path.join(archive_dir, archive_filename), "w") as fd:
             fd.writelines(winlines)
+        events.append(
+            ArchivingEvent(
+                action="archived",
+                warrior_id=winner,
+                archive_filename=archive_filename,
+            )
+        )
 
     if config.unarchive_list[era] != 0 and get_random_int(1, config.unarchive_list[era]) == 1:
-        print("unarchiving")
         if not os.path.isdir(archive_dir):
-            return False
+            return ArchivingResult(events=events)
         archive_files = os.listdir(archive_dir)
         if not archive_files:
-            return False
-        with open(os.path.join(archive_dir, _get_random_choice(archive_files))) as fs:
+            return ArchivingResult(events=events)
+        archive_choice = _get_random_choice(archive_files)
+        with open(os.path.join(archive_dir, archive_choice)) as fs:
             sourcelines = fs.readlines()
 
         instructions_written = 0
@@ -1629,9 +1663,16 @@ def handle_archiving(
             while instructions_written < config.warlen_list[arena]:
                 fl.write(instruction_to_line(default_instruction(), arena))
                 instructions_written += 1
-        return True
+        events.append(
+            ArchivingEvent(
+                action="unarchived",
+                warrior_id=loser,
+                archive_filename=archive_choice,
+            )
+        )
+        return ArchivingResult(skip_breeding=True, events=events)
 
-    return False
+    return ArchivingResult(events=events)
 
 
 def breed_offspring(
@@ -1790,9 +1831,14 @@ def main(argv: Optional[List[str]] = None) -> int:
 
             if era != previous_era:
                 status_display.clear()
-                print(
-                    f"************** Switching from era {previous_era + 1} to {era + 1} *******************"
-                )
+                if previous_era < 0:
+                    print(
+                        f"========== Starting evolution in era {era + 1} of {era_count} =========="
+                    )
+                else:
+                    print(
+                        f"************** Advancing from era {previous_era + 1} to {era + 1} *******************"
+                    )
                 bag = _build_marble_bag(era, active_config)
 
             arena_index = random.randint(0, active_config.last_arena)
@@ -1818,7 +1864,23 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
 
-            if handle_archiving(winner, loser, arena_index, era, active_config):
+            if len(warriors) >= 2 and len(scores) >= 2:
+                matchup = (
+                    f"{warriors[0]} ({scores[0]}) vs {warriors[1]} ({scores[1]})"
+                )
+            else:
+                matchup = " vs ".join(str(warrior) for warrior in warriors)
+            if was_draw:
+                battle_result_description = (
+                    f"Result: Draw | Winner (selected): {winner} | Loser: {loser}"
+                )
+            else:
+                battle_result_description = f"Winner: {winner} | Loser: {loser}"
+
+            archiving_result = handle_archiving(
+                winner, loser, arena_index, era, active_config
+            )
+            if archiving_result.events:
                 runtime_in_hours = (time.time() - start_time) / 3600
                 hours_remaining = max(active_config.clock_time - runtime_in_hours, 0.0)
                 percent_complete = (
@@ -1826,27 +1888,35 @@ def main(argv: Optional[List[str]] = None) -> int:
                     if active_config.clock_time
                     else 100.0
                 )
-                if len(warriors) >= 2 and len(scores) >= 2:
-                    matchup = (
-                        f"{warriors[0]} ({scores[0]}) vs {warriors[1]} ({scores[1]})"
-                    )
-                else:
-                    matchup = " vs ".join(str(warrior) for warrior in warriors)
-                result_description = (
-                    "Result: Draw"
-                    if was_draw
-                    else f"Winner: {winner} | Loser: {loser}"
-                )
-                archived_line = (
-                    "Battle: "
-                    f"Era {display_era}, Arena {arena_index} | {matchup} | {result_description} "
-                    "| Action: Archived"
-                )
                 progress_line = (
                     f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
                     f"Era: {display_era}"
                 )
-                status_display.update(progress_line, archived_line)
+                for event in archiving_result.events:
+                    if event.action == "archived":
+                        if event.archive_filename:
+                            action_detail = (
+                                f"Archived Warrior {event.warrior_id} to {event.archive_filename}"
+                            )
+                        else:
+                            action_detail = f"Archived Warrior {event.warrior_id}"
+                    else:
+                        if event.archive_filename:
+                            action_detail = (
+                                f"Unarchived Warrior {event.warrior_id} from {event.archive_filename}"
+                            )
+                        else:
+                            action_detail = (
+                                f"Unarchived Warrior {event.warrior_id}"
+                            )
+                    event_line = (
+                        "Battle: "
+                        f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
+                        f"| Action: {action_detail}"
+                    )
+                    status_display.update(progress_line, event_line)
+
+            if archiving_result.skip_breeding:
                 continue
 
             partner_id = breed_offspring(
@@ -1868,21 +1938,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 if active_config.clock_time
                 else 100.0
             )
-            if len(warriors) >= 2 and len(scores) >= 2:
-                matchup = (
-                    f"{warriors[0]} ({scores[0]}) vs {warriors[1]} ({scores[1]})"
-                )
-            else:
-                matchup = " vs ".join(str(warrior) for warrior in warriors)
-            if was_draw:
-                result_description = (
-                    f"Result: Draw | Winner (selected): {winner} | Loser: {loser}"
-                )
-            else:
-                result_description = f"Winner: {winner} | Loser: {loser}"
             battle_line = (
                 "Battle: "
-                f"Era {display_era}, Arena {arena_index} | {matchup} | {result_description} "
+                f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
                 f"| Partner: {partner_id}"
             )
             progress_line = (
