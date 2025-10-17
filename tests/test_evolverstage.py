@@ -308,6 +308,22 @@ def test_execute_battle_parses_pmars_output(monkeypatch):
     assert scores == [10, 20]
 
 
+def test_determine_winner_and_loser_reports_draw(monkeypatch):
+    def fake_random(min_val, max_val):
+        assert (min_val, max_val) == (1, 2)
+        return 1
+
+    monkeypatch.setattr(evolverstage, "get_random_int", fake_random)
+
+    winner, loser, was_draw = evolverstage.determine_winner_and_loser(
+        [11, 22], [55, 55]
+    )
+
+    assert was_draw is True
+    assert winner == 22
+    assert loser == 11
+
+
 def test_load_configuration_checks_seeded_directories(tmp_path, capsys):
     config_path = tmp_path / "config.ini"
     config_path.write_text(
@@ -446,6 +462,55 @@ def test_run_internal_battle_requires_worker(tmp_path, monkeypatch):
         else:
             fallback_config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
             evolverstage.set_active_config(fallback_config)
+
+
+def test_final_tournament_uses_single_round(monkeypatch, tmp_path, capsys):
+    config = replace(
+        _DEFAULT_CONFIG,
+        base_path=str(tmp_path),
+        last_arena=0,
+        numwarriors=3,
+        alreadyseeded=True,
+    )
+    config.battlerounds_list = [5]
+
+    arena_dir = tmp_path / "arena0"
+    arena_dir.mkdir()
+    for warrior_id in range(1, 4):
+        (arena_dir / f"{warrior_id}.red").write_text(
+            "DAT.F #0, #0\n",
+            encoding="utf-8",
+        )
+
+    try:
+        previous_config = evolverstage.get_active_config()
+    except RuntimeError:
+        previous_config = None
+
+    evolverstage.set_active_config(config)
+
+    battle_rounds: list[int] = []
+
+    def fake_execute_battle(
+        arena, cont1, cont2, era, verbose=True, battlerounds_override=None
+    ):
+        battle_rounds.append(battlerounds_override)
+        return [cont1, cont2], [10, 5]
+
+    monkeypatch.setattr(evolverstage, "execute_battle", fake_execute_battle)
+
+    evolverstage.run_final_tournament(config)
+
+    captured = capsys.readouterr()
+
+    assert battle_rounds
+    assert all(rounds == 1 for rounds in battle_rounds)
+    assert "Final Tournament Progress" in captured.out
+
+    if previous_config is not None:
+        evolverstage.set_active_config(previous_config)
+    else:
+        evolverstage.set_active_config(_DEFAULT_CONFIG)
 
 
 def test_run_internal_battle_clamps_wardistance(monkeypatch, tmp_path, capsys):

@@ -74,6 +74,57 @@ _RNG_INDEX: int = 0
 T = TypeVar("T")
 
 
+class StatusDisplay:
+    """Utility for maintaining a two-line rolling status output."""
+
+    def __init__(self) -> None:
+        self._active_lines = 0
+
+    def _stream(self):
+        return sys.stdout
+
+    def _supports_ansi(self, stream) -> bool:
+        return bool(getattr(stream, "isatty", lambda: False)())
+
+    def update(self, line1: str, line2: str) -> None:
+        stream = self._stream()
+        supports_ansi = self._supports_ansi(stream)
+        lines = [line1, line2]
+
+        if supports_ansi and self._active_lines:
+            stream.write(f"\x1b[{self._active_lines}F")
+
+        for line in lines:
+            if supports_ansi:
+                stream.write("\x1b[2K")
+                stream.write(line)
+                stream.write("\n")
+            else:
+                stream.write(line + "\n")
+
+        stream.flush()
+        self._active_lines = len(lines) if supports_ansi else 0
+
+    def clear(self) -> None:
+        if not self._active_lines:
+            return
+
+        stream = self._stream()
+        supports_ansi = self._supports_ansi(stream)
+        if supports_ansi:
+            stream.write(f"\x1b[{self._active_lines}F")
+            for index in range(self._active_lines):
+                stream.write("\x1b[2K")
+                if index < self._active_lines - 1:
+                    stream.write("\x1b[1E")
+            stream.write("\r")
+            stream.flush()
+        self._active_lines = 0
+
+
+status_display = StatusDisplay()
+
+
 def set_rng_sequence(sequence: list[int]) -> None:
     """Set a deterministic RNG sequence for tests.
 
@@ -810,8 +861,20 @@ def run_internal_battle(
         )
 
 
-def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool = True):
+def execute_battle(
+    arena: int,
+    cont1: int,
+    cont2: int,
+    era: int,
+    verbose: bool = True,
+    battlerounds_override: Optional[int] = None,
+):
     engine = config.battle_engine
+    battlerounds = (
+        battlerounds_override
+        if battlerounds_override is not None
+        else config.battlerounds_list[era]
+    )
     if engine == 'internal':
         raw_output = run_internal_battle(
             arena,
@@ -824,7 +887,7 @@ def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool =
             config.writelimit_list[arena],
             config.warlen_list[arena],
             config.wardistance_list[arena],
-            config.battlerounds_list[era],
+            battlerounds,
         )
     elif engine == 'pmars':
         raw_output = run_pmars_command(
@@ -836,7 +899,7 @@ def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool =
             config.processes_list[arena],
             config.warlen_list[arena],
             config.wardistance_list[arena],
-            config.battlerounds_list[era],
+            battlerounds,
         )
     else:
         raw_output = run_nmars_command(
@@ -848,7 +911,7 @@ def execute_battle(arena: int, cont1: int, cont2: int, era: int, verbose: bool =
             config.processes_list[arena],
             config.warlen_list[arena],
             config.wardistance_list[arena],
-            config.battlerounds_list[era],
+            battlerounds,
         )
 
     if raw_output is None:
@@ -1404,6 +1467,7 @@ MUTATION_HANDLERS: dict[Marble, MutationHandler] = {
 
 
 def run_final_tournament(config: EvolverConfig):
+    status_display.clear()
     if config.last_arena < 0:
         print("No arenas configured. Skipping final tournament.")
         return
@@ -1416,6 +1480,8 @@ def run_final_tournament(config: EvolverConfig):
 
     final_era_index = max(0, len(config.battlerounds_list) - 1)
     print("\n================ Final Tournament ================")
+    arenas_to_run: list[tuple[int, list[int]]] = []
+    total_battles = 0
     for arena in range(0, config.last_arena + 1):
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         if not os.path.isdir(arena_dir):
@@ -1432,21 +1498,49 @@ def run_final_tournament(config: EvolverConfig):
             print(f"Arena {arena}: not enough warriors for a tournament. Skipping.")
             continue
 
-        print(f"\nArena {arena} final standings:")
+        arenas_to_run.append((arena, warrior_ids))
+        total_battles += len(warrior_ids) * (len(warrior_ids) - 1) // 2
+
+    if not arenas_to_run:
+        print("No arenas with enough warriors for the final tournament.")
+        return
+
+    battles_completed = 0
+    for arena, warrior_ids in arenas_to_run:
         total_scores = {warrior_id: 0 for warrior_id in warrior_ids}
 
         for idx, cont1 in enumerate(warrior_ids):
-            for cont2 in warrior_ids[idx + 1:]:
+            for cont2 in warrior_ids[idx + 1 :]:
                 warriors, scores = execute_battle(
                     arena,
                     cont1,
                     cont2,
                     final_era_index,
                     verbose=False,
+                    battlerounds_override=1,
                 )
                 for warrior_id, score in zip(warriors, scores):
                     total_scores[warrior_id] = total_scores.get(warrior_id, 0) + score
 
+                battles_completed += 1
+                percent_complete = (
+                    battles_completed / total_battles * 100 if total_battles else 100.0
+                )
+                progress_line = (
+                    f"Final Tournament Progress: {battles_completed}/{total_battles} "
+                    f"battles ({percent_complete:.2f}% complete)"
+                )
+                if len(warriors) >= 2 and len(scores) >= 2:
+                    battle_line = (
+                        f"Arena {arena} | {warriors[0]} ({scores[0]}) vs "
+                        f"{warriors[1]} ({scores[1]})"
+                    )
+                else:
+                    battle_line = f"Arena {arena} battle in progress"
+                status_display.update(progress_line, battle_line)
+
+        status_display.clear()
+        print(f"\nArena {arena} final standings:")
         rankings = sorted(total_scores.items(), key=lambda item: item[1], reverse=True)
         for position, (warrior_id, score) in enumerate(rankings, start=1):
             print(f"{position}. Warrior {warrior_id}: {score} points")
@@ -1454,6 +1548,8 @@ def run_final_tournament(config: EvolverConfig):
         print(
             f"Champion: Warrior {champion_id} with {champion_score} points"
         )
+
+    status_display.clear()
 
 
 def _build_marble_bag(era: int, config: EvolverConfig) -> list[Marble]:
@@ -1478,12 +1574,11 @@ def select_opponents(num_warriors: int) -> tuple[int, int]:
 
 def determine_winner_and_loser(
     warriors: list[int], scores: list[int]
-) -> tuple[int, int]:
+) -> tuple[int, int, bool]:
     if len(warriors) < 2 or len(scores) < 2:
         raise ValueError("Expected scores for two warriors")
 
     if scores[1] == scores[0]:
-        print("draw")
         draw_selection = get_random_int(1, 2)
         if draw_selection == 1:
             winner = warriors[1]
@@ -1491,10 +1586,10 @@ def determine_winner_and_loser(
         else:
             winner = warriors[0]
             loser = warriors[1]
-        return winner, loser
+        return winner, loser, True
     if scores[1] > scores[0]:
-        return warriors[1], warriors[0]
-    return warriors[0], warriors[1]
+        return warriors[1], warriors[0], False
+    return warriors[0], warriors[1], False
 
 
 def handle_archiving(
@@ -1612,19 +1707,7 @@ def breed_offspring(
         score2=scores[1],
         bred_with=str(partner_id),
     )
-
-    if len(warriors) >= 2 and len(scores) >= 2:
-        matchup = (
-            f"{warriors[0]} ({scores[0]}) vs {warriors[1]} ({scores[1]})"
-        )
-    else:
-        matchup = " vs ".join(str(warrior) for warrior in warriors)
-
-    print(
-        "Battle: "
-        f"Era {era}, Arena {arena} | {matchup} | "
-        f"Winner: {winner} | Loser: {loser} | Partner: {partner_id}"
-    )
+    return partner_id
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Python Evolver Stage")
@@ -1696,6 +1779,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             runtime_in_hours = (time.time() - start_time) / 3600
 
             if runtime_in_hours > active_config.clock_time:
+                status_display.clear()
                 print("Clock time exceeded. Ending evolution loop.")
                 break
 
@@ -1705,19 +1789,26 @@ def main(argv: Optional[List[str]] = None) -> int:
                 era = min(int(runtime_in_hours / era_duration), era_count - 1)
 
             if era != previous_era:
+                status_display.clear()
                 print(
                     f"************** Switching from era {previous_era + 1} to {era + 1} *******************"
                 )
                 bag = _build_marble_bag(era, active_config)
 
-            hours_remaining = active_config.clock_time - runtime_in_hours
-            percent_complete = runtime_in_hours / active_config.clock_time * 100
-            print(
-                f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) Era: {era + 1}"
-            )
-
             arena_index = random.randint(0, active_config.last_arena)
             cont1, cont2 = select_opponents(active_config.numwarriors)
+            hours_remaining = active_config.clock_time - runtime_in_hours
+            percent_complete = runtime_in_hours / active_config.clock_time * 100
+            display_era = era + 1
+            pending_battle_line = (
+                "Battle: "
+                f"Era {display_era}, Arena {arena_index} | {cont1} vs {cont2} | Running..."
+            )
+            progress_line = (
+                f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
+                f"Era: {display_era}"
+            )
+            status_display.update(progress_line, pending_battle_line)
             warriors, scores = execute_battle(
                 arena_index,
                 cont1,
@@ -1725,12 +1816,40 @@ def main(argv: Optional[List[str]] = None) -> int:
                 era,
                 verbose=args.verbose,
             )
-            winner, loser = determine_winner_and_loser(warriors, scores)
+            winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
 
             if handle_archiving(winner, loser, arena_index, era, active_config):
+                runtime_in_hours = (time.time() - start_time) / 3600
+                hours_remaining = max(active_config.clock_time - runtime_in_hours, 0.0)
+                percent_complete = (
+                    runtime_in_hours / active_config.clock_time * 100
+                    if active_config.clock_time
+                    else 100.0
+                )
+                if len(warriors) >= 2 and len(scores) >= 2:
+                    matchup = (
+                        f"{warriors[0]} ({scores[0]}) vs {warriors[1]} ({scores[1]})"
+                    )
+                else:
+                    matchup = " vs ".join(str(warrior) for warrior in warriors)
+                result_description = (
+                    "Result: Draw"
+                    if was_draw
+                    else f"Winner: {winner} | Loser: {loser}"
+                )
+                archived_line = (
+                    "Battle: "
+                    f"Era {display_era}, Arena {arena_index} | {matchup} | {result_description} "
+                    "| Action: Archived"
+                )
+                progress_line = (
+                    f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
+                    f"Era: {display_era}"
+                )
+                status_display.update(progress_line, archived_line)
                 continue
 
-            breed_offspring(
+            partner_id = breed_offspring(
                 winner,
                 loser,
                 arena_index,
@@ -1742,11 +1861,43 @@ def main(argv: Optional[List[str]] = None) -> int:
                 warriors,
             )
 
+            runtime_in_hours = (time.time() - start_time) / 3600
+            hours_remaining = max(active_config.clock_time - runtime_in_hours, 0.0)
+            percent_complete = (
+                runtime_in_hours / active_config.clock_time * 100
+                if active_config.clock_time
+                else 100.0
+            )
+            if len(warriors) >= 2 and len(scores) >= 2:
+                matchup = (
+                    f"{warriors[0]} ({scores[0]}) vs {warriors[1]} ({scores[1]})"
+                )
+            else:
+                matchup = " vs ".join(str(warrior) for warrior in warriors)
+            if was_draw:
+                result_description = (
+                    f"Result: Draw | Winner (selected): {winner} | Loser: {loser}"
+                )
+            else:
+                result_description = f"Winner: {winner} | Loser: {loser}"
+            battle_line = (
+                "Battle: "
+                f"Era {display_era}, Arena {arena_index} | {matchup} | {result_description} "
+                f"| Partner: {partner_id}"
+            )
+            progress_line = (
+                f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
+                f"Era: {display_era}"
+            )
+            status_display.update(progress_line, battle_line)
+
     except KeyboardInterrupt:
+        status_display.clear()
         print("Evolution interrupted by user.")
         interrupted = True
 
     if not interrupted:
+        status_display.clear()
         print("Evolution loop completed.")
 
     if active_config.run_final_tournament:
