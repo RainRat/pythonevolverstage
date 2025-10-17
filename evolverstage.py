@@ -371,12 +371,18 @@ def load_configuration(path: str) -> EvolverConfig:
         battle_engine = 'external'
 
     battle_log_file = _read_config('BATTLE_LOG_FILE', data_type='string')
-    if battle_log_file and not os.path.isabs(battle_log_file):
-        battle_log_file = os.path.abspath(os.path.join(base_path, battle_log_file))
+    if battle_log_file:
+        if not os.path.isabs(battle_log_file):
+            battle_log_file = os.path.abspath(os.path.join(base_path, battle_log_file))
+    else:
+        battle_log_file = None
 
     library_path = _read_config('LIBRARY_PATH', data_type='string')
-    if library_path and not os.path.isabs(library_path):
-        library_path = os.path.abspath(os.path.join(base_path, library_path))
+    if library_path:
+        if not os.path.isabs(library_path):
+            library_path = os.path.abspath(os.path.join(base_path, library_path))
+    else:
+        library_path = None
 
     config = EvolverConfig(
         battle_engine=battle_engine,
@@ -595,22 +601,78 @@ def _candidate_pmars_paths() -> list[str]:
     return unique_candidates
 
 
-def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
-  try:
-    '''
-nMars reference
-Rules:
-  -r #      Rounds to play [1]
-  -s #      Size of core [8000]
-  -c #      Cycle until tie [80000]
-  -p #      Max. processes [8000]
-  -l #      Max. warrior length [100]
-  -d #      Min. warriors distance
-  -S #      Size of P-space [500]
-  -f #      Fixed position series
-  -xp       Disable P-space
-    '''
+def _run_external_command(
+    executable: str,
+    warrior_files: Sequence[str],
+    flag_args: dict[str, Optional[object]] | None = None,
+    *,
+    prefix_args: Sequence[str] | None = None,
+    warriors_first: bool = False,
+) -> Optional[str]:
+    """Run an external battle engine command and return its output."""
+
+    cmd: list[str] = [executable]
+    if prefix_args:
+        cmd.extend(prefix_args)
+
+    if warriors_first:
+        cmd.extend(warrior_files)
+
+    if flag_args:
+        for flag, value in flag_args.items():
+            cmd.append(flag)
+            if value is not None:
+                cmd.append(str(value))
+
+    if not warriors_first:
+        cmd.extend(warrior_files)
+
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+    except FileNotFoundError as e:
+        print(f"Unable to run {executable}: {e}")
+        return None
+    except subprocess.SubprocessError as e:
+        print(f"An error occurred: {e}")
+        return None
+
+    output = result.stdout or ""
+    if not output and result.stderr:
+        output = result.stderr
+    return output
+
+
+def run_nmars_command(
+    arena,
+    cont1,
+    cont2,
+    coresize,
+    cycles,
+    processes,
+    warlen,
+    wardistance,
+    battlerounds,
+):
+    """
+    nMars reference
+    Rules:
+      -r #      Rounds to play [1]
+      -s #      Size of core [8000]
+      -c #      Cycle until tie [80000]
+      -p #      Max. processes [8000]
+      -l #      Max. warrior length [100]
+      -d #      Min. warriors distance
+      -S #      Size of P-space [500]
+      -f #      Fixed position series
+      -xp       Disable P-space
+    """
+
     nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
+    arena_dir = os.path.join(config.base_path, f"arena{arena}")
+    warrior_files = [
+        os.path.join(arena_dir, f"{cont1}.red"),
+        os.path.join(arena_dir, f"{cont2}.red"),
+    ]
     args = {
         "-s": coresize,
         "-c": cycles,
@@ -619,21 +681,12 @@ Rules:
         "-d": wardistance,
         "-r": battlerounds,
     }
-    arena_dir = os.path.join(config.base_path, f"arena{arena}")
-    cmd = [
+    return _run_external_command(
         nmars_cmd,
-        os.path.join(arena_dir, f"{cont1}.red"),
-        os.path.join(arena_dir, f"{cont2}.red"),
-    ]
-    for flag, value in args.items():
-        cmd.extend([flag, str(value)])
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return result.stdout
-  except FileNotFoundError as e:
-    print(f"Unable to run {nmars_cmd}: {e}")
-  except subprocess.SubprocessError as e:
-    print(f"An error occurred: {e}")
-  return None
+        warrior_files,
+        args,
+        warriors_first=True,
+    )
 
 
 def run_pmars_command(
@@ -647,40 +700,36 @@ def run_pmars_command(
     wardistance,
     battlerounds,
 ):
-  pmars_cmd = None
-  for candidate in _candidate_pmars_paths():
-    if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-      pmars_cmd = candidate
-      break
+    pmars_cmd = None
+    for candidate in _candidate_pmars_paths():
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            pmars_cmd = candidate
+            break
 
-  if pmars_cmd is None:
-    pmars_cmd = "pmars.exe" if os.name == "nt" else "pmars"
+    if pmars_cmd is None:
+        pmars_cmd = "pmars.exe" if os.name == "nt" else "pmars"
 
-  arena_dir = os.path.join(config.base_path, f"arena{arena}")
-  cmd = [
-      pmars_cmd,
-      "-b",
-      "-r", str(battlerounds),
-      "-s", str(coresize),
-      "-c", str(cycles),
-      "-p", str(processes),
-      "-l", str(warlen),
-      "-d", str(wardistance),
-      os.path.join(arena_dir, f"{cont1}.red"),
-      os.path.join(arena_dir, f"{cont2}.red"),
-  ]
+    arena_dir = os.path.join(config.base_path, f"arena{arena}")
+    warrior_files = [
+        os.path.join(arena_dir, f"{cont1}.red"),
+        os.path.join(arena_dir, f"{cont2}.red"),
+    ]
 
-  try:
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    output = result.stdout or ""
-    if not output and result.stderr:
-      output = result.stderr
-    return output
-  except FileNotFoundError as e:
-    print(f"Unable to run {pmars_cmd}: {e}")
-  except subprocess.SubprocessError as e:
-    print(f"An error occurred: {e}")
-  return None
+    args = {
+        "-r": battlerounds,
+        "-s": coresize,
+        "-c": cycles,
+        "-p": processes,
+        "-l": warlen,
+        "-d": wardistance,
+    }
+
+    return _run_external_command(
+        pmars_cmd,
+        warrior_files,
+        args,
+        prefix_args=["-b"],
+    )
 
 def run_internal_battle(
     arena,
