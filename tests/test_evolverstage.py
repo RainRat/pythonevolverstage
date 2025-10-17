@@ -192,6 +192,15 @@ def test_validate_config_rejects_unknown_engine():
         evolverstage.validate_config(config)
 
 
+def test_validate_config_rejects_excessive_wardistance():
+    invalid_wardistance = list(_DEFAULT_CONFIG.wardistance_list)
+    invalid_wardistance[0] = _DEFAULT_CONFIG.coresize_list[0] // 2 + 1
+    config = replace(_DEFAULT_CONFIG, wardistance_list=invalid_wardistance)
+
+    with pytest.raises(ValueError, match="WARDISTANCE_LIST"):
+        evolverstage.validate_config(config)
+
+
 def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
     config_path = tmp_path / "config.ini"
     config_path.write_text(
