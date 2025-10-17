@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 # Install build tools and dependencies for the C++ worker and pMARS emulator
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    g++ cmake make libncurses-dev \
+    g++ cmake make libncurses-dev git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,8 +16,9 @@ RUN mkdir -p build \
     && cmake .. \
     && cmake --build . \
     && cp ../redcode_worker.so /usr/local/lib/ \
-    && make -C ../pMars/src \
-    && cp ../pMars/src/pmars /usr/local/bin/pmars
+    && git clone --depth 1 https://github.com/mbarbon/pMARS.git /tmp/pMARS \
+    && make -C /tmp/pMARS/src \
+    && cp /tmp/pMARS/src/pmars /usr/local/bin/pmars
 
 # Default command runs the evolver
 CMD ["python", "evolverstage.py"]
