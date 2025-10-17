@@ -18,11 +18,19 @@ const int DEFAULT_MAX_PROCESSES = 8000;
 const int DEFAULT_MAX_WARRIOR_LENGTH = 100;
 const int DEFAULT_MIN_DISTANCE = 100;
 
-const int MAX_CORE_SIZE = 55440;
-const int MAX_CYCLES = 500000;
-const int MAX_PROCESSES = 10000;
+// pMARS allows extremely large arenas (core size up to ~1 billion cells, an
+// effectively unbounded process count, and millions of rounds). Those limits
+// are impractical for the in-process worker because it is designed to run many
+// arenas concurrently inside the evolution loop. The constants below therefore
+// represent a compromise: they are substantially higher than the previous
+// internal limits, line up with the scale that pMARS comfortably supports on
+// contemporary hardware, and still keep memory usage and run time reasonable.
+const int MAX_CORE_SIZE = 262144;          // 256 Ki cells
+const int MAX_CYCLES = 5000000;            // generous cap, but still practical
+const int MAX_PROCESSES = 131072;          // matches typical large-core usage
 const int MAX_WARRIOR_LENGTH = MAX_CORE_SIZE;
-const int MAX_MIN_DISTANCE = 200;
+const int MAX_MIN_DISTANCE = MAX_CORE_SIZE / 2;
+const int MAX_ROUNDS = 100000;
 
 // --- Enums for Redcode ---
 
@@ -738,8 +746,10 @@ void validate_battle_parameters(
     if (max_warrior_length > core_size) {
         throw std::runtime_error("Max warrior length cannot exceed the core size");
     }
-    if (rounds <= 0) {
-        throw std::runtime_error("Number of rounds must be positive");
+    if (rounds <= 0 || rounds > MAX_ROUNDS) {
+        throw std::runtime_error(
+            "Number of rounds must be between 1 and " + std::to_string(MAX_ROUNDS)
+        );
     }
 }
 

@@ -550,7 +550,7 @@ def test_run_internal_battle_clamps_wardistance(monkeypatch, tmp_path, capsys):
         readlimit=8000,
         writelimit=8000,
         warlen=20,
-        wardistance=500,
+        wardistance=5000,
         battlerounds=10,
         seed=123,
     )
@@ -558,11 +558,9 @@ def test_run_internal_battle_clamps_wardistance(monkeypatch, tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert fake_worker.args is not None
-    assert (
-        fake_worker.args[9]
-        == evolverstage.CPP_WORKER_MAX_MIN_DISTANCE
-    )
+    assert fake_worker.args[9] == 4000
     assert "Clamping" in captured.out
+    assert "(0-4000)" in captured.out
     assert result.strip() != ""
 
 

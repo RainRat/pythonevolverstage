@@ -608,19 +608,22 @@ class Marble(Enum):
 CPP_WORKER_LIB = None
 
 CPP_WORKER_MIN_DISTANCE = 0
-CPP_WORKER_MAX_MIN_DISTANCE = 200
+# Matches the C++ worker's MAX_MIN_DISTANCE (MAX_CORE_SIZE // 2).
+CPP_WORKER_MAX_MIN_DISTANCE = 131072
 _WARDISTANCE_CLAMP_LOGGED: set[int] = set()
 
 
-def _clamp_wardistance(value: int) -> int:
-    clamped_value = max(
-        CPP_WORKER_MIN_DISTANCE, min(value, CPP_WORKER_MAX_MIN_DISTANCE)
+def _clamp_wardistance(value: int, coresize: int) -> int:
+    max_allowed = min(
+        CPP_WORKER_MAX_MIN_DISTANCE,
+        max(coresize // 2, CPP_WORKER_MIN_DISTANCE),
     )
+    clamped_value = max(CPP_WORKER_MIN_DISTANCE, min(value, max_allowed))
     if clamped_value != value and value not in _WARDISTANCE_CLAMP_LOGGED:
         print(
             f"Configured WARDISTANCE value {value} is outside the supported range "
-            f"({CPP_WORKER_MIN_DISTANCE}-{CPP_WORKER_MAX_MIN_DISTANCE}) for the "
-            f"internal battle engine. Clamping to {clamped_value}."
+            f"({CPP_WORKER_MIN_DISTANCE}-{max_allowed}) for the internal battle "
+            f"engine. Clamping to {clamped_value}."
         )
         _WARDISTANCE_CLAMP_LOGGED.add(value)
     return clamped_value
@@ -822,7 +825,7 @@ def run_internal_battle(
             "C++ worker library is not loaded."
         )
 
-    wardistance = _clamp_wardistance(wardistance)
+    wardistance = _clamp_wardistance(wardistance, coresize)
 
     try:
         # 1. Read warrior files
