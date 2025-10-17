@@ -14,9 +14,20 @@ import platform
 from pathlib import Path
 import re
 import warnings
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import Callable, Deque, List, Literal, Optional, Sequence, Tuple, TypeVar, cast
+from typing import (
+    Callable,
+    Deque,
+    List,
+    Literal,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
 
 
 @dataclass
@@ -34,6 +45,8 @@ class EvolverConfig:
     wardistance_list: list[int]
     numwarriors: int
     alreadyseeded: bool
+    use_in_memory_arenas: bool
+    arena_checkpoint_interval: int
     clock_time: float
     battle_log_file: Optional[str]
     final_era_only: bool
@@ -465,6 +478,11 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
             "LAST_ARENA must be greater than or equal to 0 (implies at least one arena)."
         )
 
+    if config.arena_checkpoint_interval <= 0:
+        raise ValueError(
+            "ARENA_CHECKPOINT_INTERVAL must be a positive integer."
+        )
+
     per_arena_lists = {
         "CORESIZE_LIST": config.coresize_list,
         "SANITIZE_LIST": config.sanitize_list,
@@ -778,6 +796,14 @@ def load_configuration(path: str) -> EvolverConfig:
         wardistance_list=wardistance_list,
         numwarriors=_read_config('NUMWARRIORS', data_type='int'),
         alreadyseeded=_read_config('ALREADYSEEDED', data_type='bool'),
+        use_in_memory_arenas=_read_config(
+            'IN_MEMORY_ARENAS', data_type='bool', default=False
+        )
+        or False,
+        arena_checkpoint_interval=_read_config(
+            'ARENA_CHECKPOINT_INTERVAL', data_type='int', default=10000
+        )
+        or 10000,
         clock_time=_read_config('CLOCK_TIME', data_type='float'),
         battle_log_file=battle_log_file,
         final_era_only=_read_config('FINAL_ERA_ONLY', data_type='bool'),
@@ -883,6 +909,17 @@ def _print_run_configuration_summary(config: EvolverConfig) -> None:
     console_log(f"  Arenas: {arena_count}", minimum_level=VerbosityLevel.TERSE)
     console_log(
         f"  Battle engine: {config.battle_engine}",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    if config.use_in_memory_arenas:
+        storage_display = (
+            "In-memory (checkpoint every "
+            f"{config.arena_checkpoint_interval} battles)"
+        )
+    else:
+        storage_display = "On-disk"
+    console_log(
+        f"  Arena storage: {storage_display}",
         minimum_level=VerbosityLevel.TERSE,
     )
     console_log(
@@ -1243,6 +1280,7 @@ def execute_battle(
     battlerounds_override: Optional[int] = None,
 ):
     engine = config.battle_engine
+    get_arena_storage().ensure_warriors_on_disk(arena, [cont1, cont2])
     battlerounds = (
         battlerounds_override
         if battlerounds_override is not None
@@ -1732,6 +1770,170 @@ def create_directory_if_not_exists(directory):
         os.mkdir(directory)
 
 
+class ArenaStorage:
+    """Abstract storage backend for warrior arena data."""
+
+    def load_existing(self) -> None:
+        """Populate storage from disk when warriors already exist."""
+
+    def get_warrior_lines(self, arena: int, warrior_id: int) -> list[str]:
+        raise NotImplementedError
+
+    def set_warrior_lines(
+        self, arena: int, warrior_id: int, lines: Sequence[str]
+    ) -> None:
+        raise NotImplementedError
+
+    def ensure_warriors_on_disk(
+        self, arena: int, warrior_ids: Sequence[int]
+    ) -> None:
+        """Ensure the specified warriors are available on disk for battle engines."""
+
+    def flush_arena(self, arena: int) -> None:
+        """Persist all warriors for a specific arena to disk."""
+
+    def flush_all(self) -> None:
+        """Persist all arenas to disk."""
+
+
+class DiskArenaStorage(ArenaStorage):
+    """Storage backend that writes warrior changes directly to disk."""
+
+    def load_existing(self) -> None:
+        return None
+
+    def get_warrior_lines(self, arena: int, warrior_id: int) -> list[str]:
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
+        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
+        try:
+            with open(warrior_path, "r") as handle:
+                return handle.readlines()
+        except OSError:
+            return []
+
+    def set_warrior_lines(
+        self, arena: int, warrior_id: int, lines: Sequence[str]
+    ) -> None:
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
+        create_directory_if_not_exists(arena_dir)
+        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
+        with open(warrior_path, "w") as handle:
+            handle.writelines(lines)
+
+    def ensure_warriors_on_disk(
+        self, arena: int, warrior_ids: Sequence[int]
+    ) -> None:
+        return None
+
+    def flush_arena(self, arena: int) -> None:
+        return None
+
+    def flush_all(self) -> None:
+        return None
+
+
+class InMemoryArenaStorage(ArenaStorage):
+    """Store arena warriors in memory and persist on demand."""
+
+    def __init__(self) -> None:
+        self._arenas: dict[int, dict[int, list[str]]] = defaultdict(dict)
+        self._dirty: set[tuple[int, int]] = set()
+
+    def load_existing(self) -> None:
+        for arena in range(0, config.last_arena + 1):
+            arena_dir = os.path.join(config.base_path, f"arena{arena}")
+            if not os.path.isdir(arena_dir):
+                continue
+            for warrior_id in range(1, config.numwarriors + 1):
+                warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
+                try:
+                    with open(warrior_path, "r") as handle:
+                        self._arenas[arena][warrior_id] = handle.readlines()
+                except OSError:
+                    self._arenas[arena][warrior_id] = []
+        self._dirty.clear()
+
+    def get_warrior_lines(self, arena: int, warrior_id: int) -> list[str]:
+        if arena in self._arenas and warrior_id in self._arenas[arena]:
+            return list(self._arenas[arena][warrior_id])
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
+        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
+        try:
+            with open(warrior_path, "r") as handle:
+                lines = handle.readlines()
+                self._arenas[arena][warrior_id] = list(lines)
+                return list(lines)
+        except OSError:
+            return []
+
+    def set_warrior_lines(
+        self, arena: int, warrior_id: int, lines: Sequence[str]
+    ) -> None:
+        self._arenas[arena][warrior_id] = list(lines)
+        self._dirty.add((arena, warrior_id))
+
+    def ensure_warriors_on_disk(
+        self, arena: int, warrior_ids: Sequence[int]
+    ) -> None:
+        for warrior_id in warrior_ids:
+            if (arena, warrior_id) in self._dirty or not self._warrior_exists_on_disk(
+                arena, warrior_id
+            ):
+                self._write_warrior(arena, warrior_id)
+
+    def _warrior_exists_on_disk(self, arena: int, warrior_id: int) -> bool:
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
+        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
+        return os.path.isfile(warrior_path)
+
+    def _write_warrior(self, arena: int, warrior_id: int) -> None:
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
+        create_directory_if_not_exists(arena_dir)
+        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
+        lines = self._arenas.get(arena, {}).get(warrior_id, [])
+        with open(warrior_path, "w") as handle:
+            handle.writelines(lines)
+        self._dirty.discard((arena, warrior_id))
+
+    def flush_arena(self, arena: int) -> None:
+        for warrior_id in list(self._arenas.get(arena, {}).keys()):
+            self._write_warrior(arena, warrior_id)
+
+    def flush_all(self) -> None:
+        for arena in list(self._arenas.keys()):
+            self.flush_arena(arena)
+
+
+class _ArenaStorageNotLoaded:
+    def __getattr__(self, item: str):
+        raise RuntimeError(
+            "Arena storage has not been initialized. Call set_arena_storage() before use."
+        )
+
+
+_ARENA_STORAGE: Union[ArenaStorage, _ArenaStorageNotLoaded] = _ArenaStorageNotLoaded()
+
+
+def set_arena_storage(storage: ArenaStorage) -> None:
+    global _ARENA_STORAGE
+    _ARENA_STORAGE = storage
+
+
+def get_arena_storage() -> ArenaStorage:
+    storage = _ARENA_STORAGE
+    if isinstance(storage, _ArenaStorageNotLoaded):
+        raise RuntimeError(
+            "Arena storage has not been initialized. Call set_arena_storage() before use."
+        )
+    return storage
+
+
+def create_arena_storage(config: EvolverConfig) -> ArenaStorage:
+    if config.use_in_memory_arenas:
+        return InMemoryArenaStorage()
+    return DiskArenaStorage()
+
+
 MutationHandler = Callable[[RedcodeInstruction, int, EvolverConfig, int], RedcodeInstruction]
 
 
@@ -1758,22 +1960,9 @@ def _apply_nab_instruction(
         donor_arena = get_random_int(0, config.last_arena)
 
     _log_verbose("Nab instruction from arena " + str(donor_arena))
-    donor_dir = os.path.join(config.base_path, f"arena{donor_arena}")
-    donor_file = os.path.join(
-        donor_dir,
-        f"{get_random_int(1, config.numwarriors)}.red",
-    )
-
-    if not os.path.exists(donor_dir) or not os.path.exists(donor_file):
-        _log_verbose("Donor warrior missing; skipping mutation.")
-        return instruction
-
-    try:
-        with open(donor_file, "r") as donor_handle:
-            donor_lines = donor_handle.readlines()
-    except OSError:
-        _log_verbose("Unable to read donor warrior; skipping mutation.")
-        return instruction
+    storage = get_arena_storage()
+    donor_warrior = get_random_int(1, config.numwarriors)
+    donor_lines = storage.get_warrior_lines(donor_arena, donor_warrior)
 
     if donor_lines:
         return parse_instruction_or_default(_get_random_choice(donor_lines))
@@ -2065,13 +2254,12 @@ class ArchivingResult:
 def handle_archiving(
     winner: int, loser: int, arena: int, era: int, config: EvolverConfig
 ) -> ArchivingResult:
-    arena_dir = os.path.join(config.base_path, f"arena{arena}")
     archive_dir = os.path.join(config.base_path, "archive")
     events: list[ArchivingEvent] = []
+    storage = get_arena_storage()
 
     if config.archive_list[era] != 0 and get_random_int(1, config.archive_list[era]) == 1:
-        with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
-            winlines = fw.readlines()
+        winlines = storage.get_warrior_lines(arena, winner)
         archive_filename = f"{get_random_int(1, 9999)}.red"
         create_directory_if_not_exists(archive_dir)
         with open(os.path.join(archive_dir, archive_filename), "w") as fd:
@@ -2095,18 +2283,19 @@ def handle_archiving(
             sourcelines = fs.readlines()
 
         instructions_written = 0
-        with open(os.path.join(arena_dir, f"{loser}.red"), "w") as fl:
-            for line in sourcelines:
-                instruction = parse_redcode_instruction(line)
-                if instruction is None:
-                    continue
-                fl.write(instruction_to_line(instruction, arena))
-                instructions_written += 1
-                if instructions_written >= config.warlen_list[arena]:
-                    break
-            while instructions_written < config.warlen_list[arena]:
-                fl.write(instruction_to_line(default_instruction(), arena))
-                instructions_written += 1
+        new_lines: list[str] = []
+        for line in sourcelines:
+            instruction = parse_redcode_instruction(line)
+            if instruction is None:
+                continue
+            new_lines.append(instruction_to_line(instruction, arena))
+            instructions_written += 1
+            if instructions_written >= config.warlen_list[arena]:
+                break
+        while instructions_written < config.warlen_list[arena]:
+            new_lines.append(instruction_to_line(default_instruction(), arena))
+            instructions_written += 1
+        storage.set_warrior_lines(arena, loser, new_lines)
         events.append(
             ArchivingEvent(
                 action="unarchived",
@@ -2130,13 +2319,11 @@ def breed_offspring(
     scores: list[int],
     warriors: list[int],
 ):
-    arena_dir = os.path.join(config.base_path, f"arena{arena}")
-    with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
-        winlines = fw.readlines()
+    storage = get_arena_storage()
+    winlines = storage.get_warrior_lines(arena, winner)
 
     partner_id = get_random_int(1, config.numwarriors)
-    with open(os.path.join(arena_dir, f"{partner_id}.red"), "r") as fr:
-        ranlines = fr.readlines()
+    ranlines = storage.get_warrior_lines(arena, partner_id)
 
     if get_random_int(1, config.transpositionrate_list[era]) == 1:
         transpositions = get_random_int(1, int((config.warlen_list[arena] + 1) / 2))
@@ -2164,24 +2351,26 @@ def breed_offspring(
     magic_number = weighted_random_number(
         config.coresize_list[arena], config.warlen_list[arena]
     )
-    with open(os.path.join(arena_dir, f"{loser}.red"), "w") as fl:
-        for i in range(0, config.warlen_list[arena]):
-            if get_random_int(1, config.crossoverrate_list[era]) == 1:
-                pickingfrom = 2 if pickingfrom == 1 else 1
+    new_lines: list[str] = []
+    for i in range(0, config.warlen_list[arena]):
+        if get_random_int(1, config.crossoverrate_list[era]) == 1:
+            pickingfrom = 2 if pickingfrom == 1 else 1
 
-            if pickingfrom == 1:
-                source_line = winlines[i] if i < len(winlines) else ""
-            else:
-                source_line = ranlines[i] if i < len(ranlines) else ""
+        if pickingfrom == 1:
+            source_line = winlines[i] if i < len(winlines) else ""
+        else:
+            source_line = ranlines[i] if i < len(ranlines) else ""
 
-            instruction = parse_instruction_or_default(source_line)
-            chosen_marble = _get_random_choice(bag)
-            handler = MUTATION_HANDLERS.get(chosen_marble)
-            if handler:
-                instruction = handler(instruction, arena, config, magic_number)
+        instruction = parse_instruction_or_default(source_line)
+        chosen_marble = _get_random_choice(bag)
+        handler = MUTATION_HANDLERS.get(chosen_marble)
+        if handler:
+            instruction = handler(instruction, arena, config, magic_number)
 
-            fl.write(instruction_to_line(instruction, arena))
-            magic_number = magic_number - 1
+        new_lines.append(instruction_to_line(instruction, arena))
+        magic_number = magic_number - 1
+
+    storage.set_warrior_lines(arena, loser, new_lines)
 
     data_logger.log_data(
         era=era,
@@ -2249,6 +2438,10 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     if args.seed is not None:
         random.seed(args.seed)
 
+    storage = create_arena_storage(active_config)
+    set_arena_storage(storage)
+    storage.load_existing()
+
     if not active_config.alreadyseeded:
         console_log("Seeding", minimum_level=VerbosityLevel.TERSE)
         archive_dir = os.path.join(active_config.base_path, "archive")
@@ -2257,12 +2450,12 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
             create_directory_if_not_exists(arena_dir)
             for warrior_id in range(1, active_config.numwarriors + 1):
-                with open(
-                    os.path.join(arena_dir, f"{warrior_id}.red"), "w"
-                ) as warrior_file:
-                    for _ in range(1, active_config.warlen_list[arena] + 1):
-                        instruction = generate_random_instruction(arena)
-                        warrior_file.write(instruction_to_line(instruction, arena))
+                new_lines = [
+                    instruction_to_line(generate_random_instruction(arena), arena)
+                    for _ in range(1, active_config.warlen_list[arena] + 1)
+                ]
+                storage.set_warrior_lines(arena, warrior_id, new_lines)
+        storage.flush_all()
 
     start_time = time.time()
     era = -1
@@ -2305,6 +2498,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                         f"************** Advancing from era {previous_era + 1} to {era + 1} *******************",
                         minimum_level=VerbosityLevel.DEFAULT,
                     )
+                    get_arena_storage().flush_all()
                 bag = _build_marble_bag(era, active_config)
 
             arena_index = random.randint(0, active_config.last_arena)
@@ -2338,6 +2532,11 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             if 0 <= era < len(battles_per_era):
                 battles_per_era[era] += 1
             total_battles += 1
+            if (
+                active_config.arena_checkpoint_interval
+                and total_battles % active_config.arena_checkpoint_interval == 0
+            ):
+                get_arena_storage().flush_all()
             winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
             get_console().record_battle(winner, loser, was_draw)
 
@@ -2461,6 +2660,8 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         runtime_seconds=end_time - start_time,
     )
 
+    get_arena_storage().flush_all()
+
     if active_config.run_final_tournament:
         run_final_tournament(active_config)
 
@@ -2471,6 +2672,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         return _main_impl(argv)
     finally:
+        try:
+            get_arena_storage().flush_all()
+        except RuntimeError:
+            pass
         close_console()
 
 
