@@ -499,6 +499,102 @@ class DataLogger:
                     writer.writeheader()
                 writer.writerow(kwargs)
 
+
+def _count_archive_warriors(base_path: str) -> int:
+    """Return the number of warriors currently present in the archive folder."""
+
+    archive_dir = os.path.join(base_path, "archive")
+    try:
+        entries = os.listdir(archive_dir)
+    except FileNotFoundError:
+        return 0
+    except OSError as exc:
+        warnings.warn(
+            f"Unable to inspect archive directory '{archive_dir}': {exc}",
+            RuntimeWarning,
+        )
+        return 0
+
+    total = 0
+    for entry in entries:
+        if not entry.lower().endswith(".red"):
+            continue
+        full_path = os.path.join(archive_dir, entry)
+        if os.path.isfile(full_path):
+            total += 1
+    return total
+
+
+def _count_instruction_library_entries(library_path: Optional[str]) -> int:
+    """Return the count of instructions available in the configured library."""
+
+    if not library_path:
+        return 0
+
+    try:
+        with open(library_path, "r") as library_handle:
+            return sum(
+                1
+                for line in library_handle
+                if line.strip() and not line.lstrip().startswith(";")
+            )
+    except FileNotFoundError:
+        return 0
+    except OSError as exc:
+        warnings.warn(
+            f"Unable to read instruction library '{library_path}': {exc}",
+            RuntimeWarning,
+        )
+        return 0
+
+
+def _print_run_configuration_summary(config: EvolverConfig) -> None:
+    """Display a high-level overview of the current run configuration."""
+
+    log_display = config.battle_log_file if config.battle_log_file else "Disabled"
+    arena_count = config.last_arena + 1 if config.last_arena is not None else 0
+    archive_count = _count_archive_warriors(config.base_path)
+    library_entries = _count_instruction_library_entries(config.library_path)
+    if config.library_path:
+        library_display = f"{library_entries} entries from {config.library_path}"
+    else:
+        library_display = f"{library_entries} entries (no library configured)"
+
+    print("Run configuration summary:")
+    print(f"  Battle log: {log_display}")
+    print(f"  Arenas: {arena_count}")
+    print(f"  Battle engine: {config.battle_engine}")
+    print(f"  Archived warriors: {archive_count}")
+    print(f"  Instruction library: {library_display}")
+    print(
+        "  Final tournament enabled: "
+        f"{'Yes' if config.run_final_tournament else 'No'}"
+    )
+    print()
+
+
+def _print_evolution_statistics(
+    battles_per_era: Sequence[int],
+    total_battles: int,
+    runtime_seconds: float,
+) -> None:
+    """Print aggregated statistics captured during the evolution loop."""
+
+    print("Evolution statistics:")
+    if not battles_per_era:
+        print("  No battles were executed.")
+    else:
+        for index, battle_count in enumerate(battles_per_era, start=1):
+            print(f"  Era {index}: {battle_count} battles")
+        print(f"  Total battles: {total_battles}")
+
+    if runtime_seconds > 0 and total_battles > 0:
+        battles_per_hour = total_battles / (runtime_seconds / 3600)
+        print(f"  Approximate speed: {battles_per_hour:.2f} battles/hour")
+    else:
+        print("  Approximate speed: n/a")
+    print()
+
 class Marble(Enum):
   DO_NOTHING = 0
   MAJOR_MUTATION = 1
@@ -1729,6 +1825,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     set_active_config(active_config)
 
+    _print_run_configuration_summary(active_config)
+
     if args.seed is not None:
         random.seed(args.seed)
 
@@ -1754,6 +1852,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     interrupted = False
     era_count = len(active_config.battlerounds_list)
     era_duration = active_config.clock_time / era_count
+    battles_per_era = [0 for _ in range(era_count)]
+    total_battles = 0
 
     try:
         while True:
@@ -1803,6 +1903,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                 era,
                 verbose=args.verbose,
             )
+            if 0 <= era < len(battles_per_era):
+                battles_per_era[era] += 1
+            total_battles += 1
             winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
 
             if len(warriors) >= 2 and len(scores) >= 2:
@@ -1898,9 +2001,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         print("Evolution interrupted by user.")
         interrupted = True
 
+    end_time = time.time()
+
     if not interrupted:
         status_display.clear()
         print("Evolution loop completed.")
+
+    _print_evolution_statistics(
+        battles_per_era=battles_per_era,
+        total_battles=total_battles,
+        runtime_seconds=end_time - start_time,
+    )
 
     if active_config.run_final_tournament:
         run_final_tournament(active_config)
