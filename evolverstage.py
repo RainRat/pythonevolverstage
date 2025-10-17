@@ -13,6 +13,7 @@ import ctypes
 import platform
 from pathlib import Path
 import re
+import warnings
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Sequence, TypeVar, cast
 
@@ -160,12 +161,24 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
         "WARDISTANCE_LIST": config.wardistance_list,
     }
 
+    extra_length_lists: list[str] = []
     for name, values in per_arena_lists.items():
-        if len(values) != arena_count:
+        if len(values) < arena_count:
             raise ValueError(
                 f"{name} must contain {arena_count} entries (one for each arena),"
                 f" but {len(values)} value(s) were provided."
             )
+        if len(values) > arena_count:
+            extra_length_lists.append(f"{name} ({len(values)})")
+
+    if extra_length_lists:
+        warnings.warn(
+            "LAST_ARENA limits the run to "
+            f"{arena_count} arena(s), but the following list(s) provide extra values: "
+            + ", ".join(extra_length_lists)
+            + f". Only the first {arena_count} entries will be used.",
+            stacklevel=2,
+        )
 
     for idx in range(arena_count):
         core_size = config.coresize_list[idx]
@@ -1260,7 +1273,6 @@ def _apply_major_mutation(
     _config: EvolverConfig,
     _magic_number: int,
 ) -> RedcodeInstruction:
-    print("Major mutation")
     return generate_random_instruction(arena)
 
 
@@ -1308,7 +1320,6 @@ def _apply_minor_mutation(
     config: EvolverConfig,
     _magic_number: int,
 ) -> RedcodeInstruction:
-    print("Minor mutation")
     r = get_random_int(1, 6)
     if r == 1:
         instruction.opcode = choose_random_opcode()
@@ -1335,7 +1346,6 @@ def _apply_micro_mutation(
     _config: EvolverConfig,
     _magic_number: int,
 ) -> RedcodeInstruction:
-    print("Micro mutation")
     if get_random_int(1, 2) == 1:
         current_value = _ensure_int(instruction.a_field)
         if get_random_int(1, 2) == 1:
@@ -1376,7 +1386,6 @@ def _apply_magic_number_mutation(
     _config: EvolverConfig,
     magic_number: int,
 ) -> RedcodeInstruction:
-    print("Magic number mutation")
     if get_random_int(1, 2) == 1:
         instruction.a_field = magic_number
     else:
@@ -1539,18 +1548,17 @@ def breed_offspring(
     bag: list[Marble],
     data_logger: DataLogger,
     scores: list[int],
+    warriors: list[int],
 ):
     arena_dir = os.path.join(config.base_path, f"arena{arena}")
     with open(os.path.join(arena_dir, f"{winner}.red"), "r") as fw:
         winlines = fw.readlines()
 
-    randomwarrior = str(get_random_int(1, config.numwarriors))
-    print("winner will breed with " + randomwarrior)
-    with open(os.path.join(arena_dir, f"{randomwarrior}.red"), "r") as fr:
+    partner_id = get_random_int(1, config.numwarriors)
+    with open(os.path.join(arena_dir, f"{partner_id}.red"), "r") as fr:
         ranlines = fr.readlines()
 
     if get_random_int(1, config.transpositionrate_list[era]) == 1:
-        print("Transposition")
         transpositions = get_random_int(1, int((config.warlen_list[arena] + 1) / 2))
         for _ in range(1, transpositions):
             fromline = get_random_int(0, config.warlen_list[arena] - 1)
@@ -1602,7 +1610,20 @@ def breed_offspring(
         loser=loser,
         score1=scores[0],
         score2=scores[1],
-        bred_with=randomwarrior,
+        bred_with=str(partner_id),
+    )
+
+    if len(warriors) >= 2 and len(scores) >= 2:
+        matchup = (
+            f"{warriors[0]} ({scores[0]}) vs {warriors[1]} ({scores[1]})"
+        )
+    else:
+        matchup = " vs ".join(str(warrior) for warrior in warriors)
+
+    print(
+        "Battle: "
+        f"Era {era}, Arena {arena} | {matchup} | "
+        f"Winner: {winner} | Loser: {loser} | Partner: {partner_id}"
     )
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1718,6 +1739,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                 bag,
                 data_logger,
                 scores,
+                warriors,
             )
 
     except KeyboardInterrupt:

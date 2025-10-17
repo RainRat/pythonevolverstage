@@ -231,6 +231,24 @@ def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
         load_configuration(str(config_path))
 
 
+def test_validate_config_warns_when_lists_longer_than_last_arena():
+    config = replace(
+        _DEFAULT_CONFIG,
+        last_arena=0,
+        coresize_list=list(_DEFAULT_CONFIG.coresize_list[:2]),
+        sanitize_list=list(_DEFAULT_CONFIG.sanitize_list[:2]),
+        cycles_list=list(_DEFAULT_CONFIG.cycles_list[:2]),
+        processes_list=list(_DEFAULT_CONFIG.processes_list[:2]),
+        readlimit_list=list(_DEFAULT_CONFIG.readlimit_list[:2]),
+        writelimit_list=list(_DEFAULT_CONFIG.writelimit_list[:2]),
+        warlen_list=list(_DEFAULT_CONFIG.warlen_list[:2]),
+        wardistance_list=list(_DEFAULT_CONFIG.wardistance_list[:2]),
+    )
+
+    with pytest.warns(UserWarning, match="LAST_ARENA limits"):
+        evolverstage.validate_config(config)
+
+
 def test_load_configuration_rejects_negative_marble_counts(tmp_path):
     config_path = tmp_path / "config.ini"
     config_path.write_text(
