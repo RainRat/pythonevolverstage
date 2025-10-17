@@ -279,6 +279,18 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
             f"Configuration directory '{base_path}' does not exist or is not a directory."
         )
 
+    missing_required_directories = [
+        directory for directory in required_directories if not os.path.isdir(directory)
+    ]
+
+    if missing_required_directories and config.alreadyseeded:
+        print(
+            "ALREADYSEEDED was True but required arenas/archive are missing. "
+            "Automatically switching to fresh seeding so the evolver can initialise "
+            "new warriors."
+        )
+        config.alreadyseeded = False
+
     for directory in required_directories:
         if os.path.isdir(directory):
             if not os.access(directory, os.W_OK):
@@ -432,6 +444,14 @@ def _candidate_worker_paths() -> list[Path]:
         (module_dir / lib_name).resolve(),
         (project_root / lib_name).resolve(),
     ]
+
+    system_lib_dirs = [
+        Path("/usr/local/lib"),
+        Path("/usr/lib"),
+    ]
+
+    for lib_dir in system_lib_dirs:
+        candidates.append((lib_dir / lib_name).resolve(strict=False))
 
     env_override = os.environ.get("REDCODE_WORKER_PATH")
     if env_override:
