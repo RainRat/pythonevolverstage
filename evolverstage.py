@@ -70,6 +70,8 @@ config = cast(EvolverConfig, _ConfigNotLoaded())
 _RNG_SEQUENCE: Optional[list[int]] = None
 _RNG_INDEX: int = 0
 
+_VERBOSE_OUTPUT: bool = False
+
 
 T = TypeVar("T")
 
@@ -111,14 +113,17 @@ class StatusDisplay:
 
         stream = self._stream()
         supports_ansi = self._supports_ansi(stream)
-        if supports_ansi:
-            stream.write(f"\x1b[{self._active_lines}F")
-            for index in range(self._active_lines):
-                stream.write("\x1b[2K")
-                if index < self._active_lines - 1:
-                    stream.write("\x1b[1E")
-            stream.write("\r")
-            stream.flush()
+        if not supports_ansi:
+            self._active_lines = 0
+            return
+
+        stream.write(f"\x1b[{self._active_lines}F")
+        for index in range(self._active_lines):
+            stream.write("\x1b[2K")
+            if index < self._active_lines - 1:
+                stream.write("\x1b[1E")
+        stream.write("\r")
+        stream.flush()
         self._active_lines = 0
 
 
@@ -164,6 +169,18 @@ def get_random_int(min_val: int, max_val: int) -> int:
         return value
 
     return random.randint(min_val, max_val)
+
+
+def set_verbose_output(enabled: bool) -> None:
+    """Enable or disable verbose mutation logging."""
+
+    global _VERBOSE_OUTPUT
+    _VERBOSE_OUTPUT = bool(enabled)
+
+
+def _log_verbose(message: str) -> None:
+    if _VERBOSE_OUTPUT:
+        print(message)
 
 
 def _get_random_choice(sequence: Sequence[T]) -> T:
@@ -234,9 +251,53 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
     for idx in range(arena_count):
         core_size = config.coresize_list[idx]
         sanitize_limit = config.sanitize_list[idx]
+        cycles_limit = config.cycles_list[idx]
+        process_limit = config.processes_list[idx]
+        warrior_length = config.warlen_list[idx]
+        min_distance = config.wardistance_list[idx]
         read_limit = config.readlimit_list[idx]
         write_limit = config.writelimit_list[idx]
 
+        if core_size < CPP_WORKER_MIN_CORE_SIZE:
+            raise ValueError(
+                f"CORESIZE_LIST[{idx + 1}] must be at least {CPP_WORKER_MIN_CORE_SIZE} "
+                f"(got {core_size})."
+            )
+        if core_size > CPP_WORKER_MAX_CORE_SIZE:
+            raise ValueError(
+                f"CORESIZE_LIST[{idx + 1}] cannot exceed {CPP_WORKER_MAX_CORE_SIZE} "
+                f"(got {core_size})."
+            )
+        if cycles_limit <= 0 or cycles_limit > CPP_WORKER_MAX_CYCLES:
+            raise ValueError(
+                f"CYCLES_LIST[{idx + 1}] must be between 1 and {CPP_WORKER_MAX_CYCLES} "
+                f"(got {cycles_limit})."
+            )
+        if process_limit <= 0 or process_limit > CPP_WORKER_MAX_PROCESSES:
+            raise ValueError(
+                f"PROCESSES_LIST[{idx + 1}] must be between 1 and {CPP_WORKER_MAX_PROCESSES} "
+                f"(got {process_limit})."
+            )
+        if warrior_length <= 0 or warrior_length > CPP_WORKER_MAX_WARRIOR_LENGTH:
+            raise ValueError(
+                f"WARLEN_LIST[{idx + 1}] must be between 1 and "
+                f"{CPP_WORKER_MAX_WARRIOR_LENGTH} (got {warrior_length})."
+            )
+        if warrior_length > core_size:
+            raise ValueError(
+                f"WARLEN_LIST[{idx + 1}] cannot exceed the arena's core size "
+                f"(got {warrior_length} with core size {core_size})."
+            )
+        if min_distance < CPP_WORKER_MIN_DISTANCE or min_distance > CPP_WORKER_MAX_MIN_DISTANCE:
+            raise ValueError(
+                f"WARDISTANCE_LIST[{idx + 1}] must be between {CPP_WORKER_MIN_DISTANCE} "
+                f"and {CPP_WORKER_MAX_MIN_DISTANCE} (got {min_distance})."
+            )
+        if min_distance > core_size // 2:
+            raise ValueError(
+                f"WARDISTANCE_LIST[{idx + 1}] is too large for the arena core size "
+                f"(got {min_distance} with core size {core_size})."
+            )
         if sanitize_limit < 1 or sanitize_limit > core_size:
             raise ValueError(
                 f"SANITIZE_LIST[{idx + 1}] must be between 1 and the arena's core size "
@@ -263,6 +324,11 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
         if rounds < 1:
             raise ValueError(
                 f"BATTLEROUNDS_LIST[{idx}] must be at least 1 (got {rounds})."
+            )
+        if rounds > CPP_WORKER_MAX_ROUNDS:
+            raise ValueError(
+                f"BATTLEROUNDS_LIST[{idx}] cannot exceed {CPP_WORKER_MAX_ROUNDS} "
+                f"(got {rounds})."
             )
 
     era_count = len(config.battlerounds_list)
@@ -608,8 +674,15 @@ class Marble(Enum):
 CPP_WORKER_LIB = None
 
 CPP_WORKER_MIN_DISTANCE = 0
+# Matches the C++ worker's bounds in validate_battle_parameters.
+CPP_WORKER_MIN_CORE_SIZE = 2
+CPP_WORKER_MAX_CORE_SIZE = 262_144
+CPP_WORKER_MAX_CYCLES = 5_000_000
+CPP_WORKER_MAX_PROCESSES = 131_072
+CPP_WORKER_MAX_WARRIOR_LENGTH = CPP_WORKER_MAX_CORE_SIZE
+CPP_WORKER_MAX_ROUNDS = 100_000
 # Matches the C++ worker's MAX_MIN_DISTANCE (MAX_CORE_SIZE // 2).
-CPP_WORKER_MAX_MIN_DISTANCE = 131072
+CPP_WORKER_MAX_MIN_DISTANCE = 131_072
 _WARDISTANCE_CLAMP_LOGGED: set[int] = set()
 
 
@@ -1392,7 +1465,7 @@ def _apply_nab_instruction(
     while donor_arena == arena and config.last_arena > 0:
         donor_arena = get_random_int(0, config.last_arena)
 
-    print("Nab instruction from arena " + str(donor_arena))
+    _log_verbose("Nab instruction from arena " + str(donor_arena))
     donor_dir = os.path.join(config.base_path, f"arena{donor_arena}")
     donor_file = os.path.join(
         donor_dir,
@@ -1400,20 +1473,20 @@ def _apply_nab_instruction(
     )
 
     if not os.path.exists(donor_dir) or not os.path.exists(donor_file):
-        print("Donor warrior missing; skipping mutation.")
+        _log_verbose("Donor warrior missing; skipping mutation.")
         return instruction
 
     try:
         with open(donor_file, "r") as donor_handle:
             donor_lines = donor_handle.readlines()
     except OSError:
-        print("Unable to read donor warrior; skipping mutation.")
+        _log_verbose("Unable to read donor warrior; skipping mutation.")
         return instruction
 
     if donor_lines:
         return parse_instruction_or_default(_get_random_choice(donor_lines))
 
-    print("Donor warrior empty; skipping mutation.")
+    _log_verbose("Donor warrior empty; skipping mutation.")
     return instruction
 
 
@@ -1819,6 +1892,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     )
 
     args = parser.parse_args(argv)
+
+    set_verbose_output(args.verbose)
 
     active_config = load_configuration(args.config)
     if args.engine:
