@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <stdexcept>
 #include <cctype>
+#include <cstdint>
 
 // --- Configuration ---
 const int DEFAULT_CORE_SIZE = 8000;
@@ -790,12 +791,44 @@ extern "C" {
                 );
             }
 
-            std::mt19937 gen;
+            if (w1_instrs == w2_instrs) {
+                std::stringstream tie_result;
+                tie_result << w1_id << " 0 0 0 " << (rounds) << " scores\n";
+                tie_result << w2_id << " 0 0 0 " << (rounds) << " scores";
+                response = tie_result.str();
+                return response.c_str();
+            }
+
+            auto normalize_pmars_seed = [](int64_t raw_seed) {
+                constexpr int64_t modulus = 2147483647LL - 1LL;
+                int64_t adjusted = raw_seed % modulus;
+                if (adjusted <= 0) {
+                    adjusted += modulus;
+                }
+                return static_cast<int32_t>(adjusted);
+            };
+
+            auto advance_pmars_seed = [](int32_t state) {
+                constexpr int64_t multiplier = 16807;
+                constexpr int64_t divisor = 127773;
+                constexpr int64_t remainder = 2836;
+                constexpr int64_t modulus = 2147483647;
+
+                int64_t hi = state / divisor;
+                int64_t lo = state % divisor;
+                int64_t temp = multiplier * lo - remainder * hi;
+                if (temp <= 0) {
+                    temp += modulus;
+                }
+                return static_cast<int32_t>(temp);
+            };
+
+            int32_t rng_state;
             if (seed >= 0) {
-                gen.seed(static_cast<std::mt19937::result_type>(seed));
+                rng_state = normalize_pmars_seed(static_cast<int64_t>(seed) + 1);
             } else {
                 std::random_device rd;
-                gen.seed(rd());
+                rng_state = normalize_pmars_seed(static_cast<int64_t>(rd()) + 1);
             }
             const char* trace_file = std::getenv("REDCODE_TRACE_FILE");
 
@@ -805,16 +838,18 @@ extern "C" {
             int rounds_played = 0;
             for (int r = 0; r < rounds; ++r) {
                 Core core(core_size, trace_file);
-                std::uniform_int_distribution<> distrib(0, core_size - 1);
+                int positions = core_size + 1 - (min_distance * 2);
+                if (positions <= 0) {
+                    positions = core_size;
+                }
 
-                int w1_start = distrib(gen);
-                int w2_start;
-                int circular_dist;
-                do {
-                    w2_start = distrib(gen);
-                    int dist = std::abs(w1_start - w2_start);
-                    circular_dist = std::min(dist, core_size - dist);
-                } while (circular_dist < min_distance);
+                int w1_start = 0;
+                int w2_start = min_distance % core_size;
+                if (core_size > 0) {
+                    int offset = rng_state % positions;
+                    w2_start = (min_distance + offset) % core_size;
+                    rng_state = advance_pmars_seed(rng_state);
+                }
 
                 for (size_t i = 0; i < w1_instrs.size(); ++i) {
                     core.memory[normalize(w1_start + i, core_size)] = w1_instrs[i];
@@ -826,32 +861,54 @@ extern "C" {
                 core.process_queues[0].push_back({w1_start, 0});
                 core.process_queues[1].push_back({w2_start, 1});
 
+                int winner_index = -1;
+                int first_index = (r % 2 == 0) ? 0 : 1;
+                int second_index = 1 - first_index;
+
+                auto execute_turn = [&](int current_index, int opponent_index) {
+                    if (core.process_queues[current_index].empty()) {
+                        return;
+                    }
+                    WarriorProcess process = core.process_queues[current_index].front();
+                    core.process_queues[current_index].pop_front();
+                    core.execute(process, read_limit, write_limit, max_processes);
+
+                    if (winner_index == -1) {
+                        bool current_empty = core.process_queues[current_index].empty();
+                        bool opponent_empty = core.process_queues[opponent_index].empty();
+                        if (current_empty && !opponent_empty) {
+                            winner_index = opponent_index;
+                        } else if (!current_empty && opponent_empty) {
+                            winner_index = current_index;
+                        }
+                    }
+                };
+
                 for (int cycle = 0; cycle < max_cycles; ++cycle) {
                     if (core.process_queues[0].empty() || core.process_queues[1].empty()) {
                         break;
                     }
-                    if (!core.process_queues[0].empty()) {
-                        WarriorProcess p = core.process_queues[0].front();
-                        core.process_queues[0].pop_front();
-                        core.execute(p, read_limit, write_limit, max_processes);
-                    }
-                    if (!core.process_queues[1].empty()) {
-                        WarriorProcess p = core.process_queues[1].front();
-                        core.process_queues[1].pop_front();
-                        core.execute(p, read_limit, write_limit, max_processes);
-                    }
+
+                    execute_turn(first_index, second_index);
+                    execute_turn(second_index, first_index);
                 }
 
-                int w1_procs = core.process_queues[0].size();
-                int w2_procs = core.process_queues[1].size();
-
-                if (w1_procs > 0 && w2_procs == 0) {
+                if (winner_index == 0) {
                     w1_score += 3;
-                } else if (w2_procs > 0 && w1_procs == 0) {
+                } else if (winner_index == 1) {
                     w2_score += 3;
                 } else {
-                    w1_score += 1;
-                    w2_score += 1;
+                    int w1_procs = core.process_queues[0].size();
+                    int w2_procs = core.process_queues[1].size();
+
+                    if (w1_procs > 0 && w2_procs == 0) {
+                        w1_score += 3;
+                    } else if (w2_procs > 0 && w1_procs == 0) {
+                        w2_score += 3;
+                    } else {
+                        w1_score += 1;
+                        w2_score += 1;
+                    }
                 }
 
                 rounds_played = r + 1;
