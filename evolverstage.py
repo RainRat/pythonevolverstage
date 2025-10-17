@@ -88,7 +88,9 @@ class VerbosityLevel(Enum):
 
 
 _VERBOSITY_LEVEL: VerbosityLevel = VerbosityLevel.DEFAULT
-_VERBOSE_OUTPUT: bool = False
+
+
+_STATUS_UPDATE_MIN_INTERVAL = 0.1
 
 
 class BattleStatisticsTracker:
@@ -149,6 +151,8 @@ class StatusDisplay:
 
     def __init__(self) -> None:
         self._active_lines = 0
+        self._last_update_time = 0.0
+        self._last_lines: Optional[Tuple[str, str]] = None
 
     def _stream(self):
         return sys.stdout
@@ -157,6 +161,18 @@ class StatusDisplay:
         return bool(getattr(stream, "isatty", lambda: False)())
 
     def update(self, line1: str, line2: str) -> None:
+        lines_tuple = (line1, line2)
+        if self._last_lines == lines_tuple:
+            return
+
+        now = time.monotonic()
+        if self._last_update_time:
+            elapsed = now - self._last_update_time
+            if elapsed < _STATUS_UPDATE_MIN_INTERVAL:
+                return
+
+        self._last_update_time = now
+
         stream = self._stream()
         supports_ansi = self._supports_ansi(stream)
         lines = [line1, line2]
@@ -174,15 +190,20 @@ class StatusDisplay:
 
         stream.flush()
         self._active_lines = len(lines) if supports_ansi else 0
+        self._last_lines = lines_tuple
 
     def clear(self) -> None:
         if not self._active_lines:
+            self._last_lines = None
+            self._last_update_time = 0.0
             return
 
         stream = self._stream()
         supports_ansi = self._supports_ansi(stream)
         if not supports_ansi:
             self._active_lines = 0
+            self._last_lines = None
+            self._last_update_time = 0.0
             return
 
         stream.write(f"\x1b[{self._active_lines}F")
@@ -193,6 +214,8 @@ class StatusDisplay:
         stream.write("\r")
         stream.flush()
         self._active_lines = 0
+        self._last_lines = None
+        self._last_update_time = 0.0
 
 
 class SimpleConsole(ConsoleInterface):
@@ -308,7 +331,7 @@ def get_console() -> ConsoleInterface:
 
 
 def set_console_verbosity(level: VerbosityLevel) -> VerbosityLevel:
-    global _console_manager, _VERBOSITY_LEVEL, _VERBOSE_OUTPUT
+    global _console_manager, _VERBOSITY_LEVEL
 
     previous_manager = _console_manager
 
@@ -332,7 +355,6 @@ def set_console_verbosity(level: VerbosityLevel) -> VerbosityLevel:
         _console_manager = SimpleConsole(level)
 
     _VERBOSITY_LEVEL = level
-    _VERBOSE_OUTPUT = level == VerbosityLevel.VERBOSE
     return _VERBOSITY_LEVEL
 
 
@@ -404,23 +426,8 @@ def get_random_int(min_val: int, max_val: int) -> int:
     return random.randint(min_val, max_val)
 
 
-def set_verbose_output(enabled: bool) -> None:
-    """Enable or disable verbose mutation logging.
-
-    Deprecated. Prefer :func:`set_console_verbosity`.
-    """
-
-    warnings.warn(
-        "set_verbose_output() is deprecated. Use set_console_verbosity() instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-    set_console_verbosity(VerbosityLevel.VERBOSE if enabled else VerbosityLevel.DEFAULT)
-
-
 def _log_verbose(message: str) -> None:
-    if _VERBOSE_OUTPUT:
-        console_log(message, minimum_level=VerbosityLevel.VERBOSE)
+    console_log(message, minimum_level=VerbosityLevel.VERBOSE)
 
 
 def _get_random_choice(sequence: Sequence[T]) -> T:
