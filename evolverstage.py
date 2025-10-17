@@ -706,95 +706,6 @@ def _run_external_command(
     return output
 
 
-def run_nmars_command(
-    arena,
-    cont1,
-    cont2,
-    coresize,
-    cycles,
-    processes,
-    warlen,
-    wardistance,
-    battlerounds,
-):
-    """
-    nMars reference
-    Rules:
-      -r #      Rounds to play [1]
-      -s #      Size of core [8000]
-      -c #      Cycle until tie [80000]
-      -p #      Max. processes [8000]
-      -l #      Max. warrior length [100]
-      -d #      Min. warriors distance
-      -S #      Size of P-space [500]
-      -f #      Fixed position series
-      -xp       Disable P-space
-    """
-
-    nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
-    arena_dir = os.path.join(config.base_path, f"arena{arena}")
-    warrior_files = [
-        os.path.join(arena_dir, f"{cont1}.red"),
-        os.path.join(arena_dir, f"{cont2}.red"),
-    ]
-    args = {
-        "-s": coresize,
-        "-c": cycles,
-        "-p": processes,
-        "-l": warlen,
-        "-d": wardistance,
-        "-r": battlerounds,
-    }
-    return _run_external_command(
-        nmars_cmd,
-        warrior_files,
-        args,
-        warriors_first=True,
-    )
-
-
-def run_pmars_command(
-    arena,
-    cont1,
-    cont2,
-    coresize,
-    cycles,
-    processes,
-    warlen,
-    wardistance,
-    battlerounds,
-):
-    pmars_cmd = None
-    for candidate in _candidate_pmars_paths():
-        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-            pmars_cmd = candidate
-            break
-
-    if pmars_cmd is None:
-        pmars_cmd = "pmars.exe" if os.name == "nt" else "pmars"
-
-    arena_dir = os.path.join(config.base_path, f"arena{arena}")
-    warrior_files = [
-        os.path.join(arena_dir, f"{cont1}.red"),
-        os.path.join(arena_dir, f"{cont2}.red"),
-    ]
-
-    args = {
-        "-r": battlerounds,
-        "-s": coresize,
-        "-c": cycles,
-        "-p": processes,
-        "-l": warlen,
-        "-d": wardistance,
-    }
-
-    return _run_external_command(
-        pmars_cmd,
-        warrior_files,
-        args,
-        prefix_args=["-b"],
-    )
-
 def run_internal_battle(
     arena,
     cont1,
@@ -890,28 +801,58 @@ def execute_battle(
             battlerounds,
         )
     elif engine == 'pmars':
-        raw_output = run_pmars_command(
-            arena,
-            cont1,
-            cont2,
-            config.coresize_list[arena],
-            config.cycles_list[arena],
-            config.processes_list[arena],
-            config.warlen_list[arena],
-            config.wardistance_list[arena],
-            battlerounds,
+        pmars_cmd = None
+        for candidate in _candidate_pmars_paths():
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                pmars_cmd = candidate
+                break
+
+        if pmars_cmd is None:
+            pmars_cmd = "pmars.exe" if os.name == "nt" else "pmars"
+
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
+        warrior_files = [
+            os.path.join(arena_dir, f"{cont1}.red"),
+            os.path.join(arena_dir, f"{cont2}.red"),
+        ]
+
+        args = {
+            "-r": battlerounds,
+            "-s": config.coresize_list[arena],
+            "-c": config.cycles_list[arena],
+            "-p": config.processes_list[arena],
+            "-l": config.warlen_list[arena],
+            "-d": config.wardistance_list[arena],
+        }
+
+        raw_output = _run_external_command(
+            pmars_cmd,
+            warrior_files,
+            args,
+            prefix_args=["-b"],
         )
     else:
-        raw_output = run_nmars_command(
-            arena,
-            cont1,
-            cont2,
-            config.coresize_list[arena],
-            config.cycles_list[arena],
-            config.processes_list[arena],
-            config.warlen_list[arena],
-            config.wardistance_list[arena],
-            battlerounds,
+        nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
+        arena_dir = os.path.join(config.base_path, f"arena{arena}")
+        warrior_files = [
+            os.path.join(arena_dir, f"{cont1}.red"),
+            os.path.join(arena_dir, f"{cont2}.red"),
+        ]
+
+        args = {
+            "-s": config.coresize_list[arena],
+            "-c": config.cycles_list[arena],
+            "-p": config.processes_list[arena],
+            "-l": config.warlen_list[arena],
+            "-d": config.wardistance_list[arena],
+            "-r": battlerounds,
+        }
+
+        raw_output = _run_external_command(
+            nmars_cmd,
+            warrior_files,
+            args,
+            warriors_first=True,
         )
 
     if raw_output is None:
