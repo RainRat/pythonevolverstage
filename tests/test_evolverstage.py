@@ -655,6 +655,49 @@ def test_final_tournament_uses_single_round(monkeypatch, tmp_path, capsys):
         )
 
 
+def test_final_tournament_uses_in_memory_storage(monkeypatch, tmp_path, capsys):
+    config = replace(
+        _DEFAULT_CONFIG,
+        base_path=str(tmp_path),
+        battle_engine="internal",
+        use_in_memory_arenas=True,
+        last_arena=0,
+        numwarriors=3,
+        battlerounds_list=[_DEFAULT_CONFIG.battlerounds_list[0]],
+    )
+
+    previous_config = evolverstage.get_active_config()
+    evolverstage.set_active_config(config)
+
+    storage = evolverstage.create_arena_storage(config)
+    evolverstage.set_arena_storage(storage)
+    storage.load_existing()
+    for warrior_id in range(1, 4):
+        storage.set_warrior_lines(0, warrior_id, ["DAT.F #0, #0\n"])
+
+    battle_rounds: list[int] = []
+
+    def fake_execute_battle(
+        arena, cont1, cont2, era, verbose=True, battlerounds_override=None
+    ):
+        battle_rounds.append(battlerounds_override)
+        return [cont1, cont2], [10, 5]
+
+    monkeypatch.setattr(evolverstage, "execute_battle", fake_execute_battle)
+
+    evolverstage.run_final_tournament(config)
+
+    captured = capsys.readouterr()
+
+    assert battle_rounds
+    assert all(rounds == 1 for rounds in battle_rounds)
+    assert "Final Tournament Progress" in captured.out
+    assert not (tmp_path / "arena0").exists()
+
+    evolverstage.set_active_config(previous_config)
+    evolverstage.set_arena_storage(evolverstage.create_arena_storage(previous_config))
+
+
 def test_run_internal_battle_clamps_wardistance(monkeypatch, tmp_path, capsys):
     import evolverstage
 
@@ -702,6 +745,63 @@ def test_run_internal_battle_clamps_wardistance(monkeypatch, tmp_path, capsys):
     assert "Clamping" in captured.out
     assert "(0-4000)" in captured.out
     assert result.strip() != ""
+
+
+def test_execute_battle_in_memory_internal_avoids_disk_writes(monkeypatch, tmp_path):
+    config = replace(
+        _DEFAULT_CONFIG,
+        base_path=str(tmp_path),
+        battle_engine="internal",
+        use_in_memory_arenas=True,
+        last_arena=0,
+        numwarriors=2,
+        coresize_list=[_DEFAULT_CONFIG.coresize_list[0]],
+        sanitize_list=[_DEFAULT_CONFIG.sanitize_list[0]],
+        cycles_list=[_DEFAULT_CONFIG.cycles_list[0]],
+        processes_list=[_DEFAULT_CONFIG.processes_list[0]],
+        readlimit_list=[_DEFAULT_CONFIG.readlimit_list[0]],
+        writelimit_list=[_DEFAULT_CONFIG.writelimit_list[0]],
+        warlen_list=[_DEFAULT_CONFIG.warlen_list[0]],
+        wardistance_list=[_DEFAULT_CONFIG.wardistance_list[0]],
+        battlerounds_list=[_DEFAULT_CONFIG.battlerounds_list[0]],
+    )
+
+    previous_config = evolverstage.get_active_config()
+    evolverstage.set_active_config(config)
+
+    storage = evolverstage.create_arena_storage(config)
+    evolverstage.set_arena_storage(storage)
+    storage.load_existing()
+    storage.set_warrior_lines(0, 1, ["DAT.F #0, #0\n"])
+    storage.set_warrior_lines(0, 2, ["DAT.F #0, #0\n"])
+
+    def unexpected_persist(arena, warrior_ids):
+        raise AssertionError(
+            f"Unexpected persistence for arena {arena}: {warrior_ids}"
+        )
+
+    monkeypatch.setattr(storage, "ensure_warriors_on_disk", unexpected_persist)
+
+    calls: list[tuple] = []
+
+    def fake_run_internal_battle(*args, **kwargs):
+        calls.append(args)
+        return "1 Example Warrior scores 0\n2 Example Warrior scores 0\n"
+
+    monkeypatch.setattr(evolverstage, "run_internal_battle", fake_run_internal_battle)
+
+    try:
+        warriors, scores = evolverstage.execute_battle(0, 1, 2, 0, verbose=False)
+    finally:
+        evolverstage.set_active_config(previous_config)
+        evolverstage.set_arena_storage(
+            evolverstage.create_arena_storage(previous_config)
+        )
+
+    assert warriors == [1, 2]
+    assert scores == [0, 0]
+    assert calls, "Internal worker was not invoked"
+    assert not any(tmp_path.glob("arena0/*.red"))
 
 
 def test_micro_mutation_handler():
