@@ -1892,6 +1892,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                     f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
                     f"Era: {display_era}"
                 )
+                status_display.clear()
+                last_event_line = ""
                 for event in archiving_result.events:
                     if event.action == "archived":
                         if event.archive_filename:
@@ -1909,12 +1911,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                             action_detail = (
                                 f"Unarchived Warrior {event.warrior_id}"
                             )
-                    event_line = (
+                    last_event_line = (
                         "Battle: "
                         f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
                         f"| Action: {action_detail}"
                     )
-                    status_display.update(progress_line, event_line)
+                    print(last_event_line, flush=True)
+                status_display.update(progress_line, last_event_line)
 
             if archiving_result.skip_breeding:
                 continue
