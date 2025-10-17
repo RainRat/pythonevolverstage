@@ -272,7 +272,8 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
             base_path = config_directory
 
     required_directories = [os.path.join(base_path, f"arena{i}") for i in range(arena_count)]
-    required_directories.append(os.path.join(base_path, "archive"))
+    archive_dir = os.path.join(base_path, "archive")
+    required_directories.append(archive_dir)
 
     if not os.path.isdir(base_path):
         raise FileNotFoundError(
@@ -284,12 +285,26 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
     ]
 
     if missing_required_directories and config.alreadyseeded:
-        print(
-            "ALREADYSEEDED was True but required arenas/archive are missing. "
-            "Automatically switching to fresh seeding so the evolver can initialise "
-            "new warriors."
-        )
-        config.alreadyseeded = False
+        missing_arenas = [
+            directory
+            for directory in missing_required_directories
+            if os.path.basename(directory) != "archive"
+        ]
+        if missing_arenas:
+            print(
+                "ALREADYSEEDED was True but required arenas/archive are missing. "
+                "Automatically switching to fresh seeding so the evolver can "
+                "initialise new warriors."
+            )
+            config.alreadyseeded = False
+
+        if config.alreadyseeded and archive_dir in missing_required_directories:
+            try:
+                os.makedirs(archive_dir, exist_ok=True)
+            except OSError as exc:
+                raise OSError(
+                    f"Failed to create archive directory '{archive_dir}': {exc}"
+                ) from exc
 
     for directory in required_directories:
         if os.path.isdir(directory):
@@ -425,6 +440,24 @@ class Marble(Enum):
 
 # --- C++ Worker Library Loading ---
 CPP_WORKER_LIB = None
+
+CPP_WORKER_MIN_DISTANCE = 0
+CPP_WORKER_MAX_MIN_DISTANCE = 200
+_WARDISTANCE_CLAMP_LOGGED: set[int] = set()
+
+
+def _clamp_wardistance(value: int) -> int:
+    clamped_value = max(
+        CPP_WORKER_MIN_DISTANCE, min(value, CPP_WORKER_MAX_MIN_DISTANCE)
+    )
+    if clamped_value != value and value not in _WARDISTANCE_CLAMP_LOGGED:
+        print(
+            f"Configured WARDISTANCE value {value} is outside the supported range "
+            f"({CPP_WORKER_MIN_DISTANCE}-{CPP_WORKER_MAX_MIN_DISTANCE}) for the "
+            f"internal battle engine. Clamping to {clamped_value}."
+        )
+        _WARDISTANCE_CLAMP_LOGGED.add(value)
+    return clamped_value
 
 
 def _worker_library_extension() -> str:
@@ -668,6 +701,8 @@ def run_internal_battle(
             "Internal battle engine is required by the configuration but the "
             "C++ worker library is not loaded."
         )
+
+    wardistance = _clamp_wardistance(wardistance)
 
     try:
         # 1. Read warrior files

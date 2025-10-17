@@ -138,6 +138,49 @@ def test_load_configuration_overrides_alreadyseeded_when_directories_missing(tmp
     assert "ALREADYSEEDED was True" in captured.out
 
 
+def test_load_configuration_retains_alreadyseeded_when_only_archive_missing(tmp_path, capsys):
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            LAST_ARENA = 0
+            CORESIZE_LIST = 80
+            SANITIZE_LIST = 80
+            CYCLES_LIST = 800
+            PROCESSES_LIST = 8
+            WARLEN_LIST = 5
+            WARDISTANCE_LIST = 5
+            NUMWARRIORS = 10
+            ALREADYSEEDED = true
+            CLOCK_TIME = 1
+            BATTLEROUNDS_LIST = 1
+            NOTHING_LIST = 1
+            RANDOM_LIST = 1
+            NAB_LIST = 0
+            MINI_MUT_LIST = 0
+            MICRO_MUT_LIST = 0
+            LIBRARY_LIST = 0
+            MAGIC_NUMBER_LIST = 0
+            ARCHIVE_LIST = 0
+            UNARCHIVE_LIST = 0
+            CROSSOVERRATE_LIST = 1
+            TRANSPOSITIONRATE_LIST = 1
+            PREFER_WINNER_LIST = false
+            """
+        ).strip()
+    )
+
+    (tmp_path / "arena0").mkdir()
+
+    config = evolverstage.load_configuration(str(config_path))
+    captured = capsys.readouterr()
+
+    assert config.alreadyseeded is True
+    assert "ALREADYSEEDED was True" not in captured.out
+    assert (tmp_path / "archive").is_dir()
+
+
 def test_validate_config_accepts_pmars_engine():
     config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
     evolverstage.validate_config(config)
@@ -385,6 +428,57 @@ def test_run_internal_battle_requires_worker(tmp_path, monkeypatch):
         else:
             fallback_config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
             evolverstage.set_active_config(fallback_config)
+
+
+def test_run_internal_battle_clamps_wardistance(monkeypatch, tmp_path, capsys):
+    import evolverstage
+
+    config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+    capsys.readouterr()
+    config.base_path = str(tmp_path)
+    evolverstage.set_active_config(config)
+
+    arena_dir = tmp_path / "arena0"
+    arena_dir.mkdir()
+    (arena_dir / "1.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
+    (arena_dir / "2.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
+
+    class FakeWorker:
+        def __init__(self):
+            self.args = None
+
+        def run_battle(self, *args):
+            self.args = args
+            return b"1 0 0 0 0\n2 0 0 0 0\n"
+
+    fake_worker = FakeWorker()
+    monkeypatch.setattr(evolverstage, "CPP_WORKER_LIB", fake_worker)
+    monkeypatch.setattr(evolverstage, "_WARDISTANCE_CLAMP_LOGGED", set())
+
+    result = evolverstage.run_internal_battle(
+        arena=0,
+        cont1=1,
+        cont2=2,
+        coresize=8000,
+        cycles=200,
+        processes=8000,
+        readlimit=8000,
+        writelimit=8000,
+        warlen=20,
+        wardistance=500,
+        battlerounds=10,
+        seed=123,
+    )
+
+    captured = capsys.readouterr()
+
+    assert fake_worker.args is not None
+    assert (
+        fake_worker.args[9]
+        == evolverstage.CPP_WORKER_MAX_MIN_DISTANCE
+    )
+    assert "Clamping" in captured.out
+    assert result.strip() != ""
 
 
 def test_micro_mutation_handler():
