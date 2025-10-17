@@ -17,20 +17,11 @@ def _shared_library_extension() -> str:
 
 
 def compile_worker() -> None:
-    output_name = f"redcode_worker{_shared_library_extension()}"
-    subprocess.run(
-        [
-            "g++",
-            "-std=c++17",
-            "-shared",
-            "-fPIC",
-            str(PROJECT_ROOT / "redcode-worker.cpp"),
-            "-o",
-            output_name,
-        ],
-        check=True,
-        cwd=PROJECT_ROOT,
-    )
+    build_dir = PROJECT_ROOT / "build"
+    build_dir.mkdir(exist_ok=True)
+
+    subprocess.run(["cmake", ".."], check=True, cwd=build_dir)
+    subprocess.run(["cmake", "--build", "."], check=True, cwd=build_dir)
 
 
 @lru_cache(maxsize=1)
