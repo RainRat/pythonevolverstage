@@ -14,8 +14,9 @@ import platform
 from pathlib import Path
 import re
 import warnings
+from collections import deque
 from dataclasses import dataclass, field
-from typing import Callable, List, Literal, Optional, Sequence, TypeVar, cast
+from typing import Callable, Deque, List, Literal, Optional, Sequence, Tuple, TypeVar, cast
 
 
 @dataclass
@@ -70,10 +71,77 @@ config = cast(EvolverConfig, _ConfigNotLoaded())
 _RNG_SEQUENCE: Optional[list[int]] = None
 _RNG_INDEX: int = 0
 
+class VerbosityLevel(Enum):
+    TERSE = "terse"
+    DEFAULT = "default"
+    VERBOSE = "verbose"
+    PSEUDO_GRAPHICAL = "pseudo-graphical"
+
+    def order(self) -> int:
+        ordering = {
+            VerbosityLevel.TERSE: 0,
+            VerbosityLevel.DEFAULT: 1,
+            VerbosityLevel.VERBOSE: 2,
+            VerbosityLevel.PSEUDO_GRAPHICAL: 1,
+        }
+        return ordering[self]
+
+
+_VERBOSITY_LEVEL: VerbosityLevel = VerbosityLevel.DEFAULT
 _VERBOSE_OUTPUT: bool = False
 
 
-T = TypeVar("T")
+class BattleStatisticsTracker:
+    """Track simple statistics derived from battle outcomes."""
+
+    def __init__(self) -> None:
+        self._current_streaks: dict[int, int] = {}
+        self._longest_streak: int = 0
+        self._longest_streak_warrior: Optional[int] = None
+
+    def record_battle(self, winner: int, loser: int, was_draw: bool) -> None:
+        if was_draw:
+            self._current_streaks[winner] = 0
+            self._current_streaks[loser] = 0
+            return
+
+        current = self._current_streaks.get(winner, 0) + 1
+        self._current_streaks[winner] = current
+        self._current_streaks[loser] = 0
+
+        if current > self._longest_streak:
+            self._longest_streak = current
+            self._longest_streak_warrior = winner
+
+    @property
+    def longest_streak(self) -> Tuple[Optional[int], int]:
+        return self._longest_streak_warrior, self._longest_streak
+
+
+class ConsoleInterface:
+    def __init__(self, level: VerbosityLevel) -> None:
+        self.level = level
+        self.tracker = BattleStatisticsTracker()
+
+    def should_log(self, minimum_level: VerbosityLevel) -> bool:
+        if self.level == VerbosityLevel.PSEUDO_GRAPHICAL:
+            return minimum_level in (VerbosityLevel.TERSE, VerbosityLevel.DEFAULT)
+        return self.level.order() >= minimum_level.order()
+
+    def log(self, message: str, *, minimum_level: VerbosityLevel = VerbosityLevel.DEFAULT, flush: bool = False) -> None:
+        raise NotImplementedError
+
+    def update_status(self, progress_line: str, detail_line: str) -> None:
+        raise NotImplementedError
+
+    def clear_status(self) -> None:
+        raise NotImplementedError
+
+    def record_battle(self, winner: int, loser: int, was_draw: bool) -> None:
+        self.tracker.record_battle(winner, loser, was_draw)
+
+    def close(self) -> None:
+        pass
 
 
 class StatusDisplay:
@@ -127,7 +195,172 @@ class StatusDisplay:
         self._active_lines = 0
 
 
-status_display = StatusDisplay()
+class SimpleConsole(ConsoleInterface):
+    def __init__(self, level: VerbosityLevel) -> None:
+        super().__init__(level)
+        self._status_display = StatusDisplay()
+
+    def log(self, message: str, *, minimum_level: VerbosityLevel = VerbosityLevel.DEFAULT, flush: bool = False) -> None:
+        if not self.should_log(minimum_level):
+            return
+        print(message, flush=flush)
+
+    def update_status(self, progress_line: str, detail_line: str) -> None:
+        if self.level == VerbosityLevel.PSEUDO_GRAPHICAL:
+            return
+        if self.level == VerbosityLevel.TERSE:
+            detail_line = ""
+        self._status_display.update(progress_line, detail_line)
+
+    def clear_status(self) -> None:
+        if self.level == VerbosityLevel.PSEUDO_GRAPHICAL:
+            return
+        self._status_display.clear()
+
+    def close(self) -> None:
+        self.clear_status()
+
+
+class PseudoGraphicalConsole(ConsoleInterface):
+    def __init__(self) -> None:
+        import curses
+
+        super().__init__(VerbosityLevel.PSEUDO_GRAPHICAL)
+        self._curses = curses
+        self._screen = curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+        self._screen.keypad(True)
+        self._log_lines: Deque[str] = deque(maxlen=200)
+        self._progress_line = ""
+        self._detail_line = ""
+
+    def log(self, message: str, *, minimum_level: VerbosityLevel = VerbosityLevel.DEFAULT, flush: bool = False) -> None:
+        if not self.should_log(minimum_level):
+            return
+        self._log_lines.append(message)
+        self._refresh()
+
+    def update_status(self, progress_line: str, detail_line: str) -> None:
+        self._progress_line = progress_line
+        self._detail_line = detail_line
+        self._refresh()
+
+    def clear_status(self) -> None:
+        self._progress_line = ""
+        self._detail_line = ""
+        self._refresh()
+
+    def _refresh(self) -> None:
+        height, width = self._screen.getmaxyx()
+        self._screen.erase()
+        row = 0
+
+        header_lines = []
+        if self._progress_line:
+            header_lines.append(self._progress_line)
+        if self._detail_line:
+            header_lines.append(self._detail_line)
+
+        longest_warrior, longest_streak = self.tracker.longest_streak
+        if longest_warrior is not None and height - len(header_lines) > 0:
+            header_lines.append(
+                f"Longest streak: Warrior {longest_warrior} ({longest_streak} wins)"
+            )
+
+        for line in header_lines:
+            if row >= height:
+                break
+            self._screen.addnstr(row, 0, line, width - 1)
+            row += 1
+
+        remaining_rows = height - row
+        if remaining_rows <= 0:
+            self._screen.refresh()
+            return
+
+        log_lines = list(self._log_lines)[-remaining_rows:]
+        for line in log_lines:
+            if row >= height:
+                break
+            self._screen.addnstr(row, 0, line, width - 1)
+            row += 1
+
+        self._screen.refresh()
+
+    def close(self) -> None:
+        try:
+            self.clear_status()
+        finally:
+            self._curses.nocbreak()
+            self._screen.keypad(False)
+            self._curses.echo()
+            self._curses.endwin()
+        for line in self._log_lines:
+            print(line)
+
+
+_console_manager: ConsoleInterface = SimpleConsole(VerbosityLevel.DEFAULT)
+
+
+def get_console() -> ConsoleInterface:
+    return _console_manager
+
+
+def set_console_verbosity(level: VerbosityLevel) -> VerbosityLevel:
+    global _console_manager, _VERBOSITY_LEVEL, _VERBOSE_OUTPUT
+
+    previous_manager = _console_manager
+
+    if isinstance(previous_manager, PseudoGraphicalConsole):
+        try:
+            previous_manager.close()
+        except Exception:
+            pass
+
+    if level == VerbosityLevel.PSEUDO_GRAPHICAL:
+        try:
+            _console_manager = PseudoGraphicalConsole()
+        except Exception as exc:
+            warnings.warn(
+                f"Unable to start pseudo-graphical console: {exc}. Falling back to default output.",
+                RuntimeWarning,
+            )
+            level = VerbosityLevel.DEFAULT
+            _console_manager = SimpleConsole(level)
+    else:
+        _console_manager = SimpleConsole(level)
+
+    _VERBOSITY_LEVEL = level
+    _VERBOSE_OUTPUT = level == VerbosityLevel.VERBOSE
+    return _VERBOSITY_LEVEL
+
+
+def close_console() -> None:
+    try:
+        _console_manager.close()
+    except Exception:
+        pass
+
+
+def console_log(
+    message: str,
+    *,
+    minimum_level: VerbosityLevel = VerbosityLevel.DEFAULT,
+    flush: bool = False,
+) -> None:
+    get_console().log(message, minimum_level=minimum_level, flush=flush)
+
+
+def console_update_status(progress_line: str, detail_line: str) -> None:
+    get_console().update_status(progress_line, detail_line)
+
+
+def console_clear_status() -> None:
+    get_console().clear_status()
+
+
+T = TypeVar("T")
 
 
 def set_rng_sequence(sequence: list[int]) -> None:
@@ -172,15 +405,22 @@ def get_random_int(min_val: int, max_val: int) -> int:
 
 
 def set_verbose_output(enabled: bool) -> None:
-    """Enable or disable verbose mutation logging."""
+    """Enable or disable verbose mutation logging.
 
-    global _VERBOSE_OUTPUT
-    _VERBOSE_OUTPUT = bool(enabled)
+    Deprecated. Prefer :func:`set_console_verbosity`.
+    """
+
+    warnings.warn(
+        "set_verbose_output() is deprecated. Use set_console_verbosity() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    set_console_verbosity(VerbosityLevel.VERBOSE if enabled else VerbosityLevel.DEFAULT)
 
 
 def _log_verbose(message: str) -> None:
     if _VERBOSE_OUTPUT:
-        print(message)
+        console_log(message, minimum_level=VerbosityLevel.VERBOSE)
 
 
 def _get_random_choice(sequence: Sequence[T]) -> T:
@@ -421,10 +661,11 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
             if os.path.basename(directory) != "archive"
         ]
         if missing_arenas:
-            print(
+            console_log(
                 "ALREADYSEEDED was True but required arenas/archive are missing. "
                 "Automatically switching to fresh seeding so the evolver can "
-                "initialise new warriors."
+                "initialise new warriors.",
+                minimum_level=VerbosityLevel.TERSE,
             )
             config.alreadyseeded = False
 
@@ -626,17 +867,29 @@ def _print_run_configuration_summary(config: EvolverConfig) -> None:
     else:
         library_display = f"{library_entries} entries (no library configured)"
 
-    print("Run configuration summary:")
-    print(f"  Battle log: {log_display}")
-    print(f"  Arenas: {arena_count}")
-    print(f"  Battle engine: {config.battle_engine}")
-    print(f"  Archived warriors: {archive_count}")
-    print(f"  Instruction library: {library_display}")
-    print(
-        "  Final tournament enabled: "
-        f"{'Yes' if config.run_final_tournament else 'No'}"
+    console_log("Run configuration summary:", minimum_level=VerbosityLevel.TERSE)
+    console_log(
+        f"  Battle log: {log_display}", minimum_level=VerbosityLevel.TERSE
     )
-    print()
+    console_log(f"  Arenas: {arena_count}", minimum_level=VerbosityLevel.TERSE)
+    console_log(
+        f"  Battle engine: {config.battle_engine}",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    console_log(
+        f"  Archived warriors: {archive_count}",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    console_log(
+        f"  Instruction library: {library_display}",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    console_log(
+        "  Final tournament enabled: "
+        f"{'Yes' if config.run_final_tournament else 'No'}",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    console_log("", minimum_level=VerbosityLevel.TERSE)
 
 
 def _print_evolution_statistics(
@@ -646,20 +899,28 @@ def _print_evolution_statistics(
 ) -> None:
     """Print aggregated statistics captured during the evolution loop."""
 
-    print("Evolution statistics:")
+    console_log("Evolution statistics:", minimum_level=VerbosityLevel.TERSE)
     if not battles_per_era:
-        print("  No battles were executed.")
+        console_log("  No battles were executed.", minimum_level=VerbosityLevel.TERSE)
     else:
         for index, battle_count in enumerate(battles_per_era, start=1):
-            print(f"  Era {index}: {battle_count} battles")
-        print(f"  Total battles: {total_battles}")
+            console_log(
+                f"  Era {index}: {battle_count} battles",
+                minimum_level=VerbosityLevel.TERSE,
+            )
+        console_log(
+            f"  Total battles: {total_battles}", minimum_level=VerbosityLevel.TERSE
+        )
 
     if runtime_seconds > 0 and total_battles > 0:
         battles_per_hour = total_battles / (runtime_seconds / 3600)
-        print(f"  Approximate speed: {battles_per_hour:.2f} battles/hour")
+        console_log(
+            f"  Approximate speed: {battles_per_hour:.2f} battles/hour",
+            minimum_level=VerbosityLevel.TERSE,
+        )
     else:
-        print("  Approximate speed: n/a")
-    print()
+        console_log("  Approximate speed: n/a", minimum_level=VerbosityLevel.TERSE)
+    console_log("", minimum_level=VerbosityLevel.TERSE)
 
 class Marble(Enum):
   DO_NOTHING = 0
@@ -693,10 +954,11 @@ def _clamp_wardistance(value: int, coresize: int) -> int:
     )
     clamped_value = max(CPP_WORKER_MIN_DISTANCE, min(value, max_allowed))
     if clamped_value != value and value not in _WARDISTANCE_CLAMP_LOGGED:
-        print(
+        console_log(
             f"Configured WARDISTANCE value {value} is outside the supported range "
             f"({CPP_WORKER_MIN_DISTANCE}-{max_allowed}) for the internal battle "
-            f"engine. Clamping to {clamped_value}."
+            f"engine. Clamping to {clamped_value}.",
+            minimum_level=VerbosityLevel.TERSE,
         )
         _WARDISTANCE_CLAMP_LOGGED.add(value)
     return clamped_value
@@ -785,17 +1047,30 @@ try:
             ctypes.c_int,
         ]
         CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
-        print(
+        console_log(
             "Successfully loaded C++ Redcode worker from "
-            f"{_format_candidate(loaded_path)}."
+            f"{_format_candidate(loaded_path)}.",
+            minimum_level=VerbosityLevel.TERSE,
         )
     else:
         tried_paths = ", ".join(_format_candidate(path) for path in candidates)
-        print(f"Could not load C++ Redcode worker. Tried: {tried_paths}")
-        print("Internal battle engine will not be available.")
+        console_log(
+            f"Could not load C++ Redcode worker. Tried: {tried_paths}",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+        console_log(
+            "Internal battle engine will not be available.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
 except Exception as e:
-    print(f"Could not load C++ Redcode worker: {e}")
-    print("Internal battle engine will not be available.")
+    console_log(
+        f"Could not load C++ Redcode worker: {e}",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    console_log(
+        "Internal battle engine will not be available.",
+        minimum_level=VerbosityLevel.TERSE,
+    )
 
 
 def _candidate_pmars_paths() -> list[str]:
@@ -866,10 +1141,16 @@ def _run_external_command(
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
     except FileNotFoundError as e:
-        print(f"Unable to run {executable}: {e}")
+        console_log(
+            f"Unable to run {executable}: {e}",
+            minimum_level=VerbosityLevel.TERSE,
+        )
         return None
     except subprocess.SubprocessError as e:
-        print(f"An error occurred: {e}")
+        console_log(
+            f"An error occurred: {e}",
+            minimum_level=VerbosityLevel.TERSE,
+        )
         return None
 
     output = result.stdout or ""
@@ -1047,7 +1328,9 @@ def execute_battle(
         numline += 1
         if "scores" in line:
             if verbose:
-                print(line.strip())
+                console_log(
+                    line.strip(), minimum_level=VerbosityLevel.VERBOSE
+                )
             if is_pmars:
                 match = re.search(r"scores\s+(-?\d+)", line)
                 if not match:
@@ -1073,7 +1356,7 @@ def execute_battle(
             f"expected {sorted(expected_warriors)}, got {sorted(returned_warriors)}"
         )
     if verbose:
-        print(numline)
+        console_log(str(numline), minimum_level=VerbosityLevel.VERBOSE)
     return warriors, scores
 
 DEFAULT_MODE = '$'
@@ -1590,25 +1873,40 @@ def _format_duration(seconds: float) -> str:
 
 
 def run_final_tournament(config: EvolverConfig):
-    status_display.clear()
+    console_clear_status()
     if config.last_arena < 0:
-        print("No arenas configured. Skipping final tournament.")
+        console_log(
+            "No arenas configured. Skipping final tournament.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
         return
     if config.numwarriors <= 1:
-        print("Not enough warriors to run a final tournament.")
+        console_log(
+            "Not enough warriors to run a final tournament.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
         return
     if not config.battlerounds_list:
-        print("Battle rounds configuration missing. Cannot run final tournament.")
+        console_log(
+            "Battle rounds configuration missing. Cannot run final tournament.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
         return
 
     final_era_index = max(0, len(config.battlerounds_list) - 1)
-    print("\n================ Final Tournament ================")
+    console_log(
+        "\n================ Final Tournament ================",
+        minimum_level=VerbosityLevel.TERSE,
+    )
     arenas_to_run: list[tuple[int, list[int]]] = []
     total_battles = 0
     for arena in range(0, config.last_arena + 1):
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         if not os.path.isdir(arena_dir):
-            print(f"Arena {arena} directory '{arena_dir}' not found. Skipping.")
+            console_log(
+                f"Arena {arena} directory '{arena_dir}' not found. Skipping.",
+                minimum_level=VerbosityLevel.TERSE,
+            )
             continue
 
         warrior_ids = [
@@ -1618,14 +1916,20 @@ def run_final_tournament(config: EvolverConfig):
         ]
 
         if len(warrior_ids) < 2:
-            print(f"Arena {arena}: not enough warriors for a tournament. Skipping.")
+            console_log(
+                f"Arena {arena}: not enough warriors for a tournament. Skipping.",
+                minimum_level=VerbosityLevel.TERSE,
+            )
             continue
 
         arenas_to_run.append((arena, warrior_ids))
         total_battles += len(warrior_ids) * (len(warrior_ids) - 1) // 2
 
     if not arenas_to_run:
-        print("No arenas with enough warriors for the final tournament.")
+        console_log(
+            "No arenas with enough warriors for the final tournament.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
         return
 
     tournament_start = time.time()
@@ -1661,21 +1965,31 @@ def run_final_tournament(config: EvolverConfig):
                     )
                 else:
                     battle_line = f"Arena {arena} battle in progress"
-                status_display.update(progress_line, battle_line)
+                console_update_status(progress_line, battle_line)
 
-        status_display.clear()
-        print(f"\nArena {arena} final standings:")
+        console_clear_status()
+        console_log(
+            f"\nArena {arena} final standings:",
+            minimum_level=VerbosityLevel.TERSE,
+        )
         rankings = sorted(total_scores.items(), key=lambda item: item[1], reverse=True)
         for position, (warrior_id, score) in enumerate(rankings, start=1):
-            print(f"{position}. Warrior {warrior_id}: {score} points")
+            console_log(
+                f"{position}. Warrior {warrior_id}: {score} points",
+                minimum_level=VerbosityLevel.TERSE,
+            )
         champion_id, champion_score = rankings[0]
-        print(
-            f"Champion: Warrior {champion_id} with {champion_score} points"
+        console_log(
+            f"Champion: Warrior {champion_id} with {champion_score} points",
+            minimum_level=VerbosityLevel.TERSE,
         )
 
-    status_display.clear()
+    console_clear_status()
     duration = time.time() - tournament_start
-    print(f"Final tournament completed in {_format_duration(duration)}.")
+    console_log(
+        f"Final tournament completed in {_format_duration(duration)}.",
+        minimum_level=VerbosityLevel.TERSE,
+    )
 
 
 def _build_marble_bag(era: int, config: EvolverConfig) -> list[Marble]:
@@ -1863,7 +2177,7 @@ def breed_offspring(
     )
     return partner_id
 
-def main(argv: Optional[List[str]] = None) -> int:
+def _main_impl(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Python Evolver Stage")
     parser.add_argument(
         "--config",
@@ -1886,14 +2200,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         help="Seed the RNG for reproducible runs",
     )
     parser.add_argument(
+        "--verbosity",
+        choices=[level.value for level in VerbosityLevel],
+        default=VerbosityLevel.DEFAULT.value,
+        help="Console verbosity: terse, default, verbose, or pseudo-graphical",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Print battle engine output while evolving",
+        help="Print battle engine output while evolving (deprecated; equivalent to --verbosity verbose)",
     )
 
     args = parser.parse_args(argv)
 
-    set_verbose_output(args.verbose)
+    verbosity = VerbosityLevel(args.verbosity)
+    if args.verbose:
+        verbosity = VerbosityLevel.VERBOSE
+
+    verbosity = set_console_verbosity(verbosity)
 
     active_config = load_configuration(args.config)
     if args.engine:
@@ -1909,7 +2233,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         random.seed(args.seed)
 
     if not active_config.alreadyseeded:
-        print("Seeding")
+        console_log("Seeding", minimum_level=VerbosityLevel.TERSE)
         archive_dir = os.path.join(active_config.base_path, "archive")
         create_directory_if_not_exists(archive_dir)
         for arena in range(0, active_config.last_arena + 1):
@@ -1939,8 +2263,11 @@ def main(argv: Optional[List[str]] = None) -> int:
             runtime_in_hours = (time.time() - start_time) / 3600
 
             if runtime_in_hours > active_config.clock_time:
-                status_display.clear()
-                print("Clock time exceeded. Ending evolution loop.")
+                console_clear_status()
+                console_log(
+                    "Clock time exceeded. Ending evolution loop.",
+                    minimum_level=VerbosityLevel.TERSE,
+                )
                 break
 
             if active_config.final_era_only:
@@ -1949,14 +2276,16 @@ def main(argv: Optional[List[str]] = None) -> int:
                 era = min(int(runtime_in_hours / era_duration), era_count - 1)
 
             if era != previous_era:
-                status_display.clear()
+                console_clear_status()
                 if previous_era < 0:
-                    print(
-                        f"========== Starting evolution in era {era + 1} of {era_count} =========="
+                    console_log(
+                        f"========== Starting evolution in era {era + 1} of {era_count} ==========",
+                        minimum_level=VerbosityLevel.DEFAULT,
                     )
                 else:
-                    print(
-                        f"************** Advancing from era {previous_era + 1} to {era + 1} *******************"
+                    console_log(
+                        f"************** Advancing from era {previous_era + 1} to {era + 1} *******************",
+                        minimum_level=VerbosityLevel.DEFAULT,
                     )
                 bag = _build_marble_bag(era, active_config)
 
@@ -1973,18 +2302,19 @@ def main(argv: Optional[List[str]] = None) -> int:
                 f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
                 f"Era: {display_era}"
             )
-            status_display.update(progress_line, pending_battle_line)
+            console_update_status(progress_line, pending_battle_line)
             warriors, scores = execute_battle(
                 arena_index,
                 cont1,
                 cont2,
                 era,
-                verbose=args.verbose,
+                verbose=verbosity == VerbosityLevel.VERBOSE,
             )
             if 0 <= era < len(battles_per_era):
                 battles_per_era[era] += 1
             total_battles += 1
             winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
+            get_console().record_battle(winner, loser, was_draw)
 
             if len(warriors) >= 2 and len(scores) >= 2:
                 matchup = (
@@ -2014,7 +2344,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                     f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
                     f"Era: {display_era}"
                 )
-                status_display.clear()
+                console_clear_status()
                 last_event_line = ""
                 for event in archiving_result.events:
                     if event.action == "archived":
@@ -2038,8 +2368,8 @@ def main(argv: Optional[List[str]] = None) -> int:
                         f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
                         f"| Action: {action_detail}"
                     )
-                    print(last_event_line, flush=True)
-                status_display.update(progress_line, last_event_line)
+                    console_log(last_event_line, flush=True)
+                console_update_status(progress_line, last_event_line)
 
             if archiving_result.skip_breeding:
                 continue
@@ -2072,18 +2402,24 @@ def main(argv: Optional[List[str]] = None) -> int:
                 f"{hours_remaining:.2f} hours remaining ({percent_complete:.2f}% complete) "
                 f"Era: {display_era}"
             )
-            status_display.update(progress_line, battle_line)
+            console_update_status(progress_line, battle_line)
 
     except KeyboardInterrupt:
-        status_display.clear()
-        print("Evolution interrupted by user.")
+        console_clear_status()
+        console_log(
+            "Evolution interrupted by user.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
         interrupted = True
 
     end_time = time.time()
 
     if not interrupted:
-        status_display.clear()
-        print("Evolution loop completed.")
+        console_clear_status()
+        console_log(
+            "Evolution loop completed.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
 
     _print_evolution_statistics(
         battles_per_era=battles_per_era,
@@ -2095,6 +2431,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         run_final_tournament(active_config)
 
     return 0
+
+
+def main(argv: Optional[List[str]] = None) -> int:
+    try:
+        return _main_impl(argv)
+    finally:
+        close_console()
 
 
 if __name__ == "__main__" and os.getenv("PYTHONEVOLVER_SKIP_MAIN") != "1":
