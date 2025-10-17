@@ -1376,7 +1376,7 @@ def _apply_instruction_library(
     if not config.library_path or not os.path.exists(config.library_path):
         return instruction
 
-    print("Instruction library")
+    #print("Instruction library")
     with open(config.library_path, "r") as library_handle:
         library_lines = library_handle.readlines()
     if library_lines:
