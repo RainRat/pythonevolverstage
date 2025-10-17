@@ -20,6 +20,7 @@ import evolverstage
 DEFAULT_SETTINGS_PATH = PROJECT_ROOT / "settings.ini"
 _DEFAULT_CONFIG = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
 evolverstage.set_active_config(_DEFAULT_CONFIG)
+evolverstage.set_arena_storage(evolverstage.create_arena_storage(_DEFAULT_CONFIG))
 
 
 def test_load_configuration_parses_types(tmp_path):
@@ -96,6 +97,53 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.instr_set == ["MOV", "ADD"]
     assert config.instr_modes == ["#", "$"]
     assert config.instr_modif == ["A", "B"]
+
+
+def test_load_configuration_reads_in_memory_settings(tmp_path):
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            LAST_ARENA = 0
+            CORESIZE_LIST = 80
+            SANITIZE_LIST = 80
+            CYCLES_LIST = 800
+            PROCESSES_LIST = 8
+            READLIMIT_LIST = 80
+            WRITELIMIT_LIST = 80
+            WARLEN_LIST = 5
+            WARDISTANCE_LIST = 5
+            NUMWARRIORS = 2
+            ALREADYSEEDED = true
+            CLOCK_TIME = 1
+            BATTLEROUNDS_LIST = 1
+            NOTHING_LIST = 1
+            RANDOM_LIST = 0
+            NAB_LIST = 0
+            MINI_MUT_LIST = 0
+            MICRO_MUT_LIST = 0
+            LIBRARY_LIST = 0
+            MAGIC_NUMBER_LIST = 0
+            ARCHIVE_LIST = 0
+            UNARCHIVE_LIST = 0
+            CROSSOVERRATE_LIST = 1
+            TRANSPOSITIONRATE_LIST = 1
+            PREFER_WINNER_LIST = false
+            IN_MEMORY_ARENAS = true
+            ARENA_CHECKPOINT_INTERVAL = 20000
+            """
+        ).strip()
+    )
+
+    (tmp_path / "arena0").mkdir()
+    (tmp_path / "archive").mkdir()
+    (tmp_path / "arena0" / "1.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
+    (tmp_path / "arena0" / "2.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
+
+    config = evolverstage.load_configuration(str(config_path))
+    assert config.use_in_memory_arenas is True
+    assert config.arena_checkpoint_interval == 20000
 
 
 def test_load_configuration_overrides_alreadyseeded_when_directories_missing(tmp_path, capsys):
@@ -201,6 +249,12 @@ def test_validate_config_rejects_excessive_wardistance():
         evolverstage.validate_config(config)
 
 
+def test_validate_config_rejects_nonpositive_checkpoint_interval():
+    config = replace(_DEFAULT_CONFIG, arena_checkpoint_interval=0)
+    with pytest.raises(ValueError, match="ARENA_CHECKPOINT_INTERVAL"):
+        evolverstage.validate_config(config)
+
+
 def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
     config_path = tmp_path / "config.ini"
     config_path.write_text(
@@ -297,6 +351,66 @@ def test_load_configuration_rejects_negative_marble_counts(tmp_path):
         load_configuration(str(config_path))
 
 
+def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            LAST_ARENA = 0
+            CORESIZE_LIST = 80
+            SANITIZE_LIST = 80
+            CYCLES_LIST = 800
+            PROCESSES_LIST = 8
+            READLIMIT_LIST = 80
+            WRITELIMIT_LIST = 80
+            WARLEN_LIST = 5
+            WARDISTANCE_LIST = 5
+            NUMWARRIORS = 2
+            ALREADYSEEDED = true
+            CLOCK_TIME = 1
+            BATTLEROUNDS_LIST = 1
+            NOTHING_LIST = 1
+            RANDOM_LIST = 0
+            NAB_LIST = 0
+            MINI_MUT_LIST = 0
+            MICRO_MUT_LIST = 0
+            LIBRARY_LIST = 0
+            MAGIC_NUMBER_LIST = 0
+            ARCHIVE_LIST = 0
+            UNARCHIVE_LIST = 0
+            CROSSOVERRATE_LIST = 1
+            TRANSPOSITIONRATE_LIST = 1
+            PREFER_WINNER_LIST = false
+            IN_MEMORY_ARENAS = true
+            ARENA_CHECKPOINT_INTERVAL = 100
+            """
+        ).strip()
+    )
+
+    arena_dir = tmp_path / "arena0"
+    arena_dir.mkdir()
+    (tmp_path / "archive").mkdir()
+    warrior_path = arena_dir / "1.red"
+    warrior_path.write_text("DAT.F #0, #0\n", encoding="utf-8")
+    (arena_dir / "2.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
+
+    config = evolverstage.load_configuration(str(config_path))
+    evolverstage.set_active_config(config)
+    storage = evolverstage.create_arena_storage(config)
+    evolverstage.set_arena_storage(storage)
+    storage.load_existing()
+
+    storage.set_warrior_lines(0, 1, ["MOV.I #1, #2\n"])
+    assert warrior_path.read_text(encoding="utf-8") == "DAT.F #0, #0\n"
+
+    storage.ensure_warriors_on_disk(0, [2])
+    assert warrior_path.read_text(encoding="utf-8") == "DAT.F #0, #0\n"
+
+    storage.ensure_warriors_on_disk(0, [1])
+    assert warrior_path.read_text(encoding="utf-8") == "MOV.I #1, #2\n"
+
+
 def test_execute_battle_parses_pmars_output(monkeypatch):
     temp_config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
     sample_output = (
@@ -310,10 +424,14 @@ def test_execute_battle_parses_pmars_output(monkeypatch):
     )
 
     evolverstage.set_active_config(temp_config)
+    evolverstage.set_arena_storage(evolverstage.create_arena_storage(temp_config))
     try:
         warriors, scores = evolverstage.execute_battle(0, 101, 202, 0, verbose=False)
     finally:
         evolverstage.set_active_config(_DEFAULT_CONFIG)
+        evolverstage.set_arena_storage(
+            evolverstage.create_arena_storage(_DEFAULT_CONFIG)
+        )
 
     assert warriors == [101, 202]
     assert scores == [10, 20]
@@ -403,6 +521,7 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
     config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
     config.base_path = str(tmp_path)
     evolverstage.set_active_config(config)
+    evolverstage.set_arena_storage(evolverstage.create_arena_storage(config))
 
     arena_dir = tmp_path / "arena1"
     arena_dir.mkdir()
@@ -470,9 +589,15 @@ def test_run_internal_battle_requires_worker(tmp_path, monkeypatch):
     finally:
         if previous_config is not None:
             evolverstage.set_active_config(previous_config)
+            evolverstage.set_arena_storage(
+                evolverstage.create_arena_storage(previous_config)
+            )
         else:
             fallback_config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
             evolverstage.set_active_config(fallback_config)
+            evolverstage.set_arena_storage(
+                evolverstage.create_arena_storage(fallback_config)
+            )
 
 
 def test_final_tournament_uses_single_round(monkeypatch, tmp_path, capsys):
@@ -520,8 +645,14 @@ def test_final_tournament_uses_single_round(monkeypatch, tmp_path, capsys):
 
     if previous_config is not None:
         evolverstage.set_active_config(previous_config)
+        evolverstage.set_arena_storage(
+            evolverstage.create_arena_storage(previous_config)
+        )
     else:
         evolverstage.set_active_config(_DEFAULT_CONFIG)
+        evolverstage.set_arena_storage(
+            evolverstage.create_arena_storage(_DEFAULT_CONFIG)
+        )
 
 
 def test_run_internal_battle_clamps_wardistance(monkeypatch, tmp_path, capsys):
