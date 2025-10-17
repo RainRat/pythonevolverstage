@@ -13,8 +13,9 @@ For all of these, modify the constants in settings.ini.
 1. Edit the ARENA lists to contain the parameters of the competitions you want to compete in. If you just want to compete in one arena, you have lists of length 1.
 2. Set ALREADYSEEDED to False. If you interrupt it and want to resume, set it to True.
 3. Choose how much actual wall clock time (in hours) you plan to run the project for and modify CLOCK_TIME
-4. python evolverstage.py
-5. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
+4. Select the battle engine by setting `BATTLE_ENGINE` to `nmars`, `internal`, or `pmars` in `settings.ini`. Use `nmars` to call the external nMars executable, `internal` to use the bundled C++ worker, or `pmars` to shell out to a local pMARS binary.
+5. python evolverstage.py (add `--verbosity {terse,default,verbose,pseudo-graphical}` to control console output)
+6. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
 
 ## Special Features:
 
@@ -33,7 +34,7 @@ For all of these, modify the constants in settings.ini.
 	The cellular analogy is just to understand why different parameters were chosen in each era. Warriors are the same size in each era.
 5. Progress tracker. Example:
 ```
-8.00 hours remaining (0.01% complete) Era: 1
+7 hours 12 minutes 30.00 seconds remaining (0.01% complete) Era: 1
 ```
 6. Finished the cycle you originally planned and want to optimize some more? Set:
 ```
