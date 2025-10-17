@@ -98,6 +98,46 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.instr_modif == ["A", "B"]
 
 
+def test_load_configuration_overrides_alreadyseeded_when_directories_missing(tmp_path, capsys):
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            LAST_ARENA = 0
+            CORESIZE_LIST = 80
+            SANITIZE_LIST = 80
+            CYCLES_LIST = 800
+            PROCESSES_LIST = 8
+            WARLEN_LIST = 5
+            WARDISTANCE_LIST = 5
+            NUMWARRIORS = 10
+            ALREADYSEEDED = true
+            CLOCK_TIME = 1
+            BATTLEROUNDS_LIST = 1
+            NOTHING_LIST = 1
+            RANDOM_LIST = 1
+            NAB_LIST = 0
+            MINI_MUT_LIST = 0
+            MICRO_MUT_LIST = 0
+            LIBRARY_LIST = 0
+            MAGIC_NUMBER_LIST = 0
+            ARCHIVE_LIST = 0
+            UNARCHIVE_LIST = 0
+            CROSSOVERRATE_LIST = 1
+            TRANSPOSITIONRATE_LIST = 1
+            PREFER_WINNER_LIST = false
+            """
+        ).strip()
+    )
+
+    config = evolverstage.load_configuration(str(config_path))
+    captured = capsys.readouterr()
+
+    assert config.alreadyseeded is False
+    assert "ALREADYSEEDED was True" in captured.out
+
+
 def test_validate_config_accepts_pmars_engine():
     config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
     evolverstage.validate_config(config)
@@ -207,7 +247,7 @@ def test_execute_battle_parses_pmars_output(monkeypatch):
     assert scores == [10, 20]
 
 
-def test_load_configuration_checks_seeded_directories(tmp_path):
+def test_load_configuration_checks_seeded_directories(tmp_path, capsys):
     config_path = tmp_path / "config.ini"
     config_path.write_text(
         textwrap.dedent(
@@ -246,8 +286,11 @@ def test_load_configuration_checks_seeded_directories(tmp_path):
 
     from evolverstage import load_configuration
 
-    with pytest.raises(FileNotFoundError, match="arena1"):
-        load_configuration(str(config_path))
+    config = load_configuration(str(config_path))
+    captured = capsys.readouterr()
+
+    assert config.alreadyseeded is False
+    assert "ALREADYSEEDED was True" in captured.out
 
 
 def test_data_logger_writes_header_once(tmp_path):
