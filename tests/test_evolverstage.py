@@ -804,6 +804,51 @@ def test_execute_battle_in_memory_internal_avoids_disk_writes(monkeypatch, tmp_p
     assert not any(tmp_path.glob("arena0/*.red"))
 
 
+def test_main_flushes_in_memory_internal_on_exit(monkeypatch, tmp_path):
+    config = replace(
+        _DEFAULT_CONFIG,
+        base_path=str(tmp_path),
+        battle_engine="internal",
+        use_in_memory_arenas=True,
+        last_arena=0,
+        numwarriors=1,
+        coresize_list=[_DEFAULT_CONFIG.coresize_list[0]],
+        sanitize_list=[_DEFAULT_CONFIG.sanitize_list[0]],
+        cycles_list=[_DEFAULT_CONFIG.cycles_list[0]],
+        processes_list=[_DEFAULT_CONFIG.processes_list[0]],
+        readlimit_list=[_DEFAULT_CONFIG.readlimit_list[0]],
+        writelimit_list=[_DEFAULT_CONFIG.writelimit_list[0]],
+        warlen_list=[_DEFAULT_CONFIG.warlen_list[0]],
+        wardistance_list=[_DEFAULT_CONFIG.wardistance_list[0]],
+        battlerounds_list=[_DEFAULT_CONFIG.battlerounds_list[0]],
+    )
+
+    previous_config = evolverstage.get_active_config()
+    previous_storage = evolverstage.get_arena_storage()
+
+    storage = evolverstage.create_arena_storage(config)
+    evolverstage.set_active_config(config)
+    evolverstage.set_arena_storage(storage)
+    storage.load_existing()
+    storage.set_warrior_lines(0, 1, ["MOV.I #1, #2\n"])
+
+    def boom(_argv=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(evolverstage, "_main_impl", boom)
+    monkeypatch.setattr(evolverstage, "close_console", lambda: None)
+
+    try:
+        with pytest.raises(RuntimeError):
+            evolverstage.main([])
+    finally:
+        evolverstage.set_active_config(previous_config)
+        evolverstage.set_arena_storage(previous_storage)
+
+    warrior_path = tmp_path / "arena0" / "1.red"
+    assert warrior_path.read_text(encoding="utf-8") == "MOV.I #1, #2\n"
+
+
 def test_micro_mutation_handler():
     instruction = evolverstage.RedcodeInstruction(
         opcode="MOV",

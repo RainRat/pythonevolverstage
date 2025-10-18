@@ -1955,6 +1955,22 @@ def _should_persist_to_disk(current_config: EvolverConfig) -> bool:
     )
 
 
+def _should_flush_on_exit(current_config: EvolverConfig) -> bool:
+    """Determine whether the final shutdown should flush arenas to disk."""
+
+    if (
+        current_config.use_in_memory_arenas
+        and current_config.battle_engine == "internal"
+    ):
+        # The in-memory/internal configuration uses RAM for day-to-day battles, but
+        # still needs to leave behind a final checkpoint so interrupted runs can be
+        # resumed. Always flush during shutdown in this mode to satisfy that
+        # requirement without forcing every intermediate update onto disk.
+        return True
+
+    return _should_persist_to_disk(current_config)
+
+
 MutationHandler = Callable[[RedcodeInstruction, int, EvolverConfig, int], RedcodeInstruction]
 
 
@@ -2698,7 +2714,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         runtime_seconds=end_time - start_time,
     )
 
-    if _should_persist_to_disk(active_config):
+    if _should_flush_on_exit(active_config):
         get_arena_storage().flush_all()
 
     if active_config.run_final_tournament:
@@ -2716,7 +2732,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         except RuntimeError:
             active_config = None
         try:
-            if active_config is None or _should_persist_to_disk(active_config):
+            if active_config is None or _should_flush_on_exit(active_config):
                 get_arena_storage().flush_all()
         except RuntimeError:
             pass
