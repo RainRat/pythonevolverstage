@@ -1,6 +1,6 @@
 Evolutionary algorithm for the competitive programming game Core War.
 
-Currently evolverstage.py shells to the external program nMars.exe, but an experimental C++ server, redcode-worker.cpp, is under development.
+Currently evolverstage.py shells to the external program nMars.exe, and the internal C++ server (`redcode-worker.cpp`) is now stable for day-to-day use.
 
 "spec" refers to the "Draft of Proposed 1994 Core War Standard" (1994_core_war_standard.txt) + the features in the Extended draft (1994_extended.txt)
 
@@ -42,5 +42,5 @@ Supported:
 -`{`, `}` and `*` modes: in the Extended spec, so it is supported.
 
 Submodules:
--The official latest pMars source code has been included under pMars. It may be a future project to add it as an alternate emulation engine. For now, it can be compiled or browsed to resolve ambiguities about intended execution.
+-The official latest pMars source code has been included under pMars. Using it as an external battle program is supported, and it can also be compiled or browsed to resolve ambiguities about intended execution.
 -Instruction semantics should match pMARS. When adding or updating instruction-level tests, treat pMARS as the reference implementation and prefer its behaviour over existing expectations if they disagree.

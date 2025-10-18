@@ -1228,14 +1228,26 @@ def run_internal_battle(
     wardistance = _clamp_wardistance(wardistance, coresize)
 
     try:
-        # 1. Read warrior files
-        arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        w1_path = os.path.join(arena_dir, f"{cont1}.red")
-        w2_path = os.path.join(arena_dir, f"{cont2}.red")
-        with open(w1_path, 'r') as f:
-            w1_code = f.read()
-        with open(w2_path, 'r') as f:
-            w2_code = f.read()
+        # 1. Load warrior source code
+        if config.use_in_memory_arenas:
+            storage = get_arena_storage()
+            w1_lines = storage.get_warrior_lines(arena, cont1)
+            w2_lines = storage.get_warrior_lines(arena, cont2)
+            if not w1_lines or not w2_lines:
+                raise RuntimeError(
+                    "Warrior source missing from in-memory storage; "
+                    "ensure warriors are initialized before battling."
+                )
+            w1_code = "".join(w1_lines)
+            w2_code = "".join(w2_lines)
+        else:
+            arena_dir = os.path.join(config.base_path, f"arena{arena}")
+            w1_path = os.path.join(arena_dir, f"{cont1}.red")
+            w2_path = os.path.join(arena_dir, f"{cont2}.red")
+            with open(w1_path, 'r') as f:
+                w1_code = f.read()
+            with open(w2_path, 'r') as f:
+                w2_code = f.read()
 
         # 2. Call the C++ function
         result_ptr = CPP_WORKER_LIB.run_battle(
@@ -1280,7 +1292,9 @@ def execute_battle(
     battlerounds_override: Optional[int] = None,
 ):
     engine = config.battle_engine
-    get_arena_storage().ensure_warriors_on_disk(arena, [cont1, cont2])
+    storage = get_arena_storage()
+    if not (config.use_in_memory_arenas and engine == 'internal'):
+        storage.ensure_warriors_on_disk(arena, [cont1, cont2])
     battlerounds = (
         battlerounds_override
         if battlerounds_override is not None
@@ -1934,6 +1948,29 @@ def create_arena_storage(config: EvolverConfig) -> ArenaStorage:
     return DiskArenaStorage()
 
 
+def _should_persist_to_disk(current_config: EvolverConfig) -> bool:
+    return not (
+        current_config.use_in_memory_arenas
+        and current_config.battle_engine == 'internal'
+    )
+
+
+def _should_flush_on_exit(current_config: EvolverConfig) -> bool:
+    """Determine whether the final shutdown should flush arenas to disk."""
+
+    if (
+        current_config.use_in_memory_arenas
+        and current_config.battle_engine == "internal"
+    ):
+        # The in-memory/internal configuration uses RAM for day-to-day battles, but
+        # still needs to leave behind a final checkpoint so interrupted runs can be
+        # resumed. Always flush during shutdown in this mode to satisfy that
+        # requirement without forcing every intermediate update onto disk.
+        return True
+
+    return _should_persist_to_disk(current_config)
+
+
 MutationHandler = Callable[[RedcodeInstruction, int, EvolverConfig, int], RedcodeInstruction]
 
 
@@ -2092,6 +2129,12 @@ def run_final_tournament(config: EvolverConfig):
         return
 
     final_era_index = max(0, len(config.battlerounds_list) - 1)
+    use_in_memory_internal = (
+        config.use_in_memory_arenas and config.battle_engine == 'internal'
+    )
+    storage: Optional[ArenaStorage] = None
+    if use_in_memory_internal:
+        storage = get_arena_storage()
     console_log(
         "\n================ Final Tournament ================",
         minimum_level=VerbosityLevel.TERSE,
@@ -2099,19 +2142,27 @@ def run_final_tournament(config: EvolverConfig):
     arenas_to_run: list[tuple[int, list[int]]] = []
     total_battles = 0
     for arena in range(0, config.last_arena + 1):
-        arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        if not os.path.isdir(arena_dir):
-            console_log(
-                f"Arena {arena} directory '{arena_dir}' not found. Skipping.",
-                minimum_level=VerbosityLevel.TERSE,
-            )
-            continue
+        if use_in_memory_internal:
+            assert storage is not None
+            warrior_ids = [
+                warrior_id
+                for warrior_id in range(1, config.numwarriors + 1)
+                if storage.get_warrior_lines(arena, warrior_id)
+            ]
+        else:
+            arena_dir = os.path.join(config.base_path, f"arena{arena}")
+            if not os.path.isdir(arena_dir):
+                console_log(
+                    f"Arena {arena} directory '{arena_dir}' not found. Skipping.",
+                    minimum_level=VerbosityLevel.TERSE,
+                )
+                continue
 
-        warrior_ids = [
-            warrior_id
-            for warrior_id in range(1, config.numwarriors + 1)
-            if os.path.exists(os.path.join(arena_dir, f"{warrior_id}.red"))
-        ]
+            warrior_ids = [
+                warrior_id
+                for warrior_id in range(1, config.numwarriors + 1)
+                if os.path.exists(os.path.join(arena_dir, f"{warrior_id}.red"))
+            ]
 
         if len(warrior_ids) < 2:
             console_log(
@@ -2455,7 +2506,8 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                     for _ in range(1, active_config.warlen_list[arena] + 1)
                 ]
                 storage.set_warrior_lines(arena, warrior_id, new_lines)
-        storage.flush_all()
+        if _should_persist_to_disk(active_config):
+            storage.flush_all()
 
     start_time = time.time()
     era = -1
@@ -2498,7 +2550,8 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                         f"************** Advancing from era {previous_era + 1} to {era + 1} *******************",
                         minimum_level=VerbosityLevel.DEFAULT,
                     )
-                    get_arena_storage().flush_all()
+                    if _should_persist_to_disk(active_config):
+                        get_arena_storage().flush_all()
                 bag = _build_marble_bag(era, active_config)
 
             arena_index = random.randint(0, active_config.last_arena)
@@ -2535,6 +2588,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             if (
                 active_config.arena_checkpoint_interval
                 and total_battles % active_config.arena_checkpoint_interval == 0
+                and _should_persist_to_disk(active_config)
             ):
                 get_arena_storage().flush_all()
             winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
@@ -2660,7 +2714,8 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         runtime_seconds=end_time - start_time,
     )
 
-    get_arena_storage().flush_all()
+    if _should_flush_on_exit(active_config):
+        get_arena_storage().flush_all()
 
     if active_config.run_final_tournament:
         run_final_tournament(active_config)
@@ -2673,7 +2728,12 @@ def main(argv: Optional[List[str]] = None) -> int:
         return _main_impl(argv)
     finally:
         try:
-            get_arena_storage().flush_all()
+            active_config = get_active_config()
+        except RuntimeError:
+            active_config = None
+        try:
+            if active_config is None or _should_flush_on_exit(active_config):
+                get_arena_storage().flush_all()
         except RuntimeError:
             pass
         close_console()
