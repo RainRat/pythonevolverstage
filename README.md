@@ -94,9 +94,6 @@ Evolver output will now rewrite numbers either negative or positive, whichever i
 11. (New) Optional log file
 Results of battles saved so you can analyse your progress. Current fields are 'era', 'arena', 'winner', 'loser', 'score1', 'score2', and 'bred_with'. Edit BATTLE_LOG_FILE setting to choose a file name; comment out or leave blank for no log.
 
-12. Experimental CPU throttling support (disabled)
-        The source includes commented-out hooks to integrate with the `psutil` Python package so the evolver can pause itself when overall CPU usage is high. The feature is currently experimental and therefore disabled by default. To try it, install `psutil` (`pip install psutil`), uncomment the `import psutil` line near the top of `evolverstage.py`, and restore the commented loop at the bottom of the file that checks `psutil.cpu_percent()`. Adjust the threshold to suit your system.
-
 ## Compiling `redcode-worker.cpp`
 
 An experimental C++ worker (`redcode-worker.cpp`) can be built as a shared library for use with the Python evolver.
