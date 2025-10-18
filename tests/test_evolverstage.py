@@ -552,6 +552,44 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
     assert scores["202"] == 0
 
 
+def test_execute_battle_uses_reproducible_seed(tmp_path, monkeypatch):
+    compile_worker()
+    import evolverstage
+
+    importlib.reload(evolverstage)
+
+    config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+    config.base_path = str(tmp_path)
+    evolverstage.set_active_config(config)
+    evolverstage.set_arena_storage(evolverstage.create_arena_storage(config))
+
+    arena_dir = tmp_path / "arena0"
+    arena_dir.mkdir()
+    (arena_dir / "1.red").write_text("JMP.F $0, $0\n", encoding="utf-8")
+    (arena_dir / "2.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+
+    def run_once():
+        evolverstage.random.seed(1234)
+        battle_seed = evolverstage._generate_internal_battle_seed()
+        return evolverstage.execute_battle(
+            arena=0,
+            cont1=1,
+            cont2=2,
+            era=0,
+            verbose=False,
+            battlerounds_override=5,
+            seed=battle_seed,
+        )
+
+    first_warriors, first_scores = run_once()
+    second_warriors, second_scores = run_once()
+
+    assert first_warriors == second_warriors
+    assert first_scores == second_scores
+
+
 def test_run_internal_battle_requires_worker(tmp_path, monkeypatch):
     import evolverstage
 
@@ -628,7 +666,13 @@ def test_final_tournament_uses_single_round(monkeypatch, tmp_path, capsys):
     battle_rounds: list[int] = []
 
     def fake_execute_battle(
-        arena, cont1, cont2, era, verbose=True, battlerounds_override=None
+        arena,
+        cont1,
+        cont2,
+        era,
+        verbose=True,
+        battlerounds_override=None,
+        seed=None,
     ):
         battle_rounds.append(battlerounds_override)
         return [cont1, cont2], [10, 5]
@@ -678,7 +722,13 @@ def test_final_tournament_uses_in_memory_storage(monkeypatch, tmp_path, capsys):
     battle_rounds: list[int] = []
 
     def fake_execute_battle(
-        arena, cont1, cont2, era, verbose=True, battlerounds_override=None
+        arena,
+        cont1,
+        cont2,
+        era,
+        verbose=True,
+        battlerounds_override=None,
+        seed=None,
     ):
         battle_rounds.append(battlerounds_override)
         return [cont1, cont2], [10, 5]

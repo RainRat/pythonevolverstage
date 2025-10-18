@@ -6,6 +6,7 @@ import time
 import configparser
 import subprocess
 import shutil
+import hashlib
 from enum import Enum
 import csv
 import ctypes
@@ -1282,6 +1283,30 @@ def run_internal_battle(
         )
 
 
+_INTERNAL_ENGINE_MAX_SEED = 2_147_483_646
+
+
+def _normalize_internal_seed(seed: int) -> int:
+    modulus = _INTERNAL_ENGINE_MAX_SEED
+    normalized = seed % modulus
+    if normalized <= 0:
+        normalized += modulus
+    return normalized
+
+
+def _generate_internal_battle_seed() -> int:
+    return random.randint(1, _INTERNAL_ENGINE_MAX_SEED)
+
+
+def _stable_internal_battle_seed(
+    arena: int, cont1: int, cont2: int, era: int
+) -> int:
+    data = f"{arena}:{cont1}:{cont2}:{era}".encode("utf-8")
+    digest = hashlib.blake2s(data, digest_size=8).digest()
+    value = int.from_bytes(digest, "big")
+    return _normalize_internal_seed(value)
+
+
 def execute_battle(
     arena: int,
     cont1: int,
@@ -1289,6 +1314,7 @@ def execute_battle(
     era: int,
     verbose: bool = True,
     battlerounds_override: Optional[int] = None,
+    seed: Optional[int] = None,
 ):
     engine = config.battle_engine
     storage = get_arena_storage()
@@ -1300,6 +1326,7 @@ def execute_battle(
         else config.battlerounds_list[era]
     )
     if engine == 'internal':
+        internal_seed = -1 if seed is None else _normalize_internal_seed(seed)
         raw_output = run_internal_battle(
             arena,
             cont1,
@@ -1312,6 +1339,7 @@ def execute_battle(
             config.warlen_list[arena],
             config.wardistance_list[arena],
             battlerounds,
+            internal_seed,
         )
     elif engine == 'pmars':
         pmars_cmd = None
@@ -2188,6 +2216,13 @@ def run_final_tournament(config: EvolverConfig):
 
             for idx, cont1 in enumerate(warrior_ids):
                 for cont2 in warrior_ids[idx + 1 :]:
+                    match_seed = (
+                        _stable_internal_battle_seed(
+                            arena, cont1, cont2, final_era_index
+                        )
+                        if config.battle_engine == 'internal'
+                        else None
+                    )
                     warriors, scores = execute_battle(
                         arena,
                         cont1,
@@ -2195,6 +2230,7 @@ def run_final_tournament(config: EvolverConfig):
                         final_era_index,
                         verbose=False,
                         battlerounds_override=1,
+                        seed=match_seed,
                     )
                     for warrior_id, score in zip(warriors, scores):
                         total_scores[warrior_id] = total_scores.get(warrior_id, 0) + score
@@ -2485,7 +2521,8 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
 
     _print_run_configuration_summary(active_config)
 
-    if args.seed is not None:
+    seed_enabled = args.seed is not None
+    if seed_enabled:
         random.seed(args.seed)
 
     storage = create_arena_storage(active_config)
@@ -2574,12 +2611,18 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 f"Era: {display_era}"
             )
             console_update_status(progress_line, pending_battle_line)
+            battle_seed = (
+                _generate_internal_battle_seed()
+                if seed_enabled and active_config.battle_engine == 'internal'
+                else None
+            )
             warriors, scores = execute_battle(
                 arena_index,
                 cont1,
                 cont2,
                 era,
                 verbose=verbosity == VerbosityLevel.VERBOSE,
+                seed=battle_seed,
             )
             if 0 <= era < len(battles_per_era):
                 battles_per_era[era] += 1
