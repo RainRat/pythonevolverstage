@@ -3,7 +3,6 @@ import random
 import os
 import sys
 import time
-#import psutil #Not currently active. See bottom of code for how it could be used.
 import configparser
 import subprocess
 import shutil
@@ -2647,10 +2646,15 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                             action_detail = (
                                 f"Unarchived Warrior {event.warrior_id}"
                             )
-                    last_event_line = (
-                        "Battle: "
-                        f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
-                        f"| Action: {action_detail}"
+
+                    header_line = f"Battle: Era {display_era}, Arena {arena_index}"
+                    matchup_line = f"    {matchup}"
+                    result_lines = [
+                        f"    {segment}" for segment in battle_result_description.split(" | ")
+                    ]
+                    action_line = f"    Action: {action_detail}"
+                    last_event_line = "\n".join(
+                        [header_line, matchup_line, *result_lines, action_line]
                     )
                     console_log(last_event_line, flush=True)
                 console_update_status(progress_line, last_event_line)
