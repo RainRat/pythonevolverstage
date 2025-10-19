@@ -728,6 +728,22 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
     if config.clock_time is None or config.clock_time <= 0:
         raise ValueError("CLOCK_TIME must be a positive number of hours.")
 
+    if config.instr_modes:
+        invalid_modes = sorted(
+            {
+                mode.strip()
+                for mode in config.instr_modes
+                if mode.strip() and mode.strip() not in BASE_ADDRESSING_MODES
+            }
+        )
+        if invalid_modes:
+            allowed_modes = ", ".join(sorted(BASE_ADDRESSING_MODES))
+            raise ValueError(
+                "INSTR_MODES contains unsupported addressing mode(s): "
+                + ", ".join(invalid_modes)
+                + f". Allowed values are: {allowed_modes}."
+            )
+
 
 def load_configuration(path: str) -> EvolverConfig:
     parser = configparser.ConfigParser()
@@ -1557,6 +1573,7 @@ def _rebuild_instruction_tables(active_config: EvolverConfig) -> None:
 
     invalid_generation_opcodes = set()
     GENERATION_OPCODE_POOL = []
+    invalid_reasons: list[str] = []
     for instr in active_config.instr_set or []:
         normalized = instr.strip().upper()
         if not normalized:
@@ -1571,9 +1588,19 @@ def _rebuild_instruction_tables(active_config: EvolverConfig) -> None:
         GENERATION_OPCODE_POOL.append(canonical_opcode)
 
     if invalid_generation_opcodes:
+        invalid_reasons.append(
+            "contains unsupported opcode(s): "
+            + ", ".join(sorted(invalid_generation_opcodes))
+        )
+
+    if not GENERATION_OPCODE_POOL:
+        invalid_reasons.append("must include at least one supported opcode other than DAT")
+    elif all(opcode == 'DAT' for opcode in GENERATION_OPCODE_POOL):
+        invalid_reasons.append("must include at least one opcode other than DAT")
+
+    if invalid_reasons:
         raise ValueError(
-            "Unsupported opcodes specified in INSTR_SET: "
-            + ', '.join(sorted(invalid_generation_opcodes))
+            "Invalid INSTR_SET configuration: " + "; ".join(invalid_reasons) + "."
         )
 
 def weighted_random_number(size, length):
