@@ -1,15 +1,18 @@
+#include <array>
+#include <deque>
 #include <iostream>
 #include <vector>
 #include <string>
 #include <sstream>
 #include <map>
-#include <list>
 #include <random>
 #include <fstream>
 #include <cstdlib>
 #include <stdexcept>
 #include <cctype>
 #include <cstdint>
+
+constexpr int WARRIOR_COUNT = 2;
 
 // --- Configuration ---
 const int DEFAULT_CORE_SIZE = 8000;
@@ -448,8 +451,13 @@ private:
 
 public:
     void execute(WarriorProcess process, int read_limit, int write_limit, int max_processes) {
+        if (process.owner < 0 || process.owner >= WARRIOR_COUNT) {
+            throw std::runtime_error("Process owner index out of range");
+        }
+
         int pc = process.pc;
         Instruction& instr = memory[pc];
+        auto& owner_queue = process_queues[process.owner];
 
         log(pc, instr);
 
@@ -602,16 +610,16 @@ public:
                 }
                 break;
             case JMP:
-                process_queues[process.owner].push_back({a_addr_final, process.owner});
+                owner_queue.push_back({a_addr_final, process.owner});
                 return;
             case JMZ:
                 switch (instr.modifier) {
-                    case A: if (dst.a_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst.b_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst.b_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst.a_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst.a_field == 0 && dst.b_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst.a_field == 0 && dst.b_field == 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case A: if (dst.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst.a_field == 0 && dst.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst.a_field == 0 && dst.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             // ICWS'94 spec text (lines 0725-0735) describes JMN.I/DJN.I as taking the
@@ -624,12 +632,12 @@ public:
             // both the Python and C++ implementations intentionally follow EMI94.
             case JMN:
                 switch (instr.modifier) {
-                    case A: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst.b_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst.a_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst.a_field != 0 || dst.b_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst.a_field != 0 || dst.b_field != 0) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; } break;
+                    case A: if (dst.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst.a_field != 0 || dst.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst.a_field != 0 || dst.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             case DJN:
@@ -672,15 +680,15 @@ public:
                             if (temp.a_field != 0 || temp.b_field != 0) jump = true;
                             break;
                     }
-                    if (jump) { process_queues[process.owner].push_back({a_addr_final, process.owner}); return; }
+                    if (jump) { owner_queue.push_back({a_addr_final, process.owner}); return; }
                 }
                 break;
             case SPL:
                 {
                     int next_pc = normalize(pc + 1, core_size);
-                    process_queues[process.owner].push_back({next_pc, process.owner});
-                    if (process_queues[process.owner].size() < max_processes) {
-                        process_queues[process.owner].push_back({a_addr_final, process.owner});
+                    owner_queue.push_back({next_pc, process.owner});
+                    if (owner_queue.size() < static_cast<size_t>(max_processes)) {
+                        owner_queue.push_back({a_addr_final, process.owner});
                     }
                 }
                 return;
@@ -691,13 +699,13 @@ public:
         }
 
         int next_pc = normalize(pc + (skip ? 2 : 1), core_size);
-        process_queues[process.owner].push_back({next_pc, process.owner});
+        owner_queue.push_back({next_pc, process.owner});
     }
 
 
     std::vector<Instruction> memory;
     int core_size;
-    std::map<int, std::list<WarriorProcess>> process_queues;
+    std::array<std::deque<WarriorProcess>, WARRIOR_COUNT> process_queues;
     std::ofstream trace;
     bool trace_enabled;
 };
@@ -775,7 +783,7 @@ extern "C" {
         int min_distance, int max_warrior_length, int rounds,
         int seed
     ) {
-        static std::string response;
+        thread_local std::string response;
         try {
             if (!warrior1_code || !warrior2_code) {
                 throw std::runtime_error("Null warrior source provided");
