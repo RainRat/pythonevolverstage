@@ -36,7 +36,7 @@ def test_load_configuration_parses_types(tmp_path):
             CYCLES_LIST = 1000, 2000
             PROCESSES_LIST = 8, 16
             WARLEN_LIST = 20, 40
-            WARDISTANCE_LIST = 5, 7
+            WARDISTANCE_LIST = 20, 40
             NUMWARRIORS = 50
             ALREADYSEEDED = false
             CLOCK_TIME = 12.5
@@ -73,7 +73,7 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.cycles_list == [1000, 2000]
     assert config.processes_list == [8, 16]
     assert config.warlen_list == [20, 40]
-    assert config.wardistance_list == [5, 7]
+    assert config.wardistance_list == [20, 40]
     assert config.numwarriors == 50
     assert config.alreadyseeded is False
     assert pytest.approx(config.clock_time, rel=1e-6) == 12.5
@@ -249,6 +249,18 @@ def test_validate_config_rejects_excessive_wardistance():
         evolverstage.validate_config(config)
 
 
+def test_validate_config_rejects_short_wardistance():
+    shorter_distance = list(_DEFAULT_CONFIG.wardistance_list)
+    shorter_distance[0] = _DEFAULT_CONFIG.warlen_list[0] - 1
+    config = replace(_DEFAULT_CONFIG, wardistance_list=shorter_distance)
+
+    with pytest.raises(
+        ValueError,
+        match="WARDISTANCE_LIST values must be greater than or equal to their corresponding WARLEN_LIST values",
+    ):
+        evolverstage.validate_config(config)
+
+
 def test_validate_config_rejects_nonpositive_checkpoint_interval():
     config = replace(_DEFAULT_CONFIG, arena_checkpoint_interval=0)
     with pytest.raises(ValueError, match="ARENA_CHECKPOINT_INTERVAL"):
@@ -267,7 +279,7 @@ def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
             CYCLES_LIST = 1000, 2000
             PROCESSES_LIST = 8, 8
             WARLEN_LIST = 20, 20
-            WARDISTANCE_LIST = 5, 5
+            WARDISTANCE_LIST = 20, 20
             NUMWARRIORS = 10
             ALREADYSEEDED = false
             CLOCK_TIME = 1
@@ -324,7 +336,7 @@ def test_load_configuration_rejects_negative_marble_counts(tmp_path):
             CYCLES_LIST = 1000
             PROCESSES_LIST = 8
             WARLEN_LIST = 20
-            WARDISTANCE_LIST = 5
+            WARDISTANCE_LIST = 20
             NUMWARRIORS = 10
             ALREADYSEEDED = false
             CLOCK_TIME = 1
@@ -465,7 +477,7 @@ def test_load_configuration_checks_seeded_directories(tmp_path, capsys):
             CYCLES_LIST = 1000, 1000
             PROCESSES_LIST = 8, 8
             WARLEN_LIST = 20, 20
-            WARDISTANCE_LIST = 5, 5
+            WARDISTANCE_LIST = 20, 20
             NUMWARRIORS = 10
             ALREADYSEEDED = true
             CLOCK_TIME = 1
@@ -540,7 +552,7 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
         readlimit=8000,
         writelimit=8000,
         warlen=20,
-        wardistance=1,
+        wardistance=20,
         battlerounds=10,
         seed=42,
     )
