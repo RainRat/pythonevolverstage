@@ -210,6 +210,18 @@ def test_status_display_skips_duplicate_updates(monkeypatch):
     assert output.getvalue() == first_output
 
 
+def test_get_progress_status_clamps_percent_complete(monkeypatch):
+    start_time = 1000.0
+    monkeypatch.setattr(evolverstage.time, "time", lambda: start_time + 7200.0)
+
+    progress_line, detail_line = evolverstage._get_progress_status(
+        start_time, total_duration_hr=1.0, current_era=0
+    )
+
+    assert "100.00% complete" in progress_line
+    assert detail_line == "Era 1"
+
+
 def test_load_configuration_reads_in_memory_settings(tmp_path):
     config_path = tmp_path / "config.ini"
     config_path.write_text(

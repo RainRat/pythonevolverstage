@@ -2266,7 +2266,8 @@ def _get_progress_status(
     runtime_in_hours = runtime_seconds / 3600
     if total_duration_hr > 0:
         seconds_remaining = max((total_duration_hr - runtime_in_hours) * 3600, 0.0)
-        percent_complete = runtime_in_hours / total_duration_hr * 100
+        percent_complete = (runtime_in_hours / total_duration_hr) * 100
+        percent_complete = min(max(percent_complete, 0.0), 100.0)
     else:
         seconds_remaining = 0.0
         percent_complete = 100.0
