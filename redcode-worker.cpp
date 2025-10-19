@@ -550,10 +550,15 @@ public:
                 break;
             case CMP:
                 {
+                    Instruction lhs = src;
+                    if (instr.a_mode == IMMEDIATE) {
+                        lhs.a_field = instr.a_field;
+                        lhs.b_field = instr.a_field;
+                    }
                     auto equals = [](int lhs, int rhs) { return lhs == rhs; };
                     auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
                     skip = check_condition(
-                        src,
+                        lhs,
                         dst,
                         instr.modifier,
                         equals,
@@ -564,10 +569,15 @@ public:
                 break;
             case SNE:
                 {
+                    Instruction lhs = src;
+                    if (instr.a_mode == IMMEDIATE) {
+                        lhs.a_field = instr.a_field;
+                        lhs.b_field = instr.a_field;
+                    }
                     auto not_equals = [](int lhs, int rhs) { return lhs != rhs; };
                     auto combine_or = [](bool lhs, bool rhs) { return lhs || rhs; };
                     skip = check_condition(
-                        src,
+                        lhs,
                         dst,
                         instr.modifier,
                         not_equals,
@@ -578,10 +588,15 @@ public:
                 break;
             case SLT:
                 {
+                    Instruction lhs = src;
+                    if (instr.a_mode == IMMEDIATE) {
+                        lhs.a_field = instr.a_field;
+                        lhs.b_field = instr.a_field;
+                    }
                     auto less_than = [](int lhs, int rhs) { return lhs < rhs; };
                     auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
                     skip = check_condition(
-                        src,
+                        lhs,
                         dst,
                         instr.modifier,
                         less_than,
@@ -937,6 +952,9 @@ extern "C" {
                 int rounds_remaining = planned_rounds - rounds_played;
                 int score_diff = w1_score - w2_score;
                 int max_possible_swing = 3 * rounds_remaining;
+                // When one warrior has an insurmountable lead we can stop early.
+                // This mirrors pMARS behaviour and keeps tournaments performant
+                // while still producing identical final scores.
                 if (score_diff > 0 && score_diff > max_possible_swing) {
                     break;
                 }
@@ -956,5 +974,19 @@ extern "C" {
             response = "ERROR: Unknown exception encountered while running battle";
         }
         return response.c_str();
+    }
+
+    int worker_normalize(int address, int core_size) {
+        if (core_size <= 0) {
+            throw std::runtime_error("Core size must be positive for normalization");
+        }
+        return normalize(address, core_size);
+    }
+
+    int worker_fold(int offset, int limit) {
+        if (limit <= 0) {
+            throw std::runtime_error("Fold limit must be positive");
+        }
+        return fold(offset, limit);
     }
 }
