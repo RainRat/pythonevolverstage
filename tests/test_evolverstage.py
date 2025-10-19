@@ -994,6 +994,37 @@ def test_minor_mutation_handler(monkeypatch):
         evolverstage.set_rng_sequence([])
 
 
+def test_generate_warrior_lines_until_non_dat_with_dat_only_pool(monkeypatch):
+    monkeypatch.setattr(evolverstage, "GENERATION_OPCODE_POOL", ["DAT"])
+    monkeypatch.setattr(evolverstage, "MAX_NON_DAT_GENERATION_ATTEMPTS", 3)
+
+    with pytest.raises(RuntimeError, match="cannot generate non-DAT opcodes"):
+        evolverstage._generate_warrior_lines_until_non_dat(
+            lambda: ["DAT.F $0, $0\n"],
+            context="Test context",
+        )
+
+
+def test_generate_warrior_lines_until_non_dat_exhausts_attempts(monkeypatch):
+    monkeypatch.setattr(evolverstage, "GENERATION_OPCODE_POOL", ["DAT", "MOV"])
+    monkeypatch.setattr(evolverstage, "MAX_NON_DAT_GENERATION_ATTEMPTS", 3)
+
+    attempts = 0
+
+    def generator():
+        nonlocal attempts
+        attempts += 1
+        return ["DAT.F $0, $0\n"]
+
+    with pytest.raises(RuntimeError, match="failed to generate a warrior"):
+        evolverstage._generate_warrior_lines_until_non_dat(
+            generator,
+            context="Test context",
+        )
+
+    assert attempts == 3
+
+
 def test_parse_instruction_requires_modifier():
     from evolverstage import parse_redcode_instruction
 

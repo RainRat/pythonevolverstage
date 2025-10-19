@@ -1469,6 +1469,7 @@ def canonicalize_opcode(opcode: str) -> str:
 
 
 GENERATION_OPCODE_POOL: list[str] = []
+MAX_NON_DAT_GENERATION_ATTEMPTS = 1000
 
 
 def _rebuild_instruction_tables(active_config: EvolverConfig) -> None:
@@ -1805,6 +1806,37 @@ def generate_random_instruction(arena: int) -> RedcodeInstruction:
         b_mode=choose_random_mode(),
         b_field=num2,
     )
+
+
+def _can_generate_non_dat_opcode() -> bool:
+    return any(opcode != 'DAT' for opcode in GENERATION_OPCODE_POOL)
+
+
+def _raise_dat_generation_failure(context: str) -> None:
+    if not _can_generate_non_dat_opcode():
+        raise RuntimeError(
+            f"{context}: configuration cannot generate non-DAT opcodes. "
+            "Check the INSTR_SET configuration to include at least one opcode other than DAT."
+        )
+    raise RuntimeError(
+        f"{context}: failed to generate a warrior whose first instruction is not DAT after "
+        f"{MAX_NON_DAT_GENERATION_ATTEMPTS} attempts. Check mutation settings and opcode pools."
+    )
+
+
+def _generate_warrior_lines_until_non_dat(
+    generator: Callable[[], list[str]],
+    context: str,
+) -> list[str]:
+    lines: list[str] = []
+    for _ in range(MAX_NON_DAT_GENERATION_ATTEMPTS):
+        lines = generator()
+        if not lines:
+            continue
+        first_instruction = parse_instruction_or_default(lines[0])
+        if first_instruction.opcode != 'DAT':
+            return lines
+    _raise_dat_generation_failure(context)
 
 def create_directory_if_not_exists(directory):
     if not os.path.exists(directory):
@@ -2429,32 +2461,40 @@ def breed_offspring(
                         ranlines[toline],
                     )
 
-    if config.prefer_winner_list[era] is True:
-        pickingfrom = 1
-    else:
-        pickingfrom = get_random_int(1, 2)
-
-    magic_number = weighted_random_number(
-        config.coresize_list[arena], config.warlen_list[arena]
-    )
-    new_lines: list[str] = []
-    for i in range(0, config.warlen_list[arena]):
-        if get_random_int(1, config.crossoverrate_list[era]) == 1:
-            pickingfrom = 2 if pickingfrom == 1 else 1
-
-        if pickingfrom == 1:
-            source_line = winlines[i] if i < len(winlines) else ""
+    def _breed_offspring_once() -> list[str]:
+        if config.prefer_winner_list[era] is True:
+            pickingfrom = 1
         else:
-            source_line = ranlines[i] if i < len(ranlines) else ""
+            pickingfrom = get_random_int(1, 2)
 
-        instruction = parse_instruction_or_default(source_line)
-        chosen_marble = _get_random_choice(bag)
-        handler = MUTATION_HANDLERS.get(chosen_marble)
-        if handler:
-            instruction = handler(instruction, arena, config, magic_number)
+        magic_number = weighted_random_number(
+            config.coresize_list[arena], config.warlen_list[arena]
+        )
+        offspring_lines: list[str] = []
+        for i in range(0, config.warlen_list[arena]):
+            if get_random_int(1, config.crossoverrate_list[era]) == 1:
+                pickingfrom = 2 if pickingfrom == 1 else 1
 
-        new_lines.append(instruction_to_line(instruction, arena))
-        magic_number = magic_number - 1
+            if pickingfrom == 1:
+                source_line = winlines[i] if i < len(winlines) else ""
+            else:
+                source_line = ranlines[i] if i < len(ranlines) else ""
+
+            instruction = parse_instruction_or_default(source_line)
+            chosen_marble = _get_random_choice(bag)
+            handler = MUTATION_HANDLERS.get(chosen_marble)
+            if handler:
+                instruction = handler(instruction, arena, config, magic_number)
+
+            offspring_lines.append(instruction_to_line(instruction, arena))
+            magic_number = magic_number - 1
+
+        return offspring_lines
+
+    new_lines = _generate_warrior_lines_until_non_dat(
+        _breed_offspring_once,
+        context=f"Breeding offspring for arena {arena}, warrior {loser}",
+    )
 
     storage.set_warrior_lines(arena, loser, new_lines)
 
@@ -2537,10 +2577,13 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
             create_directory_if_not_exists(arena_dir)
             for warrior_id in range(1, active_config.numwarriors + 1):
-                new_lines = [
-                    instruction_to_line(generate_random_instruction(arena), arena)
-                    for _ in range(1, active_config.warlen_list[arena] + 1)
-                ]
+                new_lines = _generate_warrior_lines_until_non_dat(
+                    lambda arena=arena: [
+                        instruction_to_line(generate_random_instruction(arena), arena)
+                        for _ in range(1, active_config.warlen_list[arena] + 1)
+                    ],
+                    context=f"Seeding warrior {warrior_id} in arena {arena}",
+                )
                 storage.set_warrior_lines(arena, warrior_id, new_lines)
         if _should_persist_to_disk(active_config):
             storage.flush_all()
