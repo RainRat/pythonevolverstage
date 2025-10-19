@@ -471,6 +471,8 @@ def _validate_arena_parameters(idx: int, config: EvolverConfig) -> None:
     read_limit = config.readlimit_list[idx]
     write_limit = config.writelimit_list[idx]
 
+    max_min_distance = core_size // 2
+
     if core_size < CPP_WORKER_MIN_CORE_SIZE:
         raise ValueError(
             f"CORESIZE_LIST[{idx + 1}] must be at least {CPP_WORKER_MIN_CORE_SIZE} "
@@ -501,20 +503,15 @@ def _validate_arena_parameters(idx: int, config: EvolverConfig) -> None:
             f"WARLEN_LIST[{idx + 1}] cannot exceed the arena's core size "
             f"(got {warrior_length} with core size {core_size})."
         )
-    if min_distance < CPP_WORKER_MIN_DISTANCE or min_distance > CPP_WORKER_MAX_MIN_DISTANCE:
+    if min_distance < CPP_WORKER_MIN_DISTANCE or min_distance > max_min_distance:
         raise ValueError(
-            f"WARDISTANCE_LIST[{idx + 1}] must be between {CPP_WORKER_MIN_DISTANCE} "
-            f"and {CPP_WORKER_MAX_MIN_DISTANCE} (got {min_distance})."
-        )
-    if min_distance > core_size // 2:
-        raise ValueError(
-            f"WARDISTANCE_LIST[{idx + 1}] is too large for the arena core size "
-            f"(got {min_distance} with core size {core_size})."
+            f"WARDISTANCE_LIST[{idx + 1}] must be between {CPP_WORKER_MIN_DISTANCE} and "
+            f"{max_min_distance} (CORESIZE/2) (got {min_distance})."
         )
     if min_distance < warrior_length:
         raise ValueError(
             "WARDISTANCE_LIST values must be greater than or equal to their corresponding "
-            "WARLEN_LIST values to prevent overlap ("
+            "WARLEN_LIST values and fall within 0..(CORESIZE/2) to prevent overlap ("
             f"got wardistance={min_distance}, warlen={warrior_length} at index {idx + 1})."
         )
     if sanitize_limit < 1 or sanitize_limit > core_size:
@@ -1015,26 +1012,6 @@ CPP_WORKER_MAX_CYCLES = 5_000_000
 CPP_WORKER_MAX_PROCESSES = 131_072
 CPP_WORKER_MAX_WARRIOR_LENGTH = CPP_WORKER_MAX_CORE_SIZE
 CPP_WORKER_MAX_ROUNDS = 100_000
-# Matches the C++ worker's MAX_MIN_DISTANCE (MAX_CORE_SIZE // 2).
-CPP_WORKER_MAX_MIN_DISTANCE = 131_072
-_WARDISTANCE_CLAMP_LOGGED: set[int] = set()
-
-
-def _clamp_wardistance(value: int, coresize: int) -> int:
-    max_allowed = min(
-        CPP_WORKER_MAX_MIN_DISTANCE,
-        max(coresize // 2, CPP_WORKER_MIN_DISTANCE),
-    )
-    clamped_value = max(CPP_WORKER_MIN_DISTANCE, min(value, max_allowed))
-    if clamped_value != value and value not in _WARDISTANCE_CLAMP_LOGGED:
-        console_log(
-            f"Configured WARDISTANCE value {value} is outside the supported range "
-            f"({CPP_WORKER_MIN_DISTANCE}-{max_allowed}) for the internal battle "
-            f"engine. Clamping to {clamped_value}.",
-            minimum_level=VerbosityLevel.TERSE,
-        )
-        _WARDISTANCE_CLAMP_LOGGED.add(value)
-    return clamped_value
 
 
 def _worker_library_extension() -> str:
@@ -1294,7 +1271,17 @@ def run_internal_battle(
             "C++ worker library is not loaded."
         )
 
-    wardistance = _clamp_wardistance(wardistance, coresize)
+    max_min_distance = coresize // 2
+    if wardistance < CPP_WORKER_MIN_DISTANCE or wardistance > max_min_distance:
+        raise ValueError(
+            f"WARDISTANCE must be between {CPP_WORKER_MIN_DISTANCE} and {max_min_distance} "
+            f"(CORESIZE/2) for coresize={coresize} (got {wardistance})."
+        )
+    if wardistance < warlen:
+        raise ValueError(
+            "WARDISTANCE must be 0..(CORESIZE/2) and greater than or equal to WARLEN "
+            f"(got wardistance={wardistance}, warlen={warlen})."
+        )
 
     try:
         # 1. Load warrior source code

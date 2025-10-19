@@ -220,7 +220,7 @@ def test_org_pseudo_opcode_rejected():
         8000, 10, 8000, 8000, 8000, 100, 100, 1, -1
     ).decode()
     assert result.startswith("ERROR:"), f"Expected ORG to be rejected, got: {result}"
-    assert "Unsupported pseudo-opcode 'ORG'" in result
+    assert "Unknown opcode 'ORG'" in result
 
 
 def test_battle_stops_once_outcome_decided():

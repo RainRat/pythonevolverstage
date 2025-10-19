@@ -1021,7 +1021,7 @@ def test_final_tournament_uses_in_memory_storage(monkeypatch, tmp_path, capsys):
     evolverstage.set_arena_storage(evolverstage.create_arena_storage(previous_config))
 
 
-def test_run_internal_battle_clamps_wardistance(monkeypatch, tmp_path, capsys):
+def test_run_internal_battle_rejects_invalid_wardistance(monkeypatch, tmp_path, capsys):
     import evolverstage
 
     config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
@@ -1044,30 +1044,26 @@ def test_run_internal_battle_clamps_wardistance(monkeypatch, tmp_path, capsys):
 
     fake_worker = FakeWorker()
     monkeypatch.setattr(evolverstage, "CPP_WORKER_LIB", fake_worker)
-    monkeypatch.setattr(evolverstage, "_WARDISTANCE_CLAMP_LOGGED", set())
-
-    result = evolverstage.run_internal_battle(
-        arena=0,
-        cont1=1,
-        cont2=2,
-        coresize=8000,
-        cycles=200,
-        processes=8000,
-        readlimit=8000,
-        writelimit=8000,
-        warlen=20,
-        wardistance=5000,
-        battlerounds=10,
-        seed=123,
-    )
+    with pytest.raises(ValueError, match="WARDISTANCE must be between"):
+        evolverstage.run_internal_battle(
+            arena=0,
+            cont1=1,
+            cont2=2,
+            coresize=8000,
+            cycles=200,
+            processes=8000,
+            readlimit=8000,
+            writelimit=8000,
+            warlen=20,
+            wardistance=5000,
+            battlerounds=10,
+            seed=123,
+        )
 
     captured = capsys.readouterr()
 
-    assert fake_worker.args is not None
-    assert fake_worker.args[9] == 4000
-    assert "Clamping" in captured.out
-    assert "(0-4000)" in captured.out
-    assert result.strip() != ""
+    assert fake_worker.args is None
+    assert "Clamping" not in captured.out
 
 
 def test_execute_battle_in_memory_internal_avoids_disk_writes(monkeypatch, tmp_path):

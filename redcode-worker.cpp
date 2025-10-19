@@ -37,8 +37,7 @@ const int MAX_ROUNDS = 100000;
 enum Opcode {
     DAT, MOV, ADD, SUB, MUL, DIV, MOD,
     JMP, JMZ, JMN, DJN, CMP, SLT, SPL,
-    SNE, NOP,
-    ORG // ORG is a pseudo-op
+    SNE, NOP
 };
 
 enum Modifier {
@@ -99,7 +98,7 @@ const std::map<std::string, Modifier> MODIFIER_MAP = {
 const char* OPCODE_NAMES[] = {
     "DAT", "MOV", "ADD", "SUB", "MUL", "DIV", "MOD",
     "JMP", "JMZ", "JMN", "DJN", "CMP", "SLT", "SPL",
-    "SNE", "NOP", "ORG"
+    "SNE", "NOP"
 };
 // Note: The CMP entry also covers the SEQ alias, which canonicalizes to CMP for logging.
 
@@ -202,32 +201,30 @@ Instruction parse_line(const std::string& line) {
         throw std::runtime_error("Missing opcode in line: " + original_line);
     }
 
-    std::string opcode_upper = to_upper_copy(opcode_full);
-    if (opcode_upper == "ORG") {
-        throw std::runtime_error("Unsupported pseudo-opcode 'ORG' in line: " + original_line);
-    }
-
     size_t dot_pos = opcode_full.find('.');
+    std::string opcode_token;
+    std::string modifier_token;
     if (dot_pos == std::string::npos) {
-        throw std::runtime_error("Missing modifier for opcode '" + opcode_full + "' in line: " + original_line);
+        opcode_token = opcode_full;
+    } else {
+        opcode_token = opcode_full.substr(0, dot_pos);
+        modifier_token = opcode_full.substr(dot_pos + 1);
     }
-
-    std::string opcode_token = opcode_full.substr(0, dot_pos);
-    std::string modifier_token = opcode_full.substr(dot_pos + 1);
 
     std::string opcode_str = to_upper_copy(opcode_token);
-    std::string modifier_lookup = to_upper_copy(modifier_token);
-    std::string modifier_display = modifier_token;
-
-    if (opcode_str == "ORG") {
-        throw std::runtime_error("Unsupported pseudo-opcode 'ORG' in line: " + original_line);
-    }
 
     auto op_it = OPCODE_MAP.find(opcode_str);
     if (op_it == OPCODE_MAP.end()) {
         throw std::runtime_error("Unknown opcode '" + opcode_token + "' in line: " + original_line);
     }
     instr.opcode = op_it->second;
+
+    if (dot_pos == std::string::npos) {
+        throw std::runtime_error("Missing modifier for opcode '" + opcode_token + "' in line: " + original_line);
+    }
+
+    std::string modifier_lookup = to_upper_copy(modifier_token);
+    std::string modifier_display = modifier_token;
 
     auto mod_it = MODIFIER_MAP.find(modifier_lookup);
     if (mod_it == MODIFIER_MAP.end()) {
@@ -306,10 +303,6 @@ std::vector<Instruction> parse_warrior(const std::string& code) {
             }
         }
 
-        std::string upper_trimmed = to_upper_copy(trimmed);
-        if (upper_trimmed.rfind("END", 0) == 0) {
-            continue;
-        }
         try {
             warrior_code.push_back(parse_line(trimmed));
             if (warrior_code.size() > static_cast<size_t>(MAX_WARRIOR_LENGTH)) {
@@ -878,14 +871,12 @@ extern "C" {
                 Core core(core_size, trace_file);
                 int w1_start = 0;
                 int w2_start = min_distance % core_size;
-                if (core_size > 0) {
-                    if (use_exhaustive) {
-                        w2_start = (min_distance + r) % core_size;
-                    } else {
-                        int offset = rng_state % placements;
-                        w2_start = (min_distance + offset) % core_size;
-                        rng_state = advance_pmars_seed(rng_state);
-                    }
+                if (use_exhaustive) {
+                    w2_start = (min_distance + r) % core_size;
+                } else {
+                    int offset = rng_state % placements;
+                    w2_start = (min_distance + offset) % core_size;
+                    rng_state = advance_pmars_seed(rng_state);
                 }
 
                 for (size_t i = 0; i < w1_instrs.size(); ++i) {
