@@ -879,7 +879,12 @@ def test_end_to_end_evolution_run(tmp_path, capsys):
     compile_worker()
     capsys.readouterr()
 
-    import evolverstage
+    global _DEFAULT_CONFIG
+
+    importlib.reload(evolverstage)
+    _DEFAULT_CONFIG = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+    evolverstage.set_active_config(_DEFAULT_CONFIG)
+    evolverstage.set_arena_storage(evolverstage.create_arena_storage(_DEFAULT_CONFIG))
 
     initial_warrior = (
         textwrap.dedent(
