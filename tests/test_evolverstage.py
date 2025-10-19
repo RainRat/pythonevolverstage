@@ -234,6 +234,22 @@ def test_validate_config_accepts_pmars_engine():
     evolverstage.validate_config(config)
 
 
+def test_candidate_pmars_paths_respect_env_override(monkeypatch):
+    monkeypatch.setenv("PMARS_CMD", "/custom/pmars")
+
+    candidates = evolverstage._candidate_pmars_paths()
+
+    assert candidates[0] == os.path.expanduser("/custom/pmars")
+
+
+def test_candidate_nmars_paths_respect_env_override(monkeypatch):
+    monkeypatch.setenv("NMARS_CMD", "/custom/nmars")
+
+    candidates = evolverstage._candidate_nmars_paths()
+
+    assert candidates[0] == os.path.expanduser("/custom/nmars")
+
+
 def test_validate_config_rejects_unknown_engine():
     config = replace(_DEFAULT_CONFIG, battle_engine="unknown")
     with pytest.raises(ValueError, match="BATTLE_ENGINE"):
@@ -434,6 +450,14 @@ def test_execute_battle_parses_pmars_output(monkeypatch):
     monkeypatch.setattr(
         evolverstage, "_run_external_command", lambda *args, **kwargs: sample_output
     )
+    monkeypatch.setattr(
+        evolverstage, "_candidate_pmars_paths", lambda: ["fake-pmars"]
+    )
+    monkeypatch.setattr(
+        evolverstage,
+        "_resolve_external_command",
+        lambda engine_name, candidates: candidates[0],
+    )
 
     evolverstage.set_active_config(temp_config)
     evolverstage.set_arena_storage(evolverstage.create_arena_storage(temp_config))
@@ -447,6 +471,82 @@ def test_execute_battle_parses_pmars_output(monkeypatch):
 
     assert warriors == [101, 202]
     assert scores == [10, 20]
+
+
+def test_execute_battle_parses_nmars_output(monkeypatch):
+    temp_config = replace(_DEFAULT_CONFIG, battle_engine="nmars")
+    sample_output = (
+        "303 0 0 0 7 scores\n"
+        "404 0 0 0 12 scores\n"
+        "Results: 1 0 1\n"
+    )
+
+    monkeypatch.setattr(
+        evolverstage, "_run_external_command", lambda *args, **kwargs: sample_output
+    )
+    monkeypatch.setattr(
+        evolverstage, "_candidate_nmars_paths", lambda: ["fake-nmars"]
+    )
+    monkeypatch.setattr(
+        evolverstage,
+        "_resolve_external_command",
+        lambda engine_name, candidates: candidates[0],
+    )
+
+    evolverstage.set_active_config(temp_config)
+    evolverstage.set_arena_storage(evolverstage.create_arena_storage(temp_config))
+    try:
+        warriors, scores = evolverstage.execute_battle(0, 303, 404, 0, verbose=False)
+    finally:
+        evolverstage.set_active_config(_DEFAULT_CONFIG)
+        evolverstage.set_arena_storage(
+            evolverstage.create_arena_storage(_DEFAULT_CONFIG)
+        )
+
+    warrior_scores = dict(zip(warriors, scores))
+    assert warrior_scores == {303: 7, 404: 12}
+
+
+def test_execute_battle_raises_when_nmars_scores_missing(monkeypatch):
+    temp_config = replace(_DEFAULT_CONFIG, battle_engine="nmars")
+    sample_output = "Header line without keyword\n"
+
+    monkeypatch.setattr(
+        evolverstage, "_run_external_command", lambda *args, **kwargs: sample_output
+    )
+    monkeypatch.setattr(
+        evolverstage, "_candidate_nmars_paths", lambda: ["fake-nmars"]
+    )
+    monkeypatch.setattr(
+        evolverstage,
+        "_resolve_external_command",
+        lambda engine_name, candidates: candidates[0],
+    )
+
+    evolverstage.set_active_config(temp_config)
+    evolverstage.set_arena_storage(evolverstage.create_arena_storage(temp_config))
+    try:
+        with pytest.raises(RuntimeError, match="did not include any lines containing 'scores'"):
+            evolverstage.execute_battle(0, 1, 2, 0, verbose=False)
+    finally:
+        evolverstage.set_active_config(_DEFAULT_CONFIG)
+        evolverstage.set_arena_storage(
+            evolverstage.create_arena_storage(_DEFAULT_CONFIG)
+        )
+
+
+def test_resolve_external_command_lists_tried_candidates(monkeypatch):
+    monkeypatch.setattr(evolverstage.shutil, "which", lambda candidate: None)
+
+    with pytest.raises(RuntimeError) as excinfo:
+        evolverstage._resolve_external_command(
+            "SampleEngine", ["/missing/bin/sample", "sample"]
+        )
+
+    message = str(excinfo.value)
+    assert "SampleEngine" in message
+    assert "/missing/bin/sample" in message
+    assert "sample" in message
 
 
 def test_determine_winner_and_loser_reports_draw(monkeypatch):

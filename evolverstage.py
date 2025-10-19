@@ -1070,11 +1070,16 @@ def _candidate_worker_paths() -> list[Path]:
     return unique_candidates
 
 
-def _format_candidate(path: Path) -> str:
+def _format_candidate(path: Path | str) -> str:
+    if isinstance(path, str):
+        path_obj = Path(os.path.expanduser(path))
+    else:
+        path_obj = path
+
     try:
-        resolved = path if path.is_absolute() else path.resolve(strict=False)
+        resolved = path_obj if path_obj.is_absolute() else path_obj.resolve(strict=False)
     except RuntimeError:
-        resolved = path
+        resolved = path_obj
     return str(resolved)
 
 
@@ -1131,7 +1136,7 @@ def _candidate_pmars_paths() -> list[str]:
 
     env_override = os.environ.get("PMARS_CMD")
     if env_override:
-        candidates.append(env_override)
+        candidates.append(os.path.expanduser(env_override))
 
     detected = shutil.which(exe_name)
     if detected:
@@ -1140,6 +1145,7 @@ def _candidate_pmars_paths() -> list[str]:
     project_root = Path(__file__).resolve().parent
     candidates.append(str(project_root / "pMars" / exe_name))
     candidates.append(str(project_root / "pMars" / "src" / exe_name))
+    candidates.append(str(project_root / exe_name))
 
     try:
         base_path = Path(config.base_path)
@@ -1156,12 +1162,67 @@ def _candidate_pmars_paths() -> list[str]:
     for candidate in candidates:
         if not candidate:
             continue
-        if candidate in seen:
+        normalized = os.path.expanduser(candidate)
+        if normalized in seen:
             continue
-        seen.add(candidate)
-        unique_candidates.append(candidate)
+        seen.add(normalized)
+        unique_candidates.append(normalized)
 
     return unique_candidates
+
+
+def _candidate_nmars_paths() -> list[str]:
+    exe_name = "nmars.exe" if os.name == "nt" else "nmars"
+    candidates: list[str] = []
+
+    env_override = os.environ.get("NMARS_CMD")
+    if env_override:
+        candidates.append(os.path.expanduser(env_override))
+
+    detected = shutil.which(exe_name)
+    if detected:
+        candidates.append(detected)
+
+    project_root = Path(__file__).resolve().parent
+    candidates.append(str(project_root / "pMars" / exe_name))
+    candidates.append(str(project_root / "pMars" / "src" / exe_name))
+    candidates.append(str(project_root / exe_name))
+
+    try:
+        base_path = Path(config.base_path)
+    except Exception:
+        base_path = None
+    else:
+        candidates.append(str(base_path / "pMars" / exe_name))
+        candidates.append(str(base_path / "pMars" / "src" / exe_name))
+        candidates.append(str(base_path / exe_name))
+
+    candidates.append(exe_name)
+
+    unique_candidates: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate:
+            continue
+        normalized = os.path.expanduser(candidate)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_candidates.append(normalized)
+
+    return unique_candidates
+
+
+def _resolve_external_command(engine_name: str, candidates: Sequence[str]) -> str:
+    tried: list[str] = []
+    for candidate in candidates:
+        resolved = shutil.which(candidate)
+        if resolved:
+            return resolved
+        tried.append(candidate)
+
+    tried_paths = ", ".join(_format_candidate(path) for path in tried) or "<no candidates>"
+    raise RuntimeError(f"Could not locate {engine_name} executable. Tried: {tried_paths}")
 
 
 def _run_external_command(
@@ -1348,14 +1409,12 @@ def execute_battle(
             internal_seed,
         )
     elif engine == 'pmars':
-        pmars_cmd = None
-        for candidate in _candidate_pmars_paths():
-            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
-                pmars_cmd = candidate
-                break
-
-        if pmars_cmd is None:
-            pmars_cmd = "pmars.exe" if os.name == "nt" else "pmars"
+        candidates = _candidate_pmars_paths()
+        try:
+            pmars_cmd = _resolve_external_command("pMARS", candidates)
+        except RuntimeError as exc:
+            console_log(str(exc), minimum_level=VerbosityLevel.TERSE)
+            raise
 
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         warrior_files = [
@@ -1379,7 +1438,12 @@ def execute_battle(
             prefix_args=["-b"],
         )
     else:
-        nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
+        candidates = _candidate_nmars_paths()
+        try:
+            nmars_cmd = _resolve_external_command("nMars", candidates)
+        except RuntimeError as exc:
+            console_log(str(exc), minimum_level=VerbosityLevel.TERSE)
+            raise
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         warrior_files = [
             os.path.join(arena_dir, f"{cont1}.red"),
@@ -1418,9 +1482,11 @@ def execute_battle(
         raise RuntimeError("Battle engine produced no output to parse")
 
     is_pmars = engine == 'pmars'
+    score_lines_found = 0
     for line in output_lines:
         numline += 1
         if "scores" in line:
+            score_lines_found += 1
             if verbose:
                 console_log(
                     line.strip(), minimum_level=VerbosityLevel.VERBOSE
@@ -1438,6 +1504,8 @@ def execute_battle(
                     raise RuntimeError(f"Unexpected score line format: {line.strip()}")
                 scores.append(int(splittedline[4]))
                 warriors.append(int(splittedline[0]))
+    if not is_pmars and score_lines_found == 0:
+        raise RuntimeError("nMars output did not include any lines containing 'scores'.")
     if len(scores) < 2:
         raise RuntimeError("Battle engine output did not include scores for both warriors")
     if is_pmars:
