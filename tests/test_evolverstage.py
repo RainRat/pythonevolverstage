@@ -283,6 +283,23 @@ def test_validate_config_rejects_nonpositive_checkpoint_interval():
         evolverstage.validate_config(config)
 
 
+def test_rebuild_instruction_tables_requires_non_dat_opcodes():
+    config = replace(_DEFAULT_CONFIG, instr_set=["DAT"])
+    try:
+        with pytest.raises(ValueError, match="INSTR_SET") as excinfo:
+            evolverstage._rebuild_instruction_tables(config)
+        assert "opcode other than DAT" in str(excinfo.value)
+    finally:
+        evolverstage._rebuild_instruction_tables(_DEFAULT_CONFIG)
+
+
+def test_validate_config_rejects_invalid_instr_modes():
+    config = replace(_DEFAULT_CONFIG, instr_modes=["$", "X"])
+    with pytest.raises(ValueError, match="INSTR_MODES") as excinfo:
+        evolverstage.validate_config(config)
+    assert "X" in str(excinfo.value)
+
+
 def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
     config_path = tmp_path / "config.ini"
     config_path.write_text(
@@ -412,6 +429,7 @@ def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
             PREFER_WINNER_LIST = false
             IN_MEMORY_ARENAS = true
             ARENA_CHECKPOINT_INTERVAL = 100
+            INSTR_SET = MOV
             """
         ).strip()
     )
