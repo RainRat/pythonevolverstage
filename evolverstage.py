@@ -2334,7 +2334,15 @@ def _build_marble_bag(era: int, config: EvolverConfig) -> list[Marble]:
     )
 
 
-def select_opponents(num_warriors: int) -> tuple[int, int]:
+def select_opponents(
+    num_warriors: int, champion: Optional[int] = None
+) -> tuple[int, int]:
+    if champion is not None and random.random() < 0.5:
+        challenger = champion
+        while challenger == champion:
+            challenger = random.randint(1, num_warriors)
+        return champion, challenger
+
     cont1 = random.randint(1, num_warriors)
     cont2 = cont1
     while cont2 == cont1:
@@ -2603,6 +2611,9 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     era_duration = active_config.clock_time / era_count
     battles_per_era = [0 for _ in range(era_count)]
     total_battles = 0
+    champions: dict[int, int] = {
+        arena_index: 1 for arena_index in range(active_config.last_arena + 1)
+    }
 
     try:
         while True:
@@ -2640,7 +2651,9 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 bag = _build_marble_bag(era, active_config)
 
             arena_index = random.randint(0, active_config.last_arena)
-            cont1, cont2 = select_opponents(active_config.numwarriors)
+            cont1, cont2 = select_opponents(
+                active_config.numwarriors, champions.get(arena_index)
+            )
             if active_config.clock_time:
                 seconds_remaining = max(
                     (active_config.clock_time - runtime_in_hours) * 3600,
@@ -2683,6 +2696,13 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             ):
                 get_arena_storage().flush_all()
             winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
+            champion_id = champions.get(arena_index)
+            if (
+                champion_id in warriors
+                and not was_draw
+                and winner != champion_id
+            ):
+                champions[arena_index] = winner
             get_console().record_battle(winner, loser, was_draw)
 
             if len(warriors) >= 2 and len(scores) >= 2:
