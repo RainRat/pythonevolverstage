@@ -875,6 +875,146 @@ def test_execute_battle_uses_reproducible_seed(tmp_path, monkeypatch):
     assert first_scores == second_scores
 
 
+def test_end_to_end_evolution_run(tmp_path, capsys):
+    compile_worker()
+    capsys.readouterr()
+
+    global _DEFAULT_CONFIG
+
+    importlib.reload(evolverstage)
+    _DEFAULT_CONFIG = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+    evolverstage.set_active_config(_DEFAULT_CONFIG)
+    evolverstage.set_arena_storage(evolverstage.create_arena_storage(_DEFAULT_CONFIG))
+
+    initial_warrior = (
+        textwrap.dedent(
+            """
+            MOV.I #0, #0
+            ADD.AB #1, #1
+            JMP.B $0, $0
+            DAT.F #0, #0
+            NOP.F $0, $0
+            """
+        ).strip()
+        + "\n"
+    )
+
+    archive_dir = tmp_path / "archive"
+    archive_dir.mkdir()
+
+    for arena_index in range(2):
+        arena_dir = tmp_path / f"arena{arena_index}"
+        arena_dir.mkdir()
+        for warrior_id in range(1, 4):
+            (arena_dir / f"{warrior_id}.red").write_text(
+                initial_warrior, encoding="utf-8"
+            )
+
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            BATTLE_ENGINE = internal
+            LAST_ARENA = 1
+            NUMWARRIORS = 3
+            ALREADYSEEDED = true
+            CLOCK_TIME = 0.001
+            BATTLE_LOG_FILE = battle_log.csv
+            RUN_FINAL_TOURNAMENT = true
+            CORESIZE_LIST = 80, 80
+            SANITIZE_LIST = 80, 80
+            CYCLES_LIST = 200, 200
+            PROCESSES_LIST = 8, 8
+            READLIMIT_LIST = 80, 80
+            WRITELIMIT_LIST = 80, 80
+            WARLEN_LIST = 5, 5
+            WARDISTANCE_LIST = 10, 10
+            BATTLEROUNDS_LIST = 1, 1
+            NOTHING_LIST = 1, 1
+            RANDOM_LIST = 1, 1
+            NAB_LIST = 1, 1
+            MINI_MUT_LIST = 1, 1
+            MICRO_MUT_LIST = 1, 1
+            LIBRARY_LIST = 1, 1
+            MAGIC_NUMBER_LIST = 1, 1
+            ARCHIVE_LIST = 0, 0
+            UNARCHIVE_LIST = 0, 0
+            CROSSOVERRATE_LIST = 1, 1
+            TRANSPOSITIONRATE_LIST = 1, 1
+            PREFER_WINNER_LIST = false, false
+            ARENA_CHECKPOINT_INTERVAL = 0
+            INSTR_SET = MOV, ADD, DAT
+            INSTR_MODES = $, #
+            INSTR_MODIF = A, B, F
+            """
+        ).strip(),
+        encoding="utf-8",
+    )
+
+    try:
+        previous_config = evolverstage.get_active_config()
+    except RuntimeError:
+        previous_config = None
+    try:
+        previous_storage = evolverstage.get_arena_storage()
+    except RuntimeError:
+        previous_storage = None
+
+    try:
+        exit_code = evolverstage.main([
+            "--config",
+            str(config_path),
+            "--seed",
+            "1234",
+        ])
+    finally:
+        if previous_config is not None:
+            evolverstage.set_active_config(previous_config)
+            if previous_storage is not None:
+                evolverstage.set_arena_storage(previous_storage)
+            else:
+                evolverstage.set_arena_storage(
+                    evolverstage.create_arena_storage(previous_config)
+                )
+        else:
+            fallback_config = evolverstage.load_configuration(
+                str(DEFAULT_SETTINGS_PATH)
+            )
+            evolverstage.set_active_config(fallback_config)
+            evolverstage.set_arena_storage(
+                evolverstage.create_arena_storage(fallback_config)
+            )
+
+    assert exit_code == 0
+
+    captured = capsys.readouterr()
+    assert "================ Final Tournament ================" in captured.out
+    assert "Arena 0 final standings:" in captured.out
+    assert "Final tournament completed" in captured.out
+
+    battle_log_path = tmp_path / "battle_log.csv"
+    assert battle_log_path.exists()
+    battle_log_lines = [
+        line
+        for line in battle_log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(battle_log_lines) > 1
+
+    mutated_warriors = []
+    for arena_index in range(2):
+        arena_dir = tmp_path / f"arena{arena_index}"
+        warrior_files = sorted(arena_dir.glob("*.red"))
+        assert len(warrior_files) == 3
+        for path in warrior_files:
+            final_text = path.read_text(encoding="utf-8")
+            if final_text != initial_warrior:
+                mutated_warriors.append(path)
+
+    assert mutated_warriors, "Expected evolved warriors to differ from initial seeds"
+
+
 def test_run_internal_battle_requires_worker(tmp_path, monkeypatch):
     import evolverstage
 
