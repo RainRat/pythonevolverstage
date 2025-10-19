@@ -1963,10 +1963,10 @@ class ArenaStorage:
     ) -> None:
         """Ensure the specified warriors are available on disk for battle engines."""
 
-    def flush_arena(self, arena: int) -> None:
+    def flush_arena(self, arena: int) -> bool:
         """Persist all warriors for a specific arena to disk."""
 
-    def flush_all(self) -> None:
+    def flush_all(self) -> bool:
         """Persist all arenas to disk."""
 
 
@@ -1999,11 +1999,11 @@ class DiskArenaStorage(ArenaStorage):
     ) -> None:
         return None
 
-    def flush_arena(self, arena: int) -> None:
-        return None
+    def flush_arena(self, arena: int) -> bool:
+        return False
 
-    def flush_all(self) -> None:
-        return None
+    def flush_all(self) -> bool:
+        return False
 
 
 class InMemoryArenaStorage(ArenaStorage):
@@ -2049,6 +2049,12 @@ class InMemoryArenaStorage(ArenaStorage):
     def ensure_warriors_on_disk(
         self, arena: int, warrior_ids: Sequence[int]
     ) -> None:
+        """Write warriors required by external engines to disk on demand.
+
+        This method is intentionally the sole proactive disk-write path for
+        in-memory runs. All other code paths defer persistence until either an
+        engine explicitly requests warriors or a final checkpoint occurs.
+        """
         for warrior_id in warrior_ids:
             if (arena, warrior_id) in self._dirty or not self._warrior_exists_on_disk(
                 arena, warrior_id
@@ -2069,13 +2075,22 @@ class InMemoryArenaStorage(ArenaStorage):
             handle.writelines(lines)
         self._dirty.discard((arena, warrior_id))
 
-    def flush_arena(self, arena: int) -> None:
+    def flush_arena(self, arena: int) -> bool:
+        wrote_any = False
         for warrior_id in list(self._arenas.get(arena, {}).keys()):
-            self._write_warrior(arena, warrior_id)
+            if (arena, warrior_id) in self._dirty or not self._warrior_exists_on_disk(
+                arena, warrior_id
+            ):
+                self._write_warrior(arena, warrior_id)
+                wrote_any = True
+        return wrote_any
 
-    def flush_all(self) -> None:
+    def flush_all(self) -> bool:
+        wrote_any = False
         for arena in list(self._arenas.keys()):
-            self.flush_arena(arena)
+            if self.flush_arena(arena):
+                wrote_any = True
+        return wrote_any
 
 
 class _ArenaStorageNotLoaded:
@@ -2925,7 +2940,11 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         runtime_seconds=end_time - start_time,
     )
 
-    if _should_flush_on_exit(active_config):
+    flush_in_main_cleanup = (
+        active_config.use_in_memory_arenas
+        and active_config.battle_engine == "internal"
+    )
+    if _should_flush_on_exit(active_config) and not flush_in_main_cleanup:
         get_arena_storage().flush_all()
 
     if active_config.run_final_tournament:
@@ -2943,10 +2962,26 @@ def main(argv: Optional[List[str]] = None) -> int:
         except RuntimeError:
             active_config = None
         try:
-            if active_config is None or _should_flush_on_exit(active_config):
-                get_arena_storage().flush_all()
+            storage = get_arena_storage()
         except RuntimeError:
-            pass
+            storage = None
+        if storage is not None:
+            try:
+                should_flush = active_config is None or _should_flush_on_exit(active_config)
+                if should_flush:
+                    wrote_any = storage.flush_all()
+                    if (
+                        wrote_any
+                        and active_config is not None
+                        and active_config.use_in_memory_arenas
+                        and active_config.battle_engine == "internal"
+                    ):
+                        console_log(
+                            "Persisted in-memory arenas to disk.",
+                            minimum_level=VerbosityLevel.TERSE,
+                        )
+            except RuntimeError:
+                pass
         close_console()
 
 

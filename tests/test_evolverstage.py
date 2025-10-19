@@ -105,6 +105,7 @@ def test_load_configuration_reads_in_memory_settings(tmp_path):
         textwrap.dedent(
             """
             [DEFAULT]
+            BATTLE_ENGINE = internal
             LAST_ARENA = 0
             CORESIZE_LIST = 80
             SANITIZE_LIST = 80
@@ -152,6 +153,7 @@ def test_load_configuration_overrides_alreadyseeded_when_directories_missing(tmp
         textwrap.dedent(
             """
             [DEFAULT]
+            BATTLE_ENGINE = internal
             LAST_ARENA = 0
             CORESIZE_LIST = 80
             SANITIZE_LIST = 80
@@ -192,6 +194,7 @@ def test_load_configuration_retains_alreadyseeded_when_only_archive_missing(tmp_
         textwrap.dedent(
             """
             [DEFAULT]
+            BATTLE_ENGINE = internal
             LAST_ARENA = 0
             CORESIZE_LIST = 80
             SANITIZE_LIST = 80
@@ -402,6 +405,7 @@ def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
         textwrap.dedent(
             """
             [DEFAULT]
+            BATTLE_ENGINE = internal
             LAST_ARENA = 0
             CORESIZE_LIST = 80
             SANITIZE_LIST = 80
@@ -447,14 +451,42 @@ def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
     evolverstage.set_arena_storage(storage)
     storage.load_existing()
 
+    write_events: list[tuple[int, int]] = []
+    original_write = storage._write_warrior  # type: ignore[attr-defined]
+
+    def _tracking_write(arena: int, warrior_id: int) -> None:
+        write_events.append((arena, warrior_id))
+        original_write(arena, warrior_id)
+
+    storage._write_warrior = _tracking_write  # type: ignore[attr-defined]
+
     storage.set_warrior_lines(0, 1, ["MOV.I #1, #2\n"])
+    assert write_events == []
     assert warrior_path.read_text(encoding="utf-8") == "DAT.F #0, #0\n"
 
     storage.ensure_warriors_on_disk(0, [2])
+    assert write_events == []
     assert warrior_path.read_text(encoding="utf-8") == "DAT.F #0, #0\n"
 
     storage.ensure_warriors_on_disk(0, [1])
+    assert write_events == [(0, 1)]
     assert warrior_path.read_text(encoding="utf-8") == "MOV.I #1, #2\n"
+
+    write_events.clear()
+    storage.set_warrior_lines(0, 2, ["ADD.I #3, #4\n"])
+    assert storage.flush_all() is True
+    assert write_events == [(0, 2)]
+
+    write_events.clear()
+    assert storage.flush_all() is False
+
+    assert not evolverstage._should_persist_to_disk(config)
+    external_config = replace(config, battle_engine="pmars")
+    assert evolverstage._should_persist_to_disk(external_config)
+
+    storage._write_warrior = original_write  # type: ignore[attr-defined]
+    evolverstage.set_active_config(_DEFAULT_CONFIG)
+    evolverstage.set_arena_storage(evolverstage.create_arena_storage(_DEFAULT_CONFIG))
 
 
 def test_execute_battle_parses_pmars_output(monkeypatch):
