@@ -1,8 +1,10 @@
 import importlib
+import io
 import os
 import pathlib
 import sys
 import textwrap
+import types
 from dataclasses import replace
 
 import pytest
@@ -97,6 +99,115 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.instr_set == ["MOV", "ADD"]
     assert config.instr_modes == ["#", "$"]
     assert config.instr_modif == ["A", "B"]
+
+
+def test_set_console_verbosity_falls_back_on_curses_error(monkeypatch):
+    fake_curses = types.ModuleType("curses")
+
+    class FakeCursesError(Exception):
+        pass
+
+    fake_curses.error = FakeCursesError
+
+    def failing_initscr():
+        raise FakeCursesError("boom")
+
+    fake_curses.initscr = failing_initscr
+    fake_curses.noecho = lambda: None
+    fake_curses.cbreak = lambda: None
+    fake_curses.nocbreak = lambda: None
+    fake_curses.echo = lambda: None
+    fake_curses.endwin = lambda: None
+
+    monkeypatch.setitem(sys.modules, "curses", fake_curses)
+
+    with pytest.warns(RuntimeWarning):
+        level = evolverstage.set_console_verbosity(
+            evolverstage.VerbosityLevel.PSEUDO_GRAPHICAL
+        )
+
+    try:
+        assert level == evolverstage.VerbosityLevel.DEFAULT
+        assert isinstance(evolverstage.get_console(), evolverstage.SimpleConsole)
+    finally:
+        evolverstage.set_console_verbosity(evolverstage.VerbosityLevel.DEFAULT)
+
+
+def test_pseudo_graphical_console_close_restores_terminal_on_refresh_error(monkeypatch):
+    fake_curses = types.ModuleType("curses")
+    state = {"noecho": 0, "cbreak": 0, "nocbreak": 0, "echo": 0, "endwin": 0}
+
+    def record_call(key):
+        def _record():
+            state[key] += 1
+
+        return _record
+
+    fake_curses.noecho = record_call("noecho")
+    fake_curses.cbreak = record_call("cbreak")
+    fake_curses.nocbreak = record_call("nocbreak")
+    fake_curses.echo = record_call("echo")
+    fake_curses.endwin = record_call("endwin")
+
+    class FakeScreen:
+        def __init__(self) -> None:
+            self.keypad_calls: list[bool] = []
+
+        def getmaxyx(self):
+            return (24, 80)
+
+        def erase(self):
+            return None
+
+        def addnstr(self, *_args, **_kwargs):
+            return None
+
+        def refresh(self):
+            return None
+
+        def keypad(self, flag: bool):
+            self.keypad_calls.append(flag)
+
+    fake_curses_screen = FakeScreen()
+
+    def initscr():
+        return fake_curses_screen
+
+    fake_curses.initscr = initscr
+    fake_curses.error = Exception
+
+    monkeypatch.setitem(sys.modules, "curses", fake_curses)
+
+    console = evolverstage.PseudoGraphicalConsole()
+    assert fake_curses_screen.keypad_calls == [True]
+
+    def fail_refresh():
+        raise RuntimeError("refresh failed")
+
+    console._refresh = fail_refresh
+
+    with pytest.raises(RuntimeError):
+        console.close()
+
+    assert state["nocbreak"] == 1
+    assert state["echo"] == 1
+    assert state["endwin"] == 1
+    assert fake_curses_screen.keypad_calls[-1] is False
+
+
+def test_status_display_skips_duplicate_updates(monkeypatch):
+    status = evolverstage.StatusDisplay()
+    output = io.StringIO()
+
+    monkeypatch.setattr(status, "_stream", lambda: output)
+    monkeypatch.setattr(evolverstage.time, "monotonic", lambda: 0.0)
+
+    status.update("progress", "detail")
+    first_output = output.getvalue()
+
+    status.update("progress", "detail")
+
+    assert output.getvalue() == first_output
 
 
 def test_load_configuration_reads_in_memory_settings(tmp_path):
