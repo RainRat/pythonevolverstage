@@ -57,15 +57,28 @@ def test_large_configuration_limits_are_supported():
     core_size = 200_000
     max_cycles = 1_000_000
     max_processes = 120_000
-    min_distance = core_size // 3
+    min_distance = core_size // 2
+    max_warrior_length = min_distance
     result = lib.run_battle(
         warrior.encode(), 1,
         warrior.encode(), 2,
         core_size, max_cycles, max_processes,
         core_size, core_size,
-        min_distance, core_size, 10, -1
+        min_distance, max_warrior_length, 10, -1
     ).decode()
     assert not result.startswith("ERROR:"), result
+
+
+def test_min_distance_shorter_than_max_warrior_length_is_rejected():
+    lib = load_worker()
+    warrior = "JMP.B $0, $0\n"
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        warrior.encode(), 2,
+        80, 200, 80, 80, 80, 5, 6, 1, -1
+    ).decode()
+    assert result.startswith("ERROR:"), result
+    assert "Min distance must be greater than or equal to max warrior length" in result
 
 
 def test_mixed_case_warrior_with_inline_comments():
@@ -77,7 +90,7 @@ def test_mixed_case_warrior_with_inline_comments():
     result = lib.run_battle(
         warrior.encode(), 1,
         warrior.encode(), 2,
-        8000, 10, 8000, 8000, 8000, 1, 100, 1, -1
+        8000, 10, 8000, 8000, 8000, 100, 100, 1, -1
     ).decode()
     assert not result.startswith("ERROR:"), f"Expected warrior to load, got: {result}"
     scores = get_scores(result)
@@ -90,7 +103,7 @@ def test_org_pseudo_opcode_rejected():
     result = lib.run_battle(
         warrior.encode(), 1,
         warrior.encode(), 2,
-        8000, 10, 8000, 8000, 8000, 1, 100, 1, -1
+        8000, 10, 8000, 8000, 8000, 100, 100, 1, -1
     ).decode()
     assert result.startswith("ERROR:"), f"Expected ORG to be rejected, got: {result}"
     assert "Unsupported pseudo-opcode 'ORG'" in result
@@ -104,7 +117,7 @@ def test_battle_stops_once_outcome_decided():
     result = lib.run_battle(
         dominant_warrior.encode(), 1,
         fragile_warrior.encode(), 2,
-        8000, 50, 8000, 8000, 8000, 1, 100, rounds, -1
+        8000, 50, 8000, 8000, 8000, 100, 100, rounds, -1
     ).decode()
     w1_score, w2_score = get_scores(result)
     assert w2_score == 0, f"Expected fragile warrior to lose every round, got scores {w1_score}, {w2_score}"
@@ -154,7 +167,7 @@ def test_div_instruction_completes_remaining_fields(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        8000, 200, 8000, 8000, 8000, 1, 100, 1, -1
+        8000, 200, 8000, 8000, 8000, 100, 100, 1, -1
     ).decode()
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
@@ -188,7 +201,7 @@ def test_jmn_djn_use_or_logic(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        8000, 200, 8000, 8000, 8000, 1, 100, 1, -1
+        8000, 200, 8000, 8000, 8000, 100, 100, 1, -1
     ).decode()
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
@@ -214,7 +227,7 @@ def test_custom_read_limit_folds_offsets(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        80, 200, 80, 6, 6, 1, 10, 1, -1
+        80, 200, 80, 6, 6, 10, 10, 1, -1
     ).decode()
     assert not result.startswith("ERROR:"), result
     trace_text = trace_file.read_text(encoding="utf-8")
@@ -230,7 +243,7 @@ def test_mov_b_immediate_operand(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        80, 200, 80, 6, 6, 1, 10, 1, 23
+        80, 200, 80, 6, 6, 10, 10, 1, 23
     ).decode()
     assert not result.startswith("ERROR:"), result
     trace_text = trace_file.read_text(encoding="utf-8")
@@ -260,7 +273,7 @@ def test_fold_negative_boundary(monkeypatch, tmp_path):
     result = lib.run_battle(
         warrior.encode(), 1,
         opponent.encode(), 2,
-        80, 200, 80, 6, 6, 1, 12, 1, 29
+        80, 200, 80, 6, 6, 12, 12, 1, 29
     ).decode()
     assert not result.startswith("ERROR:"), result
     trace_text = trace_file.read_text(encoding="utf-8")
@@ -274,7 +287,7 @@ def test_warrior_exceeding_dynamic_length_is_rejected():
     result = lib.run_battle(
         warrior, 1,
         warrior, 2,
-        80, 200, 80, 80, 80, 1, 3, 1, -1
+        80, 200, 80, 80, 80, 3, 3, 1, -1
     ).decode()
     assert result.startswith("ERROR:"), result
     assert "exceeds the configured maximum" in result

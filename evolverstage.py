@@ -563,6 +563,12 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
                 f"WARDISTANCE_LIST[{idx + 1}] is too large for the arena core size "
                 f"(got {min_distance} with core size {core_size})."
             )
+        if min_distance < warrior_length:
+            raise ValueError(
+                "WARDISTANCE_LIST values must be greater than or equal to their corresponding "
+                "WARLEN_LIST values to prevent overlap ("
+                f"got wardistance={min_distance}, warlen={warrior_length} at index {idx + 1})."
+            )
         if sanitize_limit < 1 or sanitize_limit > core_size:
             raise ValueError(
                 f"SANITIZE_LIST[{idx + 1}] must be between 1 and the arena's core size "

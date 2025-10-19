@@ -738,6 +738,11 @@ void validate_battle_parameters(
     if (min_distance > core_size / 2) {
         throw std::runtime_error("Min distance is too large for the given core size");
     }
+    if (min_distance < max_warrior_length) {
+        throw std::runtime_error(
+            "Min distance must be greater than or equal to max warrior length to prevent overlap."
+        );
+    }
     if (max_warrior_length <= 0 || max_warrior_length > MAX_WARRIOR_LENGTH) {
         throw std::runtime_error(
             "Max warrior length must be between 1 and " + std::to_string(MAX_WARRIOR_LENGTH)
