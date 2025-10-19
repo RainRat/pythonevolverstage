@@ -2429,32 +2429,37 @@ def breed_offspring(
                         ranlines[toline],
                     )
 
-    if config.prefer_winner_list[era] is True:
-        pickingfrom = 1
-    else:
-        pickingfrom = get_random_int(1, 2)
-
-    magic_number = weighted_random_number(
-        config.coresize_list[arena], config.warlen_list[arena]
-    )
-    new_lines: list[str] = []
-    for i in range(0, config.warlen_list[arena]):
-        if get_random_int(1, config.crossoverrate_list[era]) == 1:
-            pickingfrom = 2 if pickingfrom == 1 else 1
-
-        if pickingfrom == 1:
-            source_line = winlines[i] if i < len(winlines) else ""
+    while True:
+        if config.prefer_winner_list[era] is True:
+            pickingfrom = 1
         else:
-            source_line = ranlines[i] if i < len(ranlines) else ""
+            pickingfrom = get_random_int(1, 2)
 
-        instruction = parse_instruction_or_default(source_line)
-        chosen_marble = _get_random_choice(bag)
-        handler = MUTATION_HANDLERS.get(chosen_marble)
-        if handler:
-            instruction = handler(instruction, arena, config, magic_number)
+        magic_number = weighted_random_number(
+            config.coresize_list[arena], config.warlen_list[arena]
+        )
+        new_lines: list[str] = []
+        for i in range(0, config.warlen_list[arena]):
+            if get_random_int(1, config.crossoverrate_list[era]) == 1:
+                pickingfrom = 2 if pickingfrom == 1 else 1
 
-        new_lines.append(instruction_to_line(instruction, arena))
-        magic_number = magic_number - 1
+            if pickingfrom == 1:
+                source_line = winlines[i] if i < len(winlines) else ""
+            else:
+                source_line = ranlines[i] if i < len(ranlines) else ""
+
+            instruction = parse_instruction_or_default(source_line)
+            chosen_marble = _get_random_choice(bag)
+            handler = MUTATION_HANDLERS.get(chosen_marble)
+            if handler:
+                instruction = handler(instruction, arena, config, magic_number)
+
+            new_lines.append(instruction_to_line(instruction, arena))
+            magic_number = magic_number - 1
+
+        first_instruction = parse_instruction_or_default(new_lines[0])
+        if first_instruction.opcode != "DAT":
+            break
 
     storage.set_warrior_lines(arena, loser, new_lines)
 
@@ -2537,10 +2542,14 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
             create_directory_if_not_exists(arena_dir)
             for warrior_id in range(1, active_config.numwarriors + 1):
-                new_lines = [
-                    instruction_to_line(generate_random_instruction(arena), arena)
-                    for _ in range(1, active_config.warlen_list[arena] + 1)
-                ]
+                while True:
+                    new_lines = [
+                        instruction_to_line(generate_random_instruction(arena), arena)
+                        for _ in range(1, active_config.warlen_list[arena] + 1)
+                    ]
+                    first_instruction = parse_instruction_or_default(new_lines[0])
+                    if first_instruction.opcode != "DAT":
+                        break
                 storage.set_warrior_lines(arena, warrior_id, new_lines)
         if _should_persist_to_disk(active_config):
             storage.flush_all()
