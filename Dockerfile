@@ -21,4 +21,5 @@ RUN mkdir -p build \
     && cp /tmp/pMARS/src/pmars /usr/local/bin/pmars
 
 # Default command runs the evolver
+# Hint: run `make test` to execute the project test suite after building.
 CMD ["python", "evolverstage.py"]

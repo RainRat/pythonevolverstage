@@ -32,7 +32,14 @@ def ensure_pmars_compiled() -> pathlib.Path:
     source_dir = PROJECT_ROOT / "pMars" / "src"
     binary_path = source_dir / binary_name
 
-    subprocess.run(["make", "pmars"], cwd=source_dir, check=True)
+    try:
+        subprocess.run(["make", "pmars"], cwd=source_dir, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            "Failed to build the bundled pMARS emulator. "
+            "Ensure build tools are installed and `make pmars` succeeds in "
+            f"{source_dir}."
+        ) from exc
 
     if not binary_path.exists():
         raise FileNotFoundError(
