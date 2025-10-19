@@ -850,20 +850,27 @@ extern "C" {
             int w1_score = 0;
             int w2_score = 0;
 
-            int rounds_played = 0;
-            for (int r = 0; r < rounds; ++r) {
-                Core core(core_size, trace_file);
-                int positions = core_size + 1 - (min_distance * 2);
-                if (positions <= 0) {
-                    positions = core_size;
-                }
+            int placements = core_size - (2 * min_distance) + 1;
+            if (placements <= 0) {
+                placements = core_size;
+            }
 
+            bool use_exhaustive = rounds >= placements;
+            int planned_rounds = use_exhaustive ? placements : rounds;
+
+            int rounds_played = 0;
+            for (int r = 0; r < planned_rounds; ++r) {
+                Core core(core_size, trace_file);
                 int w1_start = 0;
                 int w2_start = min_distance % core_size;
                 if (core_size > 0) {
-                    int offset = rng_state % positions;
-                    w2_start = (min_distance + offset) % core_size;
-                    rng_state = advance_pmars_seed(rng_state);
+                    if (use_exhaustive) {
+                        w2_start = (min_distance + r) % core_size;
+                    } else {
+                        int offset = rng_state % placements;
+                        w2_start = (min_distance + offset) % core_size;
+                        rng_state = advance_pmars_seed(rng_state);
+                    }
                 }
 
                 for (size_t i = 0; i < w1_instrs.size(); ++i) {
@@ -927,7 +934,7 @@ extern "C" {
                 }
 
                 rounds_played = r + 1;
-                int rounds_remaining = rounds - rounds_played;
+                int rounds_remaining = planned_rounds - rounds_played;
                 int score_diff = w1_score - w2_score;
                 int max_possible_swing = 3 * rounds_remaining;
                 if (score_diff > 0 && score_diff > max_possible_swing) {
