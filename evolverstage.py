@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from typing import (
     Callable,
     Deque,
+    Iterable,
     List,
     Literal,
     Optional,
@@ -460,6 +461,79 @@ def get_active_config() -> EvolverConfig:
     return config
 
 
+def _validate_arena_parameters(idx: int, config: EvolverConfig) -> None:
+    core_size = config.coresize_list[idx]
+    sanitize_limit = config.sanitize_list[idx]
+    cycles_limit = config.cycles_list[idx]
+    process_limit = config.processes_list[idx]
+    warrior_length = config.warlen_list[idx]
+    min_distance = config.wardistance_list[idx]
+    read_limit = config.readlimit_list[idx]
+    write_limit = config.writelimit_list[idx]
+
+    if core_size < CPP_WORKER_MIN_CORE_SIZE:
+        raise ValueError(
+            f"CORESIZE_LIST[{idx + 1}] must be at least {CPP_WORKER_MIN_CORE_SIZE} "
+            f"(got {core_size})."
+        )
+    if core_size > CPP_WORKER_MAX_CORE_SIZE:
+        raise ValueError(
+            f"CORESIZE_LIST[{idx + 1}] cannot exceed {CPP_WORKER_MAX_CORE_SIZE} "
+            f"(got {core_size})."
+        )
+    if cycles_limit <= 0 or cycles_limit > CPP_WORKER_MAX_CYCLES:
+        raise ValueError(
+            f"CYCLES_LIST[{idx + 1}] must be between 1 and {CPP_WORKER_MAX_CYCLES} "
+            f"(got {cycles_limit})."
+        )
+    if process_limit <= 0 or process_limit > CPP_WORKER_MAX_PROCESSES:
+        raise ValueError(
+            f"PROCESSES_LIST[{idx + 1}] must be between 1 and {CPP_WORKER_MAX_PROCESSES} "
+            f"(got {process_limit})."
+        )
+    if warrior_length <= 0 or warrior_length > CPP_WORKER_MAX_WARRIOR_LENGTH:
+        raise ValueError(
+            f"WARLEN_LIST[{idx + 1}] must be between 1 and "
+            f"{CPP_WORKER_MAX_WARRIOR_LENGTH} (got {warrior_length})."
+        )
+    if warrior_length > core_size:
+        raise ValueError(
+            f"WARLEN_LIST[{idx + 1}] cannot exceed the arena's core size "
+            f"(got {warrior_length} with core size {core_size})."
+        )
+    if min_distance < CPP_WORKER_MIN_DISTANCE or min_distance > CPP_WORKER_MAX_MIN_DISTANCE:
+        raise ValueError(
+            f"WARDISTANCE_LIST[{idx + 1}] must be between {CPP_WORKER_MIN_DISTANCE} "
+            f"and {CPP_WORKER_MAX_MIN_DISTANCE} (got {min_distance})."
+        )
+    if min_distance > core_size // 2:
+        raise ValueError(
+            f"WARDISTANCE_LIST[{idx + 1}] is too large for the arena core size "
+            f"(got {min_distance} with core size {core_size})."
+        )
+    if min_distance < warrior_length:
+        raise ValueError(
+            "WARDISTANCE_LIST values must be greater than or equal to their corresponding "
+            "WARLEN_LIST values to prevent overlap ("
+            f"got wardistance={min_distance}, warlen={warrior_length} at index {idx + 1})."
+        )
+    if sanitize_limit < 1 or sanitize_limit > core_size:
+        raise ValueError(
+            f"SANITIZE_LIST[{idx + 1}] must be between 1 and the arena's core size "
+            f"(got {sanitize_limit})."
+        )
+    if read_limit <= 0 or read_limit > core_size:
+        raise ValueError(
+            f"READLIMIT_LIST[{idx + 1}] must be between 1 and the arena's core size "
+            f"(got {read_limit})."
+        )
+    if write_limit <= 0 or write_limit > core_size:
+        raise ValueError(
+            f"WRITELIMIT_LIST[{idx + 1}] must be between 1 and the arena's core size "
+            f"(got {write_limit})."
+        )
+
+
 def validate_config(config: EvolverConfig, config_path: Optional[str] = None) -> None:
     if config.last_arena is None:
         raise ValueError("LAST_ARENA must be specified in the configuration.")
@@ -514,76 +588,7 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
         )
 
     for idx in range(arena_count):
-        core_size = config.coresize_list[idx]
-        sanitize_limit = config.sanitize_list[idx]
-        cycles_limit = config.cycles_list[idx]
-        process_limit = config.processes_list[idx]
-        warrior_length = config.warlen_list[idx]
-        min_distance = config.wardistance_list[idx]
-        read_limit = config.readlimit_list[idx]
-        write_limit = config.writelimit_list[idx]
-
-        if core_size < CPP_WORKER_MIN_CORE_SIZE:
-            raise ValueError(
-                f"CORESIZE_LIST[{idx + 1}] must be at least {CPP_WORKER_MIN_CORE_SIZE} "
-                f"(got {core_size})."
-            )
-        if core_size > CPP_WORKER_MAX_CORE_SIZE:
-            raise ValueError(
-                f"CORESIZE_LIST[{idx + 1}] cannot exceed {CPP_WORKER_MAX_CORE_SIZE} "
-                f"(got {core_size})."
-            )
-        if cycles_limit <= 0 or cycles_limit > CPP_WORKER_MAX_CYCLES:
-            raise ValueError(
-                f"CYCLES_LIST[{idx + 1}] must be between 1 and {CPP_WORKER_MAX_CYCLES} "
-                f"(got {cycles_limit})."
-            )
-        if process_limit <= 0 or process_limit > CPP_WORKER_MAX_PROCESSES:
-            raise ValueError(
-                f"PROCESSES_LIST[{idx + 1}] must be between 1 and {CPP_WORKER_MAX_PROCESSES} "
-                f"(got {process_limit})."
-            )
-        if warrior_length <= 0 or warrior_length > CPP_WORKER_MAX_WARRIOR_LENGTH:
-            raise ValueError(
-                f"WARLEN_LIST[{idx + 1}] must be between 1 and "
-                f"{CPP_WORKER_MAX_WARRIOR_LENGTH} (got {warrior_length})."
-            )
-        if warrior_length > core_size:
-            raise ValueError(
-                f"WARLEN_LIST[{idx + 1}] cannot exceed the arena's core size "
-                f"(got {warrior_length} with core size {core_size})."
-            )
-        if min_distance < CPP_WORKER_MIN_DISTANCE or min_distance > CPP_WORKER_MAX_MIN_DISTANCE:
-            raise ValueError(
-                f"WARDISTANCE_LIST[{idx + 1}] must be between {CPP_WORKER_MIN_DISTANCE} "
-                f"and {CPP_WORKER_MAX_MIN_DISTANCE} (got {min_distance})."
-            )
-        if min_distance > core_size // 2:
-            raise ValueError(
-                f"WARDISTANCE_LIST[{idx + 1}] is too large for the arena core size "
-                f"(got {min_distance} with core size {core_size})."
-            )
-        if min_distance < warrior_length:
-            raise ValueError(
-                "WARDISTANCE_LIST values must be greater than or equal to their corresponding "
-                "WARLEN_LIST values to prevent overlap ("
-                f"got wardistance={min_distance}, warlen={warrior_length} at index {idx + 1})."
-            )
-        if sanitize_limit < 1 or sanitize_limit > core_size:
-            raise ValueError(
-                f"SANITIZE_LIST[{idx + 1}] must be between 1 and the arena's core size "
-                f"(got {sanitize_limit})."
-            )
-        if read_limit <= 0 or read_limit > core_size:
-            raise ValueError(
-                f"READLIMIT_LIST[{idx + 1}] must be between 1 and the arena's core size "
-                f"(got {read_limit})."
-            )
-        if write_limit <= 0 or write_limit > core_size:
-            raise ValueError(
-                f"WRITELIMIT_LIST[{idx + 1}] must be between 1 and the arena's core size "
-                f"(got {write_limit})."
-            )
+        _validate_arena_parameters(idx, config)
 
     if config.numwarriors is None or config.numwarriors <= 0:
         raise ValueError("NUMWARRIORS must be a positive integer.")
@@ -1041,49 +1046,91 @@ def _worker_library_extension() -> str:
     return ".so"
 
 
-def _candidate_worker_paths() -> list[Path]:
-    lib_name = f"redcode_worker{_worker_library_extension()}"
-    module_dir = Path(__file__).resolve().parent
-    project_root = module_dir.parent
-    candidates: list[Path] = [
-        (module_dir / lib_name).resolve(),
-        (project_root / lib_name).resolve(),
-    ]
-
-    system_lib_dirs = [
-        Path("/usr/local/lib"),
-        Path("/usr/lib"),
-    ]
-
-    for lib_dir in system_lib_dirs:
-        candidates.append((lib_dir / lib_name).resolve(strict=False))
-
-    env_override = os.environ.get("REDCODE_WORKER_PATH")
-    if env_override:
-        env_path = Path(env_override).expanduser()
+def _deduplicate_paths(candidates: Iterable[Path]) -> list[Path]:
+    seen: set[str] = set()
+    unique_candidates: list[Path] = []
+    for candidate in candidates:
+        expanded = candidate.expanduser()
         try:
-            candidates.append(env_path.resolve(strict=False))
+            key_path = expanded if expanded.is_absolute() else expanded.resolve(strict=False)
         except RuntimeError:
-            candidates.append(env_path)
-        if env_path.is_dir():
-            try:
-                candidates.append((env_path / lib_name).resolve(strict=False))
-            except RuntimeError:
-                candidates.append(env_path / lib_name)
-
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_candidates = []
-    for path in candidates:
-        try:
-            key = path if path.is_absolute() else path.resolve(strict=False)
-        except RuntimeError:
-            key = path
+            key_path = expanded
+        key = str(key_path)
         if key in seen:
             continue
         seen.add(key)
-        unique_candidates.append(path)
+        unique_candidates.append(expanded)
     return unique_candidates
+
+
+def _find_command_candidates(
+    name: str,
+    env_var: str,
+    *,
+    use_shutil: bool = True,
+    project_dirs: Sequence[Path | str] | None = None,
+    project_parent_dirs: Sequence[Path | str] | None = None,
+    base_dirs: Sequence[Path | str] | None = None,
+    additional_dirs: Sequence[Path | str] | None = None,
+    include_plain_name: bool = True,
+) -> list[Path]:
+    module_dir = Path(__file__).resolve().parent
+    project_root = module_dir.parent
+    candidates: list[Path] = []
+
+    env_override = os.environ.get(env_var)
+    if env_override:
+        env_path = Path(env_override).expanduser()
+        candidates.append(env_path)
+        if env_path.is_dir():
+            candidates.append((env_path / name).expanduser())
+
+    if use_shutil:
+        detected = shutil.which(name)
+        if detected:
+            candidates.append(Path(detected))
+
+    if project_dirs:
+        for rel_dir in project_dirs:
+            candidate_dir = module_dir / Path(rel_dir)
+            candidates.append(candidate_dir / name)
+
+    if project_parent_dirs:
+        for rel_dir in project_parent_dirs:
+            candidate_dir = project_root / Path(rel_dir)
+            candidates.append(candidate_dir / name)
+
+    if base_dirs:
+        try:
+            base_path = Path(config.base_path)
+        except Exception:
+            base_path = None
+        else:
+            for rel_dir in base_dirs:
+                candidate_dir = base_path / Path(rel_dir)
+                candidates.append(candidate_dir / name)
+
+    if additional_dirs:
+        for directory in additional_dirs:
+            candidates.append(Path(directory) / name)
+
+    if include_plain_name:
+        candidates.append(Path(name))
+
+    return _deduplicate_paths(candidates)
+
+
+def _candidate_worker_paths() -> list[Path]:
+    lib_name = f"redcode_worker{_worker_library_extension()}"
+    return _find_command_candidates(
+        lib_name,
+        "REDCODE_WORKER_PATH",
+        use_shutil=False,
+        project_dirs=[Path(".")],
+        project_parent_dirs=[Path(".")],
+        additional_dirs=[Path("/usr/local/lib"), Path("/usr/lib")],
+        include_plain_name=False,
+    )
 
 
 def _format_candidate(path: Path | str) -> str:
@@ -1148,85 +1195,24 @@ except Exception as e:
 
 def _candidate_pmars_paths() -> list[str]:
     exe_name = "pmars.exe" if os.name == "nt" else "pmars"
-    candidates: list[str] = []
-
-    env_override = os.environ.get("PMARS_CMD")
-    if env_override:
-        candidates.append(os.path.expanduser(env_override))
-
-    detected = shutil.which(exe_name)
-    if detected:
-        candidates.append(detected)
-
-    project_root = Path(__file__).resolve().parent
-    candidates.append(str(project_root / "pMars" / exe_name))
-    candidates.append(str(project_root / "pMars" / "src" / exe_name))
-    candidates.append(str(project_root / exe_name))
-
-    try:
-        base_path = Path(config.base_path)
-    except Exception:
-        base_path = None
-    else:
-        candidates.append(str(base_path / "pMars" / exe_name))
-        candidates.append(str(base_path / "pMars" / "src" / exe_name))
-
-    candidates.append(exe_name)
-
-    unique_candidates: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        if not candidate:
-            continue
-        normalized = os.path.expanduser(candidate)
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        unique_candidates.append(normalized)
-
-    return unique_candidates
+    candidates = _find_command_candidates(
+        exe_name,
+        "PMARS_CMD",
+        project_dirs=[Path("pMars"), Path("pMars/src"), Path(".")],
+        base_dirs=[Path("pMars"), Path("pMars/src")],
+    )
+    return [str(candidate) for candidate in candidates]
 
 
 def _candidate_nmars_paths() -> list[str]:
     exe_name = "nmars.exe" if os.name == "nt" else "nmars"
-    candidates: list[str] = []
-
-    env_override = os.environ.get("NMARS_CMD")
-    if env_override:
-        candidates.append(os.path.expanduser(env_override))
-
-    detected = shutil.which(exe_name)
-    if detected:
-        candidates.append(detected)
-
-    project_root = Path(__file__).resolve().parent
-    candidates.append(str(project_root / "pMars" / exe_name))
-    candidates.append(str(project_root / "pMars" / "src" / exe_name))
-    candidates.append(str(project_root / exe_name))
-
-    try:
-        base_path = Path(config.base_path)
-    except Exception:
-        base_path = None
-    else:
-        candidates.append(str(base_path / "pMars" / exe_name))
-        candidates.append(str(base_path / "pMars" / "src" / exe_name))
-        candidates.append(str(base_path / exe_name))
-
-    candidates.append(exe_name)
-
-    unique_candidates: list[str] = []
-    seen: set[str] = set()
-    for candidate in candidates:
-        if not candidate:
-            continue
-        normalized = os.path.expanduser(candidate)
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        unique_candidates.append(normalized)
-
-    return unique_candidates
+    candidates = _find_command_candidates(
+        exe_name,
+        "NMARS_CMD",
+        project_dirs=[Path("pMars"), Path("pMars/src"), Path(".")],
+        base_dirs=[Path("pMars"), Path("pMars/src"), Path(".")],
+    )
+    return [str(candidate) for candidate in candidates]
 
 
 def _resolve_external_command(engine_name: str, candidates: Sequence[str]) -> str:
@@ -2215,20 +2201,13 @@ def _apply_micro_mutation(
     _config: EvolverConfig,
     _magic_number: int,
 ) -> RedcodeInstruction:
+    target_field = "a_field" if get_random_int(1, 2) == 1 else "b_field"
+    current_value = _ensure_int(getattr(instruction, target_field))
     if get_random_int(1, 2) == 1:
-        current_value = _ensure_int(instruction.a_field)
-        if get_random_int(1, 2) == 1:
-            current_value = current_value + 1
-        else:
-            current_value = current_value - 1
-        instruction.a_field = current_value
+        current_value += 1
     else:
-        current_value = _ensure_int(instruction.b_field)
-        if get_random_int(1, 2) == 1:
-            current_value = current_value + 1
-        else:
-            current_value = current_value - 1
-        instruction.b_field = current_value
+        current_value -= 1
+    setattr(instruction, target_field, current_value)
     return instruction
 
 
@@ -2280,6 +2259,35 @@ def _format_duration(seconds: float) -> str:
         return f"{int(minutes)} minutes {secs:.2f} seconds"
     hours, minutes = divmod(minutes, 60)
     return f"{int(hours)} hours {int(minutes)} minutes {secs:.2f} seconds"
+
+
+def _get_progress_status(
+    start_time: float, total_duration_hr: float, current_era: int
+) -> tuple[str, str]:
+    runtime_seconds = time.time() - start_time
+    runtime_in_hours = runtime_seconds / 3600
+    if total_duration_hr > 0:
+        seconds_remaining = max((total_duration_hr - runtime_in_hours) * 3600, 0.0)
+        percent_complete = runtime_in_hours / total_duration_hr * 100
+    else:
+        seconds_remaining = 0.0
+        percent_complete = 100.0
+
+    display_era = current_era + 1
+    if current_era >= 0:
+        progress_line = (
+            f"{_format_duration(seconds_remaining)} remaining "
+            f"({percent_complete:.2f}% complete) Era: {display_era}"
+        )
+        detail_line = f"Era {display_era}"
+    else:
+        progress_line = (
+            f"{_format_duration(seconds_remaining)} remaining "
+            f"({percent_complete:.2f}% complete)"
+        )
+        detail_line = "No active era"
+
+    return progress_line, detail_line
 
 
 def run_final_tournament(config: EvolverConfig):
@@ -2387,10 +2395,17 @@ def run_final_tournament(config: EvolverConfig):
                     percent_complete = (
                         battles_completed / total_battles * 100 if total_battles else 100.0
                     )
-                    progress_line = (
+                    time_progress, default_detail = _get_progress_status(
+                        tournament_start, config.clock_time, final_era_index
+                    )
+                    progress_segments = []
+                    if config.clock_time:
+                        progress_segments.append(time_progress)
+                    progress_segments.append(
                         f"Final Tournament Progress: {battles_completed}/{total_battles} "
                         f"battles ({percent_complete:.2f}% complete)"
                     )
+                    progress_line = " | ".join(progress_segments)
                     if len(warriors) >= 2 and len(scores) >= 2:
                         battle_line = (
                             f"Arena {arena} | {warriors[0]} ({scores[0]}) vs "
@@ -2398,7 +2413,7 @@ def run_final_tournament(config: EvolverConfig):
                         )
                     else:
                         battle_line = f"Arena {arena} battle in progress"
-                    console_update_status(progress_line, battle_line)
+                    console_update_status(progress_line, battle_line or default_detail)
 
             console_clear_status()
             console_log(
@@ -2764,23 +2779,13 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             cont1, cont2 = select_opponents(
                 active_config.numwarriors, champions.get(arena_index)
             )
-            if active_config.clock_time:
-                seconds_remaining = max(
-                    (active_config.clock_time - runtime_in_hours) * 3600,
-                    0.0,
-                )
-                percent_complete = runtime_in_hours / active_config.clock_time * 100
-            else:
-                seconds_remaining = 0.0
-                percent_complete = 100.0
             display_era = era + 1
+            progress_line, _ = _get_progress_status(
+                start_time, active_config.clock_time, era
+            )
             pending_battle_line = (
                 "Battle: "
                 f"Era {display_era}, Arena {arena_index} | {cont1} vs {cont2} | Running..."
-            )
-            progress_line = (
-                f"{_format_duration(seconds_remaining)} remaining ({percent_complete:.2f}% complete) "
-                f"Era: {display_era}"
             )
             console_update_status(progress_line, pending_battle_line)
             battle_seed = (
@@ -2832,22 +2837,8 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 winner, loser, arena_index, era, active_config
             )
             if archiving_result.events:
-                runtime_seconds = time.time() - start_time
-                runtime_in_hours = runtime_seconds / 3600
-                if active_config.clock_time:
-                    seconds_remaining = max(
-                        (active_config.clock_time - runtime_in_hours) * 3600,
-                        0.0,
-                    )
-                    percent_complete = (
-                        runtime_in_hours / active_config.clock_time * 100
-                    )
-                else:
-                    seconds_remaining = 0.0
-                    percent_complete = 100.0
-                progress_line = (
-                    f"{_format_duration(seconds_remaining)} remaining ({percent_complete:.2f}% complete) "
-                    f"Era: {display_era}"
+                progress_line, default_detail = _get_progress_status(
+                    start_time, active_config.clock_time, era
                 )
                 console_clear_status()
                 last_event_line = ""
@@ -2879,7 +2870,9 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                         [header_line, matchup_line, *result_lines, action_line]
                     )
                     console_log(last_event_line, flush=True)
-                console_update_status(progress_line, last_event_line)
+                console_update_status(
+                    progress_line, last_event_line or default_detail
+                )
 
             if archiving_result.skip_breeding:
                 continue
@@ -2896,26 +2889,15 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 warriors,
             )
 
-            runtime_in_hours = (time.time() - start_time) / 3600
-            if active_config.clock_time:
-                seconds_remaining = max(
-                    (active_config.clock_time - runtime_in_hours) * 3600,
-                    0.0,
-                )
-                percent_complete = runtime_in_hours / active_config.clock_time * 100
-            else:
-                seconds_remaining = 0.0
-                percent_complete = 100.0
             battle_line = (
                 "Battle: "
                 f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
                 f"| Partner: {partner_id}"
             )
-            progress_line = (
-                f"{_format_duration(seconds_remaining)} remaining ({percent_complete:.2f}% complete) "
-                f"Era: {display_era}"
+            progress_line, default_detail = _get_progress_status(
+                start_time, active_config.clock_time, era
             )
-            console_update_status(progress_line, battle_line)
+            console_update_status(progress_line, battle_line or default_detail)
 
     except KeyboardInterrupt:
         console_clear_status()
