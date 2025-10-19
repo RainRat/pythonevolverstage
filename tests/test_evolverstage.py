@@ -1265,7 +1265,6 @@ def test_minor_mutation_handler(monkeypatch):
 
 def test_generate_warrior_lines_until_non_dat_with_dat_only_pool(monkeypatch):
     monkeypatch.setattr(evolverstage, "GENERATION_OPCODE_POOL", ["DAT"])
-    monkeypatch.setattr(evolverstage, "MAX_NON_DAT_GENERATION_ATTEMPTS", 3)
 
     with pytest.raises(RuntimeError, match="cannot generate non-DAT opcodes"):
         evolverstage._generate_warrior_lines_until_non_dat(
@@ -1274,23 +1273,24 @@ def test_generate_warrior_lines_until_non_dat_with_dat_only_pool(monkeypatch):
         )
 
 
-def test_generate_warrior_lines_until_non_dat_exhausts_attempts(monkeypatch):
+def test_generate_warrior_lines_until_non_dat_retries_until_success(monkeypatch):
     monkeypatch.setattr(evolverstage, "GENERATION_OPCODE_POOL", ["DAT", "MOV"])
-    monkeypatch.setattr(evolverstage, "MAX_NON_DAT_GENERATION_ATTEMPTS", 3)
 
     attempts = 0
 
     def generator():
         nonlocal attempts
         attempts += 1
-        return ["DAT.F $0, $0\n"]
+        if attempts < 3:
+            return ["DAT.F $0, $0\n"]
+        return ["MOV.I $0, $0\n"]
 
-    with pytest.raises(RuntimeError, match="failed to generate a warrior"):
-        evolverstage._generate_warrior_lines_until_non_dat(
-            generator,
-            context="Test context",
-        )
+    lines = evolverstage._generate_warrior_lines_until_non_dat(
+        generator,
+        context="Test context",
+    )
 
+    assert lines == ["MOV.I $0, $0\n"]
     assert attempts == 3
 
 

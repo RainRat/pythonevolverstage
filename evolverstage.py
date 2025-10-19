@@ -1532,7 +1532,6 @@ def canonicalize_opcode(opcode: str) -> str:
 
 
 GENERATION_OPCODE_POOL: list[str] = []
-MAX_NON_DAT_GENERATION_ATTEMPTS = 1000
 
 
 def _rebuild_instruction_tables(active_config: EvolverConfig) -> None:
@@ -1886,31 +1885,24 @@ def _can_generate_non_dat_opcode() -> bool:
     return any(opcode != 'DAT' for opcode in GENERATION_OPCODE_POOL)
 
 
-def _raise_dat_generation_failure(context: str) -> None:
+def _generate_warrior_lines_until_non_dat(
+    generator: Callable[[], list[str]],
+    context: str,
+) -> list[str]:
     if not _can_generate_non_dat_opcode():
         raise RuntimeError(
             f"{context}: configuration cannot generate non-DAT opcodes. "
             "Check the INSTR_SET configuration to include at least one opcode other than DAT."
         )
-    raise RuntimeError(
-        f"{context}: failed to generate a warrior whose first instruction is not DAT after "
-        f"{MAX_NON_DAT_GENERATION_ATTEMPTS} attempts. Check mutation settings and opcode pools."
-    )
 
-
-def _generate_warrior_lines_until_non_dat(
-    generator: Callable[[], list[str]],
-    context: str,
-) -> list[str]:
     lines: list[str] = []
-    for _ in range(MAX_NON_DAT_GENERATION_ATTEMPTS):
+    while True:
         lines = generator()
         if not lines:
             continue
         first_instruction = parse_instruction_or_default(lines[0])
         if first_instruction.opcode != 'DAT':
             return lines
-    _raise_dat_generation_failure(context)
 
 def create_directory_if_not_exists(directory):
     if not os.path.exists(directory):
