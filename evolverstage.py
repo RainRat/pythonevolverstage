@@ -7,6 +7,7 @@ import configparser
 import subprocess
 import shutil
 import hashlib
+import statistics
 from enum import Enum
 import csv
 import ctypes
@@ -69,6 +70,7 @@ class EvolverConfig:
     instr_modes: list[str]
     instr_modif: list[str]
     run_final_tournament: bool
+    final_tournament_csv: Optional[str]
 
 
 class _ConfigNotLoaded:
@@ -799,6 +801,17 @@ def load_configuration(path: str) -> EvolverConfig:
     else:
         battle_log_file = None
 
+    final_tournament_csv = _read_config(
+        'FINAL_TOURNAMENT_CSV', data_type='string'
+    )
+    if final_tournament_csv:
+        if not os.path.isabs(final_tournament_csv):
+            final_tournament_csv = os.path.abspath(
+                os.path.join(base_path, final_tournament_csv)
+            )
+    else:
+        final_tournament_csv = None
+
     library_path = _read_config('LIBRARY_PATH', data_type='string')
     if library_path:
         if not os.path.isabs(library_path):
@@ -849,6 +862,7 @@ def load_configuration(path: str) -> EvolverConfig:
         instr_modes=_read_config('INSTR_MODES', data_type='string_list') or [],
         instr_modif=_read_config('INSTR_MODIF', data_type='string_list') or [],
         run_final_tournament=_read_config('RUN_FINAL_TOURNAMENT', data_type='bool', default=False) or False,
+        final_tournament_csv=final_tournament_csv,
     )
     validate_config(config, config_path=path)
     return config
@@ -957,6 +971,11 @@ def _print_run_configuration_summary(config: EvolverConfig) -> None:
     console_log(
         "  Final tournament enabled: "
         f"{'Yes' if config.run_final_tournament else 'No'}",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    csv_display = config.final_tournament_csv or "Disabled"
+    console_log(
+        f"  Final tournament CSV export: {csv_display}",
         minimum_level=VerbosityLevel.TERSE,
     )
     console_log("", minimum_level=VerbosityLevel.TERSE)
@@ -2303,6 +2322,8 @@ def run_final_tournament(config: EvolverConfig):
     )
     arenas_to_run: list[tuple[int, list[int]]] = []
     total_battles = 0
+    arena_summaries: list[dict[str, object]] = []
+    warrior_scores_by_arena: dict[int, list[int]] = defaultdict(list)
     for arena in range(0, config.last_arena + 1):
         if use_in_memory_internal:
             assert storage is not None
@@ -2405,10 +2426,21 @@ def run_final_tournament(config: EvolverConfig):
                     f"{position}. Warrior {warrior_id}: {score} points",
                     minimum_level=VerbosityLevel.TERSE,
                 )
+                warrior_scores_by_arena[warrior_id].append(score)
             champion_id, champion_score = rankings[0]
             console_log(
                 f"Champion: Warrior {champion_id} with {champion_score} points",
                 minimum_level=VerbosityLevel.TERSE,
+            )
+            arena_average = (
+                statistics.mean(total_scores.values()) if total_scores else 0.0
+            )
+            arena_summaries.append(
+                {
+                    "arena": arena,
+                    "rankings": list(rankings),
+                    "average": arena_average,
+                }
             )
     except KeyboardInterrupt:
         console_clear_status()
@@ -2420,10 +2452,150 @@ def run_final_tournament(config: EvolverConfig):
 
     console_clear_status()
     duration = time.time() - tournament_start
+    _report_final_tournament_statistics(arena_summaries, warrior_scores_by_arena)
+    _export_final_tournament_results(arena_summaries, config)
     console_log(
         f"Final tournament completed in {_format_duration(duration)}.",
         minimum_level=VerbosityLevel.TERSE,
     )
+
+
+def _report_final_tournament_statistics(
+    arena_summaries: Sequence[dict[str, object]],
+    warrior_scores_by_arena: dict[int, list[int]],
+) -> None:
+    if not arena_summaries:
+        return
+
+    console_log(
+        "\nTournament statistics:", minimum_level=VerbosityLevel.TERSE
+    )
+    for summary in arena_summaries:
+        arena_id = summary.get("arena")
+        arena_average = float(summary.get("average", 0.0))
+        console_log(
+            f"  Arena {arena_id} average score: {arena_average:.2f}",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+
+    all_scores = [score for scores in warrior_scores_by_arena.values() for score in scores]
+    if all_scores:
+        overall_average = statistics.mean(all_scores)
+        console_log(
+            f"  Overall average score: {overall_average:.2f}",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+
+    warrior_stats: list[dict[str, object]] = []
+    for warrior_id in sorted(warrior_scores_by_arena):
+        scores = warrior_scores_by_arena[warrior_id]
+        if not scores:
+            continue
+        average_score = statistics.mean(scores)
+        deviation = statistics.pstdev(scores) if len(scores) > 1 else 0.0
+        warrior_stats.append(
+            {
+                "warrior_id": warrior_id,
+                "average": average_score,
+                "stdev": deviation,
+                "appearances": len(scores),
+            }
+        )
+
+    if not warrior_stats:
+        return
+
+    console_log(
+        "\nPer-warrior performance summary:",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    for entry in sorted(
+        warrior_stats,
+        key=lambda data: (
+            -float(data["average"]),
+            float(data["stdev"]),
+            int(data["warrior_id"]),
+        ),
+    ):
+        console_log(
+            "  Warrior {warrior_id}: avg {avg:.2f}, σ {stdev:.2f} across {count} arena(s)".format(
+                warrior_id=entry["warrior_id"],
+                avg=entry["average"],
+                stdev=entry["stdev"],
+                count=entry["appearances"],
+            ),
+            minimum_level=VerbosityLevel.TERSE,
+        )
+
+    consistent_candidates = [
+        entry for entry in warrior_stats if int(entry["appearances"]) > 1
+    ]
+    if not consistent_candidates:
+        consistent_candidates = list(warrior_stats)
+
+    consistent_candidates.sort(
+        key=lambda data: (
+            float(data["stdev"]),
+            -float(data["average"]),
+            int(data["warrior_id"]),
+        )
+    )
+    top_consistent = consistent_candidates[: min(3, len(consistent_candidates))]
+    if top_consistent:
+        console_log(
+            "\nMost consistent performers:",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+        for entry in top_consistent:
+            console_log(
+                "  Warrior {warrior_id}: σ {stdev:.2f} across {count} arena(s) (avg {avg:.2f})".format(
+                    warrior_id=entry["warrior_id"],
+                    stdev=entry["stdev"],
+                    count=entry["appearances"],
+                    avg=entry["average"],
+                ),
+                minimum_level=VerbosityLevel.TERSE,
+            )
+
+
+def _export_final_tournament_results(
+    arena_summaries: Sequence[dict[str, object]], config: EvolverConfig
+) -> None:
+    if not config.final_tournament_csv or not arena_summaries:
+        return
+
+    output_path = config.final_tournament_csv
+    directory = os.path.dirname(output_path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+
+    try:
+        with open(output_path, "w", newline="") as csv_file:
+            fieldnames = ["arena", "warrior_id", "rank", "score"]
+            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+            writer.writeheader()
+            for summary in arena_summaries:
+                arena_id = summary.get("arena")
+                rankings = summary.get("rankings", [])
+                for rank, result in enumerate(rankings, start=1):
+                    warrior_id, score = result
+                    writer.writerow(
+                        {
+                            "arena": arena_id,
+                            "warrior_id": warrior_id,
+                            "rank": rank,
+                            "score": score,
+                        }
+                    )
+        console_log(
+            f"Final tournament results exported to {output_path}",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+    except OSError as exc:
+        console_log(
+            f"Unable to write final tournament CSV '{output_path}': {exc}",
+            minimum_level=VerbosityLevel.TERSE,
+        )
 
 
 def _build_marble_bag(era: int, config: EvolverConfig) -> list[Marble]:
@@ -2645,6 +2817,10 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         help="Force a final tournament once the evolution loop completes",
     )
     parser.add_argument(
+        "--final-tournament-csv",
+        help="Optional path to export final tournament standings as CSV",
+    )
+    parser.add_argument(
         "--seed",
         type=int,
         help="Seed the RNG for reproducible runs",
@@ -2674,6 +2850,13 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         active_config.battle_engine = args.engine
     if args.final_tournament:
         active_config.run_final_tournament = True
+    if args.final_tournament_csv:
+        if not os.path.isabs(args.final_tournament_csv):
+            active_config.final_tournament_csv = os.path.abspath(
+                os.path.join(os.getcwd(), args.final_tournament_csv)
+            )
+        else:
+            active_config.final_tournament_csv = args.final_tournament_csv
 
     set_active_config(active_config)
 
