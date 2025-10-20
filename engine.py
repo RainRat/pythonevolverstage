@@ -1391,7 +1391,7 @@ def handle_archiving(
 
     if config.archive_list[era] != 0 and _rng_int(1, config.archive_list[era]) == 1:
         winlines = storage.get_warrior_lines(arena, winner)
-        archive_filename = f"{_rng_int(1, 9999)}.red"
+        archive_filename = f"{_rng_int(1, (65535-2)}.red"
         create_directory_if_not_exists(archive_dir)
         with open(os.path.join(archive_dir, archive_filename), "w") as handle:
             handle.writelines(winlines)
