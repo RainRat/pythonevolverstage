@@ -62,6 +62,9 @@ _rng_int: Callable[[int, int], int] = random.randint
 _rng_choice: Callable[[Sequence[T]], T] = random.choice  # type: ignore[assignment]
 
 
+MAX_WARRIOR_FILENAME_ID = 65534
+
+
 def configure_rng(
     random_int_func: Callable[[int, int], int],
     random_choice_func: Callable[[Sequence[T]], T],
@@ -960,11 +963,12 @@ def execute_battle(
             os.path.join(arena_dir, f"{cont1}.red"),
             os.path.join(arena_dir, f"{cont2}.red"),
         ]
+
         if engine_name == "pmars":
             candidate_fn = _get_evolverstage_override(
                 "_candidate_pmars_paths", _candidate_pmars_paths
             )
-            executable = resolve_command("pMARS", candidate_fn())
+            engine_label = "pMARS"
             flag_args = {
                 "-r": battlerounds,
                 "-p": config.processes_list[arena],
@@ -973,16 +977,11 @@ def execute_battle(
             }
             if seed is not None:
                 flag_args["-S"] = seed
-            raw_output = run_command(
-                executable,
-                warrior_files,
-                flag_args,
-            )
         else:
             candidate_fn = _get_evolverstage_override(
                 "_candidate_nmars_paths", _candidate_nmars_paths
             )
-            executable = resolve_command("nMars", candidate_fn())
+            engine_label = "nMars"
             flag_args = {
                 "-r": battlerounds,
                 "-p": config.processes_list[arena],
@@ -991,11 +990,13 @@ def execute_battle(
                 "-l": config.readlimit_list[arena],
                 "-w": config.writelimit_list[arena],
             }
-            raw_output = run_command(
-                executable,
-                warrior_files,
-                flag_args,
-            )
+
+        executable = resolve_command(engine_label, candidate_fn())
+        raw_output = run_command(
+            executable,
+            warrior_files,
+            flag_args,
+        )
 
     if raw_output is None:
         raise RuntimeError("Battle engine returned no output")
@@ -1391,7 +1392,7 @@ def handle_archiving(
 
     if config.archive_list[era] != 0 and _rng_int(1, config.archive_list[era]) == 1:
         winlines = storage.get_warrior_lines(arena, winner)
-        archive_filename = f"{_rng_int(1, (65535-2)}.red"
+        archive_filename = f"{_rng_int(1, MAX_WARRIOR_FILENAME_ID)}.red"
         create_directory_if_not_exists(archive_dir)
         with open(os.path.join(archive_dir, archive_filename), "w") as handle:
             handle.writelines(winlines)
@@ -1574,6 +1575,7 @@ __all__ = [
     "weighted_random_number",
     "coremod",
     "corenorm",
+    "MAX_WARRIOR_FILENAME_ID",
     "RedcodeInstruction",
     "parse_redcode_instruction",
     "default_instruction",

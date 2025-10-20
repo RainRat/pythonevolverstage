@@ -40,6 +40,7 @@ from engine import (
     _INTERNAL_ENGINE_MAX_SEED,
     _generate_internal_battle_seed,
     _generate_warrior_lines_until_non_dat,
+    MAX_WARRIOR_FILENAME_ID,
     _rebuild_instruction_tables,
     _run_external_command,
     _should_flush_on_exit,
@@ -328,6 +329,11 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
 
     if active_config.numwarriors is None or active_config.numwarriors <= 0:
         raise ValueError("NUMWARRIORS must be a positive integer.")
+    if active_config.numwarriors > MAX_WARRIOR_FILENAME_ID:
+        raise ValueError(
+            "NUMWARRIORS exceeds the supported maximum of "
+            f"{MAX_WARRIOR_FILENAME_ID}."
+        )
 
     if not active_config.battlerounds_list:
         raise ValueError("BATTLEROUNDS_LIST must contain at least one value.")
@@ -846,12 +852,8 @@ def run_final_tournament(active_config: EvolverConfig):
 
             for idx, cont1 in enumerate(warrior_ids):
                 for cont2 in warrior_ids[idx + 1 :]:
-                    match_seed = (
-                        _stable_internal_battle_seed(
-                            arena, cont1, cont2, final_era_index
-                        )
-                        if active_config.battle_engine == 'internal'
-                        else None
+                    match_seed = _stable_internal_battle_seed(
+                        arena, cont1, cont2, final_era_index
                     )
                     warriors, scores = execute_battle(
                         arena,
@@ -1220,9 +1222,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             )
             console_update_status(progress_line, pending_battle_line)
             battle_seed = (
-                _generate_internal_battle_seed()
-                if seed_enabled and active_config.battle_engine == 'internal'
-                else None
+                _generate_internal_battle_seed() if seed_enabled else None
             )
             warriors, scores = execute_battle(
                 arena_index,
