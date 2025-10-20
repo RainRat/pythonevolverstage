@@ -503,7 +503,9 @@ def load_configuration(path: str) -> EvolverConfig:
         if data_type == 'float':
             return float(value)
         if data_type == 'bool':
-            return parser['DEFAULT'].getboolean(key)
+            if key in parser['DEFAULT']:
+                return parser['DEFAULT'].getboolean(key)
+            return default
         if data_type == 'int_list':
             return [int(item.strip()) for item in value.split(',') if item.strip()]
         if data_type == 'bool_list':
