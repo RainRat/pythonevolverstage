@@ -1,34 +1,89 @@
 import argparse
-import random
+import configparser
+import csv
 import os
+import random
+import shutil
+import statistics
 import sys
 import time
-import configparser
-import subprocess
-import shutil
-import hashlib
-import statistics
-from enum import Enum
-import csv
-import ctypes
-import platform
-from pathlib import Path
-import re
 import warnings
-from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from typing import (
-    Callable,
-    Deque,
-    Iterable,
-    List,
-    Literal,
-    Optional,
-    Sequence,
-    Tuple,
-    TypeVar,
-    Union,
-    cast,
+from typing import List, Optional, Sequence, Tuple, TypeVar, Union, cast
+
+from engine import (
+    ArchivingEvent,
+    ArchivingResult,
+    Marble,
+    MUTATION_HANDLERS,
+    RedcodeInstruction,
+    ADDRESSING_MODES,
+    BASE_ADDRESSING_MODES,
+    CPP_WORKER_LIB,
+    CPP_WORKER_MAX_CORE_SIZE,
+    CPP_WORKER_MAX_CYCLES,
+    CPP_WORKER_MAX_PROCESSES,
+    CPP_WORKER_MAX_ROUNDS,
+    CPP_WORKER_MAX_WARRIOR_LENGTH,
+    CPP_WORKER_MIN_CORE_SIZE,
+    CPP_WORKER_MIN_DISTANCE,
+    GENERATION_OPCODE_POOL,
+    MutationHandler,
+    _apply_instruction_library,
+    _apply_magic_number_mutation,
+    _apply_major_mutation,
+    _apply_micro_mutation,
+    _apply_minor_mutation,
+    _apply_nab_instruction,
+    _candidate_nmars_paths,
+    _candidate_pmars_paths,
+    _INTERNAL_ENGINE_MAX_SEED,
+    _generate_internal_battle_seed,
+    _generate_warrior_lines_until_non_dat,
+    _rebuild_instruction_tables,
+    _run_external_command,
+    _should_flush_on_exit,
+    _should_persist_to_disk,
+    _stable_internal_battle_seed,
+    _resolve_external_command,
+    breed_offspring,
+    canonicalize_opcode,
+    choose_random_modifier,
+    choose_random_mode,
+    choose_random_opcode,
+    create_arena_storage,
+    create_directory_if_not_exists,
+    default_instruction,
+    determine_winner_and_loser,
+    execute_battle,
+    format_redcode_instruction,
+    generate_random_instruction,
+    get_arena_storage,
+    handle_archiving,
+    instruction_to_line,
+    parse_instruction_or_default,
+    parse_redcode_instruction,
+    run_internal_battle,
+    sanitize_instruction,
+    select_opponents,
+    set_arena_storage,
+    set_engine_config,
+    weighted_random_number,
+    configure_rng,
+)
+from ui import (
+    BattleStatisticsTracker,
+    ConsoleInterface,
+    PseudoGraphicalConsole,
+    SimpleConsole,
+    StatusDisplay,
+    VerbosityLevel,
+    close_console,
+    console_clear_status,
+    console_log,
+    console_update_status,
+    get_console,
+    set_console_verbosity,
 )
 
 
@@ -83,330 +138,14 @@ class _ConfigNotLoaded:
 
 config = cast(EvolverConfig, _ConfigNotLoaded())
 
-
 _RNG_SEQUENCE: Optional[list[int]] = None
 _RNG_INDEX: int = 0
-
-class VerbosityLevel(Enum):
-    TERSE = "terse"
-    DEFAULT = "default"
-    VERBOSE = "verbose"
-    PSEUDO_GRAPHICAL = "pseudo-graphical"
-
-    def order(self) -> int:
-        ordering = {
-            VerbosityLevel.TERSE: 0,
-            VerbosityLevel.DEFAULT: 1,
-            VerbosityLevel.VERBOSE: 2,
-            VerbosityLevel.PSEUDO_GRAPHICAL: 1,
-        }
-        return ordering[self]
-
-
-_VERBOSITY_LEVEL: VerbosityLevel = VerbosityLevel.DEFAULT
-
-
-_STATUS_UPDATE_MIN_INTERVAL = 0.1
-
-
-class BattleStatisticsTracker:
-    """Track simple statistics derived from battle outcomes."""
-
-    def __init__(self) -> None:
-        self._current_streaks: dict[int, int] = {}
-        self._longest_streak: int = 0
-        self._longest_streak_warrior: Optional[int] = None
-
-    def record_battle(self, winner: int, loser: int, was_draw: bool) -> None:
-        if was_draw:
-            self._current_streaks[winner] = 0
-            self._current_streaks[loser] = 0
-            return
-
-        current = self._current_streaks.get(winner, 0) + 1
-        self._current_streaks[winner] = current
-        self._current_streaks[loser] = 0
-
-        if current > self._longest_streak:
-            self._longest_streak = current
-            self._longest_streak_warrior = winner
-
-    @property
-    def longest_streak(self) -> Tuple[Optional[int], int]:
-        return self._longest_streak_warrior, self._longest_streak
-
-
-class ConsoleInterface:
-    def __init__(self, level: VerbosityLevel) -> None:
-        self.level = level
-        self.tracker = BattleStatisticsTracker()
-
-    def should_log(self, minimum_level: VerbosityLevel) -> bool:
-        if self.level == VerbosityLevel.PSEUDO_GRAPHICAL:
-            return minimum_level in (VerbosityLevel.TERSE, VerbosityLevel.DEFAULT)
-        return self.level.order() >= minimum_level.order()
-
-    def log(self, message: str, *, minimum_level: VerbosityLevel = VerbosityLevel.DEFAULT, flush: bool = False) -> None:
-        raise NotImplementedError
-
-    def update_status(self, progress_line: str, detail_line: str) -> None:
-        raise NotImplementedError
-
-    def clear_status(self) -> None:
-        raise NotImplementedError
-
-    def record_battle(self, winner: int, loser: int, was_draw: bool) -> None:
-        self.tracker.record_battle(winner, loser, was_draw)
-
-    def close(self) -> None:
-        pass
-
-
-class StatusDisplay:
-    """Utility for maintaining a two-line rolling status output."""
-
-    def __init__(self) -> None:
-        self._active_lines = 0
-        self._last_update_time = 0.0
-        self._last_lines: Optional[Tuple[str, str]] = None
-
-    def _stream(self):
-        return sys.stdout
-
-    def _supports_ansi(self, stream) -> bool:
-        return bool(getattr(stream, "isatty", lambda: False)())
-
-    def update(self, line1: str, line2: str) -> None:
-        lines_tuple = (line1, line2)
-        if self._last_lines == lines_tuple:
-            return
-
-        now = time.monotonic()
-        if self._last_update_time:
-            elapsed = now - self._last_update_time
-            if elapsed < _STATUS_UPDATE_MIN_INTERVAL:
-                return
-
-        self._last_update_time = now
-
-        stream = self._stream()
-        supports_ansi = self._supports_ansi(stream)
-        lines = [line1, line2]
-
-        if supports_ansi and self._active_lines:
-            stream.write(f"\x1b[{self._active_lines}F")
-
-        for line in lines:
-            if supports_ansi:
-                stream.write("\x1b[2K")
-                stream.write(line)
-                stream.write("\n")
-            else:
-                stream.write(line + "\n")
-
-        stream.flush()
-        self._active_lines = len(lines) if supports_ansi else 0
-        self._last_lines = lines_tuple
-
-    def clear(self) -> None:
-        if not self._active_lines:
-            self._last_lines = None
-            self._last_update_time = 0.0
-            return
-
-        stream = self._stream()
-        supports_ansi = self._supports_ansi(stream)
-        if not supports_ansi:
-            self._active_lines = 0
-            self._last_lines = None
-            self._last_update_time = 0.0
-            return
-
-        stream.write(f"\x1b[{self._active_lines}F")
-        for index in range(self._active_lines):
-            stream.write("\x1b[2K")
-            if index < self._active_lines - 1:
-                stream.write("\x1b[1E")
-        stream.write("\r")
-        stream.flush()
-        self._active_lines = 0
-        self._last_lines = None
-        self._last_update_time = 0.0
-
-
-class SimpleConsole(ConsoleInterface):
-    def __init__(self, level: VerbosityLevel) -> None:
-        super().__init__(level)
-        self._status_display = StatusDisplay()
-
-    def log(self, message: str, *, minimum_level: VerbosityLevel = VerbosityLevel.DEFAULT, flush: bool = False) -> None:
-        if not self.should_log(minimum_level):
-            return
-        print(message, flush=flush)
-
-    def update_status(self, progress_line: str, detail_line: str) -> None:
-        if self.level == VerbosityLevel.PSEUDO_GRAPHICAL:
-            return
-        if self.level == VerbosityLevel.TERSE:
-            detail_line = ""
-        self._status_display.update(progress_line, detail_line)
-
-    def clear_status(self) -> None:
-        if self.level == VerbosityLevel.PSEUDO_GRAPHICAL:
-            return
-        self._status_display.clear()
-
-    def close(self) -> None:
-        self.clear_status()
-
-
-class PseudoGraphicalConsole(ConsoleInterface):
-    def __init__(self) -> None:
-        import curses
-
-        super().__init__(VerbosityLevel.PSEUDO_GRAPHICAL)
-        self._curses = curses
-        self._screen = curses.initscr()
-        curses.noecho()
-        curses.cbreak()
-        self._screen.keypad(True)
-        self._log_lines: Deque[str] = deque(maxlen=200)
-        self._progress_line = ""
-        self._detail_line = ""
-
-    def log(self, message: str, *, minimum_level: VerbosityLevel = VerbosityLevel.DEFAULT, flush: bool = False) -> None:
-        if not self.should_log(minimum_level):
-            return
-        self._log_lines.append(message)
-        self._refresh()
-
-    def update_status(self, progress_line: str, detail_line: str) -> None:
-        self._progress_line = progress_line
-        self._detail_line = detail_line
-        self._refresh()
-
-    def clear_status(self) -> None:
-        self._progress_line = ""
-        self._detail_line = ""
-        self._refresh()
-
-    def _refresh(self) -> None:
-        height, width = self._screen.getmaxyx()
-        self._screen.erase()
-        row = 0
-
-        header_lines = []
-        if self._progress_line:
-            header_lines.append(self._progress_line)
-        if self._detail_line:
-            header_lines.append(self._detail_line)
-
-        longest_warrior, longest_streak = self.tracker.longest_streak
-        if longest_warrior is not None and height - len(header_lines) > 0:
-            header_lines.append(
-                f"Longest streak: Warrior {longest_warrior} ({longest_streak} wins)"
-            )
-
-        for line in header_lines:
-            if row >= height:
-                break
-            self._screen.addnstr(row, 0, line, width - 1)
-            row += 1
-
-        remaining_rows = height - row
-        if remaining_rows <= 0:
-            self._screen.refresh()
-            return
-
-        log_lines = list(self._log_lines)[-remaining_rows:]
-        for line in log_lines:
-            if row >= height:
-                break
-            self._screen.addnstr(row, 0, line, width - 1)
-            row += 1
-
-        self._screen.refresh()
-
-    def close(self) -> None:
-        try:
-            self.clear_status()
-        finally:
-            self._curses.nocbreak()
-            self._screen.keypad(False)
-            self._curses.echo()
-            self._curses.endwin()
-        for line in self._log_lines:
-            print(line)
-
-
-_console_manager: ConsoleInterface = SimpleConsole(VerbosityLevel.DEFAULT)
-
-
-def get_console() -> ConsoleInterface:
-    return _console_manager
-
-
-def set_console_verbosity(level: VerbosityLevel) -> VerbosityLevel:
-    global _console_manager, _VERBOSITY_LEVEL
-
-    previous_manager = _console_manager
-
-    if isinstance(previous_manager, PseudoGraphicalConsole):
-        try:
-            previous_manager.close()
-        except Exception:
-            pass
-
-    if level == VerbosityLevel.PSEUDO_GRAPHICAL:
-        try:
-            _console_manager = PseudoGraphicalConsole()
-        except Exception as exc:
-            warnings.warn(
-                f"Unable to start pseudo-graphical console: {exc}. Falling back to default output.",
-                RuntimeWarning,
-            )
-            level = VerbosityLevel.DEFAULT
-            _console_manager = SimpleConsole(level)
-    else:
-        _console_manager = SimpleConsole(level)
-
-    _VERBOSITY_LEVEL = level
-    return _VERBOSITY_LEVEL
-
-
-def close_console() -> None:
-    try:
-        _console_manager.close()
-    except Exception:
-        pass
-
-
-def console_log(
-    message: str,
-    *,
-    minimum_level: VerbosityLevel = VerbosityLevel.DEFAULT,
-    flush: bool = False,
-) -> None:
-    get_console().log(message, minimum_level=minimum_level, flush=flush)
-
-
-def console_update_status(progress_line: str, detail_line: str) -> None:
-    get_console().update_status(progress_line, detail_line)
-
-
-def console_clear_status() -> None:
-    get_console().clear_status()
-
 
 T = TypeVar("T")
 
 
 def set_rng_sequence(sequence: list[int]) -> None:
-    """Set a deterministic RNG sequence for tests.
-
-    Passing an empty list disables deterministic behaviour and returns to the
-    standard :mod:`random` generator.
-    """
+    """Set a deterministic RNG sequence for tests."""
 
     global _RNG_SEQUENCE, _RNG_INDEX
     if sequence:
@@ -417,12 +156,7 @@ def set_rng_sequence(sequence: list[int]) -> None:
 
 
 def get_random_int(min_val: int, max_val: int) -> int:
-    """Return a random integer within ``[min_val, max_val]``.
-
-    When a deterministic sequence is configured via :func:`set_rng_sequence`,
-    this function returns the next value from that sequence and validates that
-    it lies within the requested range.
-    """
+    """Return a random integer within ``[min_val, max_val]``."""
 
     if min_val > max_val:
         raise ValueError("min_val cannot be greater than max_val")
@@ -442,10 +176,6 @@ def get_random_int(min_val: int, max_val: int) -> int:
     return random.randint(min_val, max_val)
 
 
-def _log_verbose(message: str) -> None:
-    console_log(message, minimum_level=VerbosityLevel.VERBOSE)
-
-
 def _get_random_choice(sequence: Sequence[T]) -> T:
     if not sequence:
         raise ValueError("Cannot choose from an empty sequence")
@@ -453,25 +183,32 @@ def _get_random_choice(sequence: Sequence[T]) -> T:
     return sequence[index]
 
 
+configure_rng(get_random_int, _get_random_choice)
+
+
+def _log_verbose(message: str) -> None:
+    console_log(message, minimum_level=VerbosityLevel.VERBOSE)
+
+
 def set_active_config(new_config: EvolverConfig) -> None:
     global config
     config = new_config
-    _rebuild_instruction_tables(new_config)
+    set_engine_config(new_config)
 
 
 def get_active_config() -> EvolverConfig:
     return config
 
 
-def _validate_arena_parameters(idx: int, config: EvolverConfig) -> None:
-    core_size = config.coresize_list[idx]
-    sanitize_limit = config.sanitize_list[idx]
-    cycles_limit = config.cycles_list[idx]
-    process_limit = config.processes_list[idx]
-    warrior_length = config.warlen_list[idx]
-    min_distance = config.wardistance_list[idx]
-    read_limit = config.readlimit_list[idx]
-    write_limit = config.writelimit_list[idx]
+def _validate_arena_parameters(idx: int, active_config: EvolverConfig) -> None:
+    core_size = active_config.coresize_list[idx]
+    sanitize_limit = active_config.sanitize_list[idx]
+    cycles_limit = active_config.cycles_list[idx]
+    process_limit = active_config.processes_list[idx]
+    warrior_length = active_config.warlen_list[idx]
+    min_distance = active_config.wardistance_list[idx]
+    read_limit = active_config.readlimit_list[idx]
+    write_limit = active_config.writelimit_list[idx]
 
     max_min_distance = core_size // 2
 
@@ -533,38 +270,38 @@ def _validate_arena_parameters(idx: int, config: EvolverConfig) -> None:
         )
 
 
-def validate_config(config: EvolverConfig, config_path: Optional[str] = None) -> None:
-    if config.last_arena is None:
+def validate_config(active_config: EvolverConfig, config_path: Optional[str] = None) -> None:
+    if active_config.last_arena is None:
         raise ValueError("LAST_ARENA must be specified in the configuration.")
 
     valid_engines = {"nmars", "internal", "pmars"}
-    if config.battle_engine not in valid_engines:
+    if active_config.battle_engine not in valid_engines:
         raise ValueError(
             "BATTLE_ENGINE must be one of "
             + ", ".join(sorted(valid_engines))
-            + f" (got {config.battle_engine!r})."
+            + f" (got {active_config.battle_engine!r})."
         )
 
-    arena_count = config.last_arena + 1
+    arena_count = active_config.last_arena + 1
     if arena_count <= 0:
         raise ValueError(
             "LAST_ARENA must be greater than or equal to 0 (implies at least one arena)."
         )
 
-    if config.arena_checkpoint_interval <= 0:
+    if active_config.arena_checkpoint_interval <= 0:
         raise ValueError(
             "ARENA_CHECKPOINT_INTERVAL must be a positive integer."
         )
 
     per_arena_lists = {
-        "CORESIZE_LIST": config.coresize_list,
-        "SANITIZE_LIST": config.sanitize_list,
-        "CYCLES_LIST": config.cycles_list,
-        "PROCESSES_LIST": config.processes_list,
-        "READLIMIT_LIST": config.readlimit_list,
-        "WRITELIMIT_LIST": config.writelimit_list,
-        "WARLEN_LIST": config.warlen_list,
-        "WARDISTANCE_LIST": config.wardistance_list,
+        "CORESIZE_LIST": active_config.coresize_list,
+        "SANITIZE_LIST": active_config.sanitize_list,
+        "CYCLES_LIST": active_config.cycles_list,
+        "PROCESSES_LIST": active_config.processes_list,
+        "READLIMIT_LIST": active_config.readlimit_list,
+        "WRITELIMIT_LIST": active_config.writelimit_list,
+        "WARLEN_LIST": active_config.warlen_list,
+        "WARDISTANCE_LIST": active_config.wardistance_list,
     }
 
     extra_length_lists: list[str] = []
@@ -587,15 +324,15 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
         )
 
     for idx in range(arena_count):
-        _validate_arena_parameters(idx, config)
+        _validate_arena_parameters(idx, active_config)
 
-    if config.numwarriors is None or config.numwarriors <= 0:
+    if active_config.numwarriors is None or active_config.numwarriors <= 0:
         raise ValueError("NUMWARRIORS must be a positive integer.")
 
-    if not config.battlerounds_list:
+    if not active_config.battlerounds_list:
         raise ValueError("BATTLEROUNDS_LIST must contain at least one value.")
 
-    for idx, rounds in enumerate(config.battlerounds_list, start=1):
+    for idx, rounds in enumerate(active_config.battlerounds_list, start=1):
         if rounds < 1:
             raise ValueError(
                 f"BATTLEROUNDS_LIST[{idx}] must be at least 1 (got {rounds})."
@@ -606,21 +343,21 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
                 f"(got {rounds})."
             )
 
-    era_count = len(config.battlerounds_list)
+    era_count = len(active_config.battlerounds_list)
 
     era_lists = {
-        "NOTHING_LIST": config.nothing_list,
-        "RANDOM_LIST": config.random_list,
-        "NAB_LIST": config.nab_list,
-        "MINI_MUT_LIST": config.mini_mut_list,
-        "MICRO_MUT_LIST": config.micro_mut_list,
-        "LIBRARY_LIST": config.library_list,
-        "MAGIC_NUMBER_LIST": config.magic_number_list,
-        "ARCHIVE_LIST": config.archive_list,
-        "UNARCHIVE_LIST": config.unarchive_list,
-        "CROSSOVERRATE_LIST": config.crossoverrate_list,
-        "TRANSPOSITIONRATE_LIST": config.transpositionrate_list,
-        "PREFER_WINNER_LIST": config.prefer_winner_list,
+        "NOTHING_LIST": active_config.nothing_list,
+        "RANDOM_LIST": active_config.random_list,
+        "NAB_LIST": active_config.nab_list,
+        "MINI_MUT_LIST": active_config.mini_mut_list,
+        "MICRO_MUT_LIST": active_config.micro_mut_list,
+        "LIBRARY_LIST": active_config.library_list,
+        "MAGIC_NUMBER_LIST": active_config.magic_number_list,
+        "ARCHIVE_LIST": active_config.archive_list,
+        "UNARCHIVE_LIST": active_config.unarchive_list,
+        "CROSSOVERRATE_LIST": active_config.crossoverrate_list,
+        "TRANSPOSITIONRATE_LIST": active_config.transpositionrate_list,
+        "PREFER_WINNER_LIST": active_config.prefer_winner_list,
     }
 
     for name, values in era_lists.items():
@@ -631,13 +368,13 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
             )
 
     marble_probability_limits = {
-        "NOTHING_LIST": config.nothing_list,
-        "RANDOM_LIST": config.random_list,
-        "NAB_LIST": config.nab_list,
-        "MINI_MUT_LIST": config.mini_mut_list,
-        "MICRO_MUT_LIST": config.micro_mut_list,
-        "LIBRARY_LIST": config.library_list,
-        "MAGIC_NUMBER_LIST": config.magic_number_list,
+        "NOTHING_LIST": active_config.nothing_list,
+        "RANDOM_LIST": active_config.random_list,
+        "NAB_LIST": active_config.nab_list,
+        "MINI_MUT_LIST": active_config.mini_mut_list,
+        "MICRO_MUT_LIST": active_config.micro_mut_list,
+        "LIBRARY_LIST": active_config.library_list,
+        "MAGIC_NUMBER_LIST": active_config.magic_number_list,
     }
 
     for name, values in marble_probability_limits.items():
@@ -658,20 +395,20 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
                 f"{era_index + 1} must sum to a positive value."
             )
 
-    for idx, value in enumerate(config.crossoverrate_list, start=1):
+    for idx, value in enumerate(active_config.crossoverrate_list, start=1):
         if value < 1:
             raise ValueError(
                 f"CROSSOVERRATE_LIST[{idx}] must be at least 1 (got {value})."
             )
 
-    for idx, value in enumerate(config.transpositionrate_list, start=1):
+    for idx, value in enumerate(active_config.transpositionrate_list, start=1):
         if value < 1:
             raise ValueError(
                 f"TRANSPOSITIONRATE_LIST[{idx}] must be at least 1 (got {value})."
             )
 
-    base_path = getattr(config, "base_path", None) or os.getcwd()
-    if config_path and not getattr(config, "base_path", None):
+    base_path = getattr(active_config, "base_path", None) or os.getcwd()
+    if config_path and not getattr(active_config, "base_path", None):
         config_directory = os.path.dirname(os.path.abspath(config_path))
         if config_directory:
             base_path = config_directory
@@ -689,7 +426,7 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
         directory for directory in required_directories if not os.path.isdir(directory)
     ]
 
-    if missing_required_directories and config.alreadyseeded:
+    if missing_required_directories and active_config.alreadyseeded:
         missing_arenas = [
             directory
             for directory in missing_required_directories
@@ -702,9 +439,9 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
                 "initialise new warriors.",
                 minimum_level=VerbosityLevel.TERSE,
             )
-            config.alreadyseeded = False
+            active_config.alreadyseeded = False
 
-        if config.alreadyseeded and archive_dir in missing_required_directories:
+        if active_config.alreadyseeded and archive_dir in missing_required_directories:
             try:
                 os.makedirs(archive_dir, exist_ok=True)
             except OSError as exc:
@@ -724,19 +461,19 @@ def validate_config(config: EvolverConfig, config_path: Optional[str] = None) ->
                 raise PermissionError(
                     f"Missing permissions to create directory '{directory}'."
                 )
-            if config.alreadyseeded:
+            if active_config.alreadyseeded:
                 raise FileNotFoundError(
                     f"Required directory '{directory}' does not exist but ALREADYSEEDED is true."
                 )
 
-    if config.clock_time is None or config.clock_time <= 0:
+    if active_config.clock_time is None or active_config.clock_time <= 0:
         raise ValueError("CLOCK_TIME must be a positive number of hours.")
 
-    if config.instr_modes:
+    if active_config.instr_modes:
         invalid_modes = sorted(
             {
                 mode.strip()
-                for mode in config.instr_modes
+                for mode in active_config.instr_modes
                 if mode.strip() and mode.strip() not in BASE_ADDRESSING_MODES
             }
         )
@@ -761,86 +498,54 @@ def load_configuration(path: str) -> EvolverConfig:
         value = parser['DEFAULT'].get(key, fallback=default)
         if value in (None, ''):
             return default
+        if data_type == 'int':
+            return int(value)
+        if data_type == 'float':
+            return float(value)
+        if data_type == 'bool':
+            if key in parser['DEFAULT']:
+                return parser['DEFAULT'].getboolean(key)
+            return default
+        if data_type == 'int_list':
+            return [int(item.strip()) for item in value.split(',') if item.strip()]
+        if data_type == 'bool_list':
+            return [item.strip().lower() == 'true' for item in value.split(',') if item.strip()]
+        if data_type == 'string_list':
+            return [item.strip() for item in value.split(',') if item.strip()]
+        if data_type == 'str':
+            return value
+        raise ValueError(f"Unsupported data type: {data_type}")
 
-        data_type_mapping = {
-            'int': int,
-            'int_list': lambda x: [int(i) for i in x.split(',')],
-            'bool_list': lambda x: [s.strip().lower() == 'true' for s in x.split(',') if s.strip()],
-            'string_list': lambda x: [i.strip() for i in x.split(',') if i.strip()],
-            'bool': lambda x: parser['DEFAULT'].getboolean(key, fallback=default),
-            'float': float,
-        }
-        return data_type_mapping.get(data_type, lambda x: x.strip() or None)(value)
-
-    coresize_list = _read_config('CORESIZE_LIST', data_type='int_list') or []
-    sanitize_list = _read_config('SANITIZE_LIST', data_type='int_list') or []
-    cycles_list = _read_config('CYCLES_LIST', data_type='int_list') or []
-    processes_list = _read_config('PROCESSES_LIST', data_type='int_list') or []
-    readlimit_list = _read_config('READLIMIT_LIST', data_type='int_list')
-    writelimit_list = _read_config('WRITELIMIT_LIST', data_type='int_list')
-    warlen_list = _read_config('WARLEN_LIST', data_type='int_list') or []
-    wardistance_list = _read_config('WARDISTANCE_LIST', data_type='int_list') or []
-
-    if not readlimit_list:
-        readlimit_list = list(coresize_list)
-    if not writelimit_list:
-        writelimit_list = list(coresize_list)
-
-    battle_engine = _read_config('BATTLE_ENGINE', data_type='string', default='nmars')
-    if battle_engine:
-        battle_engine = battle_engine.strip().lower()
-        if battle_engine == 'external':
-            battle_engine = 'nmars'
-    else:
-        battle_engine = 'nmars'
-
-    battle_log_file = _read_config('BATTLE_LOG_FILE', data_type='string')
+    battle_log_file = _read_config('BATTLE_LOG_FILE', data_type='str')
     if battle_log_file:
-        if not os.path.isabs(battle_log_file):
-            battle_log_file = os.path.abspath(os.path.join(base_path, battle_log_file))
-    else:
-        battle_log_file = None
+        battle_log_file = os.path.abspath(os.path.join(base_path, battle_log_file))
 
-    final_tournament_csv = _read_config(
-        'FINAL_TOURNAMENT_CSV', data_type='string'
-    )
+    final_tournament_csv = _read_config('FINAL_TOURNAMENT_CSV', data_type='str')
     if final_tournament_csv:
-        if not os.path.isabs(final_tournament_csv):
-            final_tournament_csv = os.path.abspath(
-                os.path.join(base_path, final_tournament_csv)
-            )
-    else:
-        final_tournament_csv = None
+        final_tournament_csv = os.path.abspath(
+            os.path.join(base_path, final_tournament_csv)
+        )
 
-    library_path = _read_config('LIBRARY_PATH', data_type='string')
+    library_path = _read_config('LIBRARY_PATH', data_type='str')
     if library_path:
-        if not os.path.isabs(library_path):
-            library_path = os.path.abspath(os.path.join(base_path, library_path))
-    else:
-        library_path = None
+        library_path = os.path.abspath(os.path.join(base_path, library_path))
 
-    config = EvolverConfig(
-        battle_engine=battle_engine,
+    active_config = EvolverConfig(
+        battle_engine=_read_config('BATTLE_ENGINE', data_type='str', default='internal') or 'internal',
         last_arena=_read_config('LAST_ARENA', data_type='int'),
         base_path=base_path,
-        coresize_list=coresize_list,
-        sanitize_list=sanitize_list,
-        cycles_list=cycles_list,
-        processes_list=processes_list,
-        readlimit_list=readlimit_list,
-        writelimit_list=writelimit_list,
-        warlen_list=warlen_list,
-        wardistance_list=wardistance_list,
+        coresize_list=_read_config('CORESIZE_LIST', data_type='int_list') or [],
+        sanitize_list=_read_config('SANITIZE_LIST', data_type='int_list') or [],
+        cycles_list=_read_config('CYCLES_LIST', data_type='int_list') or [],
+        processes_list=_read_config('PROCESSES_LIST', data_type='int_list') or [],
+        readlimit_list=_read_config('READLIMIT_LIST', data_type='int_list') or [],
+        writelimit_list=_read_config('WRITELIMIT_LIST', data_type='int_list') or [],
+        warlen_list=_read_config('WARLEN_LIST', data_type='int_list') or [],
+        wardistance_list=_read_config('WARDISTANCE_LIST', data_type='int_list') or [],
         numwarriors=_read_config('NUMWARRIORS', data_type='int'),
-        alreadyseeded=_read_config('ALREADYSEEDED', data_type='bool'),
-        use_in_memory_arenas=_read_config(
-            'IN_MEMORY_ARENAS', data_type='bool', default=False
-        )
-        or False,
-        arena_checkpoint_interval=_read_config(
-            'ARENA_CHECKPOINT_INTERVAL', data_type='int', default=10000
-        )
-        or 10000,
+        alreadyseeded=_read_config('ALREADYSEEDED', data_type='bool', default=False) or False,
+        use_in_memory_arenas=_read_config('IN_MEMORY_ARENAS', data_type='bool', default=False) or False,
+        arena_checkpoint_interval=_read_config('ARENA_CHECKPOINT_INTERVAL', data_type='int', default=10000) or 10000,
         clock_time=_read_config('CLOCK_TIME', data_type='float'),
         battle_log_file=battle_log_file,
         final_era_only=_read_config('FINAL_ERA_ONLY', data_type='bool'),
@@ -864,13 +569,20 @@ def load_configuration(path: str) -> EvolverConfig:
         run_final_tournament=_read_config('RUN_FINAL_TOURNAMENT', data_type='bool', default=False) or False,
         final_tournament_csv=final_tournament_csv,
     )
-    validate_config(config, config_path=path)
-    return config
+    if not active_config.readlimit_list:
+        active_config.readlimit_list = list(active_config.coresize_list)
+    if not active_config.writelimit_list:
+        active_config.writelimit_list = list(active_config.coresize_list)
+
+    validate_config(active_config, config_path=path)
+    return active_config
+
 
 class DataLogger:
-    def __init__(self, filename):
+    def __init__(self, filename: Optional[str]):
         self.filename = filename
         self.fieldnames = ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with']
+
     def log_data(self, **kwargs):
         if self.filename:
             with open(self.filename, 'a', newline='') as file:
@@ -881,8 +593,6 @@ class DataLogger:
 
 
 def _count_archive_warriors(base_path: str) -> int:
-    """Return the number of warriors currently present in the archive folder."""
-
     archive_dir = os.path.join(base_path, "archive")
     try:
         entries = os.listdir(archive_dir)
@@ -906,8 +616,6 @@ def _count_archive_warriors(base_path: str) -> int:
 
 
 def _count_instruction_library_entries(library_path: Optional[str]) -> int:
-    """Return the count of instructions available in the configured library."""
-
     if not library_path:
         return 0
 
@@ -928,15 +636,13 @@ def _count_instruction_library_entries(library_path: Optional[str]) -> int:
         return 0
 
 
-def _print_run_configuration_summary(config: EvolverConfig) -> None:
-    """Display a high-level overview of the current run configuration."""
-
-    log_display = config.battle_log_file if config.battle_log_file else "Disabled"
-    arena_count = config.last_arena + 1 if config.last_arena is not None else 0
-    archive_count = _count_archive_warriors(config.base_path)
-    library_entries = _count_instruction_library_entries(config.library_path)
-    if config.library_path:
-        library_display = f"{library_entries} entries from {config.library_path}"
+def _print_run_configuration_summary(active_config: EvolverConfig) -> None:
+    log_display = active_config.battle_log_file if active_config.battle_log_file else "Disabled"
+    arena_count = active_config.last_arena + 1 if active_config.last_arena is not None else 0
+    archive_count = _count_archive_warriors(active_config.base_path)
+    library_entries = _count_instruction_library_entries(active_config.library_path)
+    if active_config.library_path:
+        library_display = f"{library_entries} entries from {active_config.library_path}"
     else:
         library_display = f"{library_entries} entries (no library configured)"
 
@@ -946,13 +652,13 @@ def _print_run_configuration_summary(config: EvolverConfig) -> None:
     )
     console_log(f"  Arenas: {arena_count}", minimum_level=VerbosityLevel.TERSE)
     console_log(
-        f"  Battle engine: {config.battle_engine}",
+        f"  Battle engine: {active_config.battle_engine}",
         minimum_level=VerbosityLevel.TERSE,
     )
-    if config.use_in_memory_arenas:
+    if active_config.use_in_memory_arenas:
         storage_display = (
             "In-memory (checkpoint every "
-            f"{config.arena_checkpoint_interval} battles)"
+            f"{active_config.arena_checkpoint_interval} battles)"
         )
     else:
         storage_display = "On-disk"
@@ -961,19 +667,11 @@ def _print_run_configuration_summary(config: EvolverConfig) -> None:
         minimum_level=VerbosityLevel.TERSE,
     )
     console_log(
-        f"  Archived warriors: {archive_count}",
-        minimum_level=VerbosityLevel.TERSE,
-    )
-    console_log(
-        f"  Instruction library: {library_display}",
-        minimum_level=VerbosityLevel.TERSE,
-    )
-    console_log(
         "  Final tournament enabled: "
-        f"{'Yes' if config.run_final_tournament else 'No'}",
+        f"{'Yes' if active_config.run_final_tournament else 'No'}",
         minimum_level=VerbosityLevel.TERSE,
     )
-    csv_display = config.final_tournament_csv or "Disabled"
+    csv_display = active_config.final_tournament_csv or "Disabled"
     console_log(
         f"  Final tournament CSV export: {csv_display}",
         minimum_level=VerbosityLevel.TERSE,
@@ -986,8 +684,6 @@ def _print_evolution_statistics(
     total_battles: int,
     runtime_seconds: float,
 ) -> None:
-    """Print aggregated statistics captured during the evolution loop."""
-
     console_log("Evolution statistics:", minimum_level=VerbosityLevel.TERSE)
     if not battles_per_era:
         console_log("  No battles were executed.", minimum_level=VerbosityLevel.TERSE)
@@ -1010,1243 +706,6 @@ def _print_evolution_statistics(
     else:
         console_log("  Approximate speed: n/a", minimum_level=VerbosityLevel.TERSE)
     console_log("", minimum_level=VerbosityLevel.TERSE)
-
-class Marble(Enum):
-  DO_NOTHING = 0
-  MAJOR_MUTATION = 1
-  NAB_INSTRUCTION = 2
-  MINOR_MUTATION = 3
-  MICRO_MUTATION = 4
-  INSTRUCTION_LIBRARY = 5
-  MAGIC_NUMBER_MUTATION = 6
-
-# --- C++ Worker Library Loading ---
-CPP_WORKER_LIB = None
-
-CPP_WORKER_MIN_DISTANCE = 0
-# Matches the C++ worker's bounds in validate_battle_parameters.
-CPP_WORKER_MIN_CORE_SIZE = 2
-CPP_WORKER_MAX_CORE_SIZE = 262_144
-CPP_WORKER_MAX_CYCLES = 5_000_000
-CPP_WORKER_MAX_PROCESSES = 131_072
-CPP_WORKER_MAX_WARRIOR_LENGTH = CPP_WORKER_MAX_CORE_SIZE
-CPP_WORKER_MAX_ROUNDS = 100_000
-
-
-def _worker_library_extension() -> str:
-    system = platform.system()
-    if system == "Windows":
-        return ".dll"
-    if system == "Darwin":
-        return ".dylib"
-    return ".so"
-
-
-def _deduplicate_paths(candidates: Iterable[Path]) -> list[Path]:
-    seen: set[str] = set()
-    unique_candidates: list[Path] = []
-    for candidate in candidates:
-        expanded = candidate.expanduser()
-        try:
-            key_path = expanded if expanded.is_absolute() else expanded.resolve(strict=False)
-        except RuntimeError:
-            key_path = expanded
-        key = str(key_path)
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_candidates.append(expanded)
-    return unique_candidates
-
-
-def _find_command_candidates(
-    name: str,
-    env_var: str,
-    *,
-    use_shutil: bool = True,
-    project_dirs: Sequence[Path | str] | None = None,
-    project_parent_dirs: Sequence[Path | str] | None = None,
-    base_dirs: Sequence[Path | str] | None = None,
-    additional_dirs: Sequence[Path | str] | None = None,
-    include_plain_name: bool = True,
-) -> list[Path]:
-    module_dir = Path(__file__).resolve().parent
-    project_root = module_dir.parent
-    candidates: list[Path] = []
-
-    env_override = os.environ.get(env_var)
-    if env_override:
-        env_path = Path(env_override).expanduser()
-        candidates.append(env_path)
-        if env_path.is_dir():
-            candidates.append((env_path / name).expanduser())
-
-    if use_shutil:
-        detected = shutil.which(name)
-        if detected:
-            candidates.append(Path(detected))
-
-    if project_dirs:
-        for rel_dir in project_dirs:
-            candidate_dir = module_dir / Path(rel_dir)
-            candidates.append(candidate_dir / name)
-
-    if project_parent_dirs:
-        for rel_dir in project_parent_dirs:
-            candidate_dir = project_root / Path(rel_dir)
-            candidates.append(candidate_dir / name)
-
-    if base_dirs:
-        try:
-            base_path = Path(config.base_path)
-        except Exception:
-            base_path = None
-        else:
-            for rel_dir in base_dirs:
-                candidate_dir = base_path / Path(rel_dir)
-                candidates.append(candidate_dir / name)
-
-    if additional_dirs:
-        for directory in additional_dirs:
-            candidates.append(Path(directory) / name)
-
-    if include_plain_name:
-        candidates.append(Path(name))
-
-    return _deduplicate_paths(candidates)
-
-
-def _candidate_worker_paths() -> list[Path]:
-    lib_name = f"redcode_worker{_worker_library_extension()}"
-    return _find_command_candidates(
-        lib_name,
-        "REDCODE_WORKER_PATH",
-        use_shutil=False,
-        project_dirs=[Path(".")],
-        project_parent_dirs=[Path(".")],
-        additional_dirs=[Path("/usr/local/lib"), Path("/usr/lib")],
-        include_plain_name=False,
-    )
-
-
-def _format_candidate(path: Path | str) -> str:
-    if isinstance(path, str):
-        path_obj = Path(os.path.expanduser(path))
-    else:
-        path_obj = path
-
-    try:
-        resolved = path_obj if path_obj.is_absolute() else path_obj.resolve(strict=False)
-    except RuntimeError:
-        resolved = path_obj
-    return str(resolved)
-
-
-try:
-    candidates = _candidate_worker_paths()
-    loaded_path: Optional[Path] = None
-    for candidate in candidates:
-        try:
-            CPP_WORKER_LIB = ctypes.CDLL(str(candidate))
-            loaded_path = candidate
-            break
-        except OSError:
-            continue
-
-    if CPP_WORKER_LIB is not None and loaded_path is not None:
-        CPP_WORKER_LIB.run_battle.argtypes = [
-            ctypes.c_char_p, ctypes.c_int,
-            ctypes.c_char_p, ctypes.c_int,
-            ctypes.c_int, ctypes.c_int, ctypes.c_int,
-            ctypes.c_int, ctypes.c_int,
-            ctypes.c_int, ctypes.c_int, ctypes.c_int,
-            ctypes.c_int,
-        ]
-        CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
-        console_log(
-            "Successfully loaded C++ Redcode worker from "
-            f"{_format_candidate(loaded_path)}.",
-            minimum_level=VerbosityLevel.TERSE,
-        )
-    else:
-        tried_paths = ", ".join(_format_candidate(path) for path in candidates)
-        console_log(
-            f"Could not load C++ Redcode worker. Tried: {tried_paths}",
-            minimum_level=VerbosityLevel.TERSE,
-        )
-        console_log(
-            "Internal battle engine will not be available.",
-            minimum_level=VerbosityLevel.TERSE,
-        )
-except Exception as e:
-    console_log(
-        f"Could not load C++ Redcode worker: {e}",
-        minimum_level=VerbosityLevel.TERSE,
-    )
-    console_log(
-        "Internal battle engine will not be available.",
-        minimum_level=VerbosityLevel.TERSE,
-    )
-
-
-def _candidate_pmars_paths() -> list[str]:
-    exe_name = "pmars.exe" if os.name == "nt" else "pmars"
-    candidates = _find_command_candidates(
-        exe_name,
-        "PMARS_CMD",
-        project_dirs=[Path("pMars"), Path("pMars/src"), Path(".")],
-        base_dirs=[Path("pMars"), Path("pMars/src")],
-    )
-    return [str(candidate) for candidate in candidates]
-
-
-def _candidate_nmars_paths() -> list[str]:
-    exe_name = "nmars.exe" if os.name == "nt" else "nmars"
-    candidates = _find_command_candidates(
-        exe_name,
-        "NMARS_CMD",
-        project_dirs=[Path("pMars"), Path("pMars/src"), Path(".")],
-        base_dirs=[Path("pMars"), Path("pMars/src"), Path(".")],
-    )
-    return [str(candidate) for candidate in candidates]
-
-
-def _resolve_external_command(engine_name: str, candidates: Sequence[str]) -> str:
-    tried: list[str] = []
-    for candidate in candidates:
-        resolved = shutil.which(candidate)
-        if resolved:
-            return resolved
-        tried.append(candidate)
-
-    tried_paths = ", ".join(_format_candidate(path) for path in tried) or "<no candidates>"
-    raise RuntimeError(f"Could not locate {engine_name} executable. Tried: {tried_paths}")
-
-
-def _run_external_command(
-    executable: str,
-    warrior_files: Sequence[str],
-    flag_args: dict[str, Optional[object]] | None = None,
-    *,
-    prefix_args: Sequence[str] | None = None,
-    warriors_first: bool = False,
-) -> Optional[str]:
-    """Run an external battle engine command and return its output."""
-
-    cmd: list[str] = [executable]
-    if prefix_args:
-        cmd.extend(prefix_args)
-
-    if warriors_first:
-        cmd.extend(warrior_files)
-
-    if flag_args:
-        for flag, value in flag_args.items():
-            cmd.append(flag)
-            if value is not None:
-                cmd.append(str(value))
-
-    if not warriors_first:
-        cmd.extend(warrior_files)
-
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True)
-    except FileNotFoundError as e:
-        console_log(
-            f"Unable to run {executable}: {e}",
-            minimum_level=VerbosityLevel.TERSE,
-        )
-        return None
-    except subprocess.SubprocessError as e:
-        console_log(
-            f"An error occurred: {e}",
-            minimum_level=VerbosityLevel.TERSE,
-        )
-        return None
-
-    output = result.stdout or ""
-    if not output and result.stderr:
-        output = result.stderr
-    return output
-
-
-def run_internal_battle(
-    arena,
-    cont1,
-    cont2,
-    coresize,
-    cycles,
-    processes,
-    readlimit,
-    writelimit,
-    warlen,
-    wardistance,
-    battlerounds,
-    seed: int = -1,
-):
-    if not CPP_WORKER_LIB:
-        raise RuntimeError(
-            "Internal battle engine is required by the configuration but the "
-            "C++ worker library is not loaded."
-        )
-
-    max_min_distance = coresize // 2
-    if wardistance < CPP_WORKER_MIN_DISTANCE or wardistance > max_min_distance:
-        raise ValueError(
-            f"WARDISTANCE must be between {CPP_WORKER_MIN_DISTANCE} and {max_min_distance} "
-            f"(CORESIZE/2) for coresize={coresize} (got {wardistance})."
-        )
-    if wardistance < warlen:
-        raise ValueError(
-            "WARDISTANCE must be 0..(CORESIZE/2) and greater than or equal to WARLEN "
-            f"(got wardistance={wardistance}, warlen={warlen})."
-        )
-
-    try:
-        # 1. Load warrior source code
-        if config.use_in_memory_arenas:
-            storage = get_arena_storage()
-            w1_lines = storage.get_warrior_lines(arena, cont1)
-            w2_lines = storage.get_warrior_lines(arena, cont2)
-            if not w1_lines or not w2_lines:
-                raise RuntimeError(
-                    "Warrior source missing from in-memory storage; "
-                    "ensure warriors are initialized before battling."
-                )
-            w1_code = "".join(w1_lines)
-            w2_code = "".join(w2_lines)
-        else:
-            arena_dir = os.path.join(config.base_path, f"arena{arena}")
-            w1_path = os.path.join(arena_dir, f"{cont1}.red")
-            w2_path = os.path.join(arena_dir, f"{cont2}.red")
-            with open(w1_path, 'r') as f:
-                w1_code = f.read()
-            with open(w2_path, 'r') as f:
-                w2_code = f.read()
-
-        # 2. Call the C++ function
-        result_ptr = CPP_WORKER_LIB.run_battle(
-            w1_code.encode('utf-8'),
-            cont1,
-            w2_code.encode('utf-8'),
-            cont2,
-            coresize,
-            cycles,
-            processes,
-            readlimit,
-            writelimit,
-            wardistance,
-            warlen,
-            battlerounds,
-            seed,
-        )
-
-        if not result_ptr:
-            raise RuntimeError("C++ worker returned no result")
-
-        # 3. Decode the result
-        result_str = result_ptr.decode('utf-8')
-        if result_str.strip().startswith("ERROR:"):
-            raise RuntimeError(
-                f"C++ worker reported an error: {result_str.strip()}"
-            )
-        return result_str
-
-    except Exception as e:
-        raise RuntimeError(
-            f"An error occurred while running the internal battle: {e}"
-        )
-
-
-_INTERNAL_ENGINE_MAX_SEED = 2_147_483_646
-
-
-def _normalize_internal_seed(seed: int) -> int:
-    modulus = _INTERNAL_ENGINE_MAX_SEED
-    normalized = seed % modulus
-    if normalized <= 0:
-        normalized += modulus
-    return normalized
-
-
-def _generate_internal_battle_seed() -> int:
-    return random.randint(1, _INTERNAL_ENGINE_MAX_SEED)
-
-
-def _stable_internal_battle_seed(
-    arena: int, cont1: int, cont2: int, era: int
-) -> int:
-    data = f"{arena}:{cont1}:{cont2}:{era}".encode("utf-8")
-    digest = hashlib.blake2s(data, digest_size=8).digest()
-    value = int.from_bytes(digest, "big")
-    return _normalize_internal_seed(value)
-
-
-def execute_battle(
-    arena: int,
-    cont1: int,
-    cont2: int,
-    era: int,
-    verbose: bool = True,
-    battlerounds_override: Optional[int] = None,
-    seed: Optional[int] = None,
-):
-    engine = config.battle_engine
-    storage = get_arena_storage()
-    if not (config.use_in_memory_arenas and engine == 'internal'):
-        storage.ensure_warriors_on_disk(arena, [cont1, cont2])
-    battlerounds = (
-        battlerounds_override
-        if battlerounds_override is not None
-        else config.battlerounds_list[era]
-    )
-    if engine == 'internal':
-        internal_seed = -1 if seed is None else _normalize_internal_seed(seed)
-        raw_output = run_internal_battle(
-            arena,
-            cont1,
-            cont2,
-            config.coresize_list[arena],
-            config.cycles_list[arena],
-            config.processes_list[arena],
-            config.readlimit_list[arena],
-            config.writelimit_list[arena],
-            config.warlen_list[arena],
-            config.wardistance_list[arena],
-            battlerounds,
-            internal_seed,
-        )
-    elif engine == 'pmars':
-        candidates = _candidate_pmars_paths()
-        try:
-            pmars_cmd = _resolve_external_command("pMARS", candidates)
-        except RuntimeError as exc:
-            console_log(str(exc), minimum_level=VerbosityLevel.TERSE)
-            raise
-
-        arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        warrior_files = [
-            os.path.join(arena_dir, f"{cont1}.red"),
-            os.path.join(arena_dir, f"{cont2}.red"),
-        ]
-
-        args = {
-            "-r": battlerounds,
-            "-s": config.coresize_list[arena],
-            "-c": config.cycles_list[arena],
-            "-p": config.processes_list[arena],
-            "-l": config.warlen_list[arena],
-            "-d": config.wardistance_list[arena],
-        }
-
-        raw_output = _run_external_command(
-            pmars_cmd,
-            warrior_files,
-            args,
-            prefix_args=["-b"],
-        )
-    else:
-        candidates = _candidate_nmars_paths()
-        try:
-            nmars_cmd = _resolve_external_command("nMars", candidates)
-        except RuntimeError as exc:
-            console_log(str(exc), minimum_level=VerbosityLevel.TERSE)
-            raise
-        arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        warrior_files = [
-            os.path.join(arena_dir, f"{cont1}.red"),
-            os.path.join(arena_dir, f"{cont2}.red"),
-        ]
-
-        args = {
-            "-s": config.coresize_list[arena],
-            "-c": config.cycles_list[arena],
-            "-p": config.processes_list[arena],
-            "-l": config.warlen_list[arena],
-            "-d": config.wardistance_list[arena],
-            "-r": battlerounds,
-        }
-
-        raw_output = _run_external_command(
-            nmars_cmd,
-            warrior_files,
-            args,
-            warriors_first=True,
-        )
-
-    if raw_output is None:
-        raise RuntimeError("Battle engine returned no output")
-    if isinstance(raw_output, bytes):
-        raw_output = raw_output.decode('utf-8')
-    raw_output_stripped = raw_output.strip()
-    if raw_output_stripped.startswith("ERROR:"):
-        raise RuntimeError(f"Battle engine reported an error: {raw_output_stripped}")
-
-    scores = []
-    warriors = []
-    numline = 0
-    output_lines = raw_output.splitlines()
-    if not output_lines:
-        raise RuntimeError("Battle engine produced no output to parse")
-
-    is_pmars = engine == 'pmars'
-    score_lines_found = 0
-    for line in output_lines:
-        numline += 1
-        if "scores" in line:
-            score_lines_found += 1
-            if verbose:
-                console_log(
-                    line.strip(), minimum_level=VerbosityLevel.VERBOSE
-                )
-            if is_pmars:
-                match = re.search(r"scores\s+(-?\d+)", line)
-                if not match:
-                    raise RuntimeError(
-                        f"Unexpected pMARS score line format: {line.strip()}"
-                    )
-                scores.append(int(match.group(1)))
-            else:
-                splittedline = line.split()
-                if len(splittedline) < 5:
-                    raise RuntimeError(f"Unexpected score line format: {line.strip()}")
-                scores.append(int(splittedline[4]))
-                warriors.append(int(splittedline[0]))
-    if not is_pmars and score_lines_found == 0:
-        raise RuntimeError("nMars output did not include any lines containing 'scores'.")
-    if len(scores) < 2:
-        raise RuntimeError("Battle engine output did not include scores for both warriors")
-    if is_pmars:
-        warriors = [cont1, cont2]
-    expected_warriors = {cont1, cont2}
-    returned_warriors = set(warriors)
-    if returned_warriors != expected_warriors:
-        raise RuntimeError(
-            "Battle engine returned mismatched warrior IDs: "
-            f"expected {sorted(expected_warriors)}, got {sorted(returned_warriors)}"
-        )
-    if verbose:
-        console_log(str(numline), minimum_level=VerbosityLevel.VERBOSE)
-    return warriors, scores
-
-DEFAULT_MODE = '$'
-DEFAULT_MODIFIER = 'F'
-BASE_ADDRESSING_MODES = {'$', '#', '@', '<', '>', '*', '{', '}'}
-ADDRESSING_MODES: set[str] = set(BASE_ADDRESSING_MODES)
-
-CANONICAL_SUPPORTED_OPCODES = {
-    'DAT', 'MOV', 'ADD', 'SUB', 'MUL', 'DIV', 'MOD',
-    'JMP', 'JMZ', 'JMN', 'DJN', 'CMP', 'SEQ', 'SNE', 'SLT', 'SPL',
-    'NOP',  # Extended spec opcode supported by the C++ worker.
-}
-OPCODE_ALIASES = {
-    'SEQ': 'CMP',
-}
-SUPPORTED_OPCODES = CANONICAL_SUPPORTED_OPCODES | set(OPCODE_ALIASES)
-UNSUPPORTED_OPCODES = {'LDP', 'STP'}
-
-
-def canonicalize_opcode(opcode: str) -> str:
-    return OPCODE_ALIASES.get(opcode, opcode)
-
-
-GENERATION_OPCODE_POOL: list[str] = []
-
-
-def _rebuild_instruction_tables(active_config: EvolverConfig) -> None:
-    global ADDRESSING_MODES, GENERATION_OPCODE_POOL
-
-    ADDRESSING_MODES = set(BASE_ADDRESSING_MODES)
-    if active_config.instr_modes:
-        ADDRESSING_MODES.update(
-            mode.strip() for mode in active_config.instr_modes if mode.strip()
-        )
-
-    invalid_generation_opcodes = set()
-    GENERATION_OPCODE_POOL = []
-    invalid_reasons: list[str] = []
-    for instr in active_config.instr_set or []:
-        normalized = instr.strip().upper()
-        if not normalized:
-            continue
-        canonical_opcode = OPCODE_ALIASES.get(normalized, normalized)
-        if (
-            canonical_opcode in UNSUPPORTED_OPCODES
-            or canonical_opcode not in CANONICAL_SUPPORTED_OPCODES
-        ):
-            invalid_generation_opcodes.add(normalized)
-            continue
-        GENERATION_OPCODE_POOL.append(canonical_opcode)
-
-    if invalid_generation_opcodes:
-        invalid_reasons.append(
-            "contains unsupported opcode(s): "
-            + ", ".join(sorted(invalid_generation_opcodes))
-        )
-
-    if not GENERATION_OPCODE_POOL:
-        invalid_reasons.append("must include at least one supported opcode other than DAT")
-    elif all(opcode == 'DAT' for opcode in GENERATION_OPCODE_POOL):
-        invalid_reasons.append("must include at least one opcode other than DAT")
-
-    if invalid_reasons:
-        raise ValueError(
-            "Invalid INSTR_SET configuration: " + "; ".join(invalid_reasons) + "."
-        )
-
-def weighted_random_number(size, length):
-    if get_random_int(1, 4) == 1:
-        return get_random_int(-size, size)
-    else:
-        return get_random_int(-length, length)
-
-#custom function, Python modulo doesn't work how we want with negative numbers
-def coremod(x, y):
-    numsign = -1 if x < 0 else 1
-    return (abs(x) % y) * numsign
-
-def corenorm(x, y):
-    return -(y - x) if x > y // 2 else (y + x) if x <= -(y // 2) else x
-
-
-@dataclass
-class RedcodeInstruction:
-    opcode: str
-    modifier: str = DEFAULT_MODIFIER
-    a_mode: str = DEFAULT_MODE
-    a_field: int = 0
-    b_mode: str = DEFAULT_MODE
-    b_field: int = 0
-    label: Optional[str] = None
-
-    def copy(self) -> "RedcodeInstruction":
-        return RedcodeInstruction(
-            opcode=self.opcode,
-            modifier=self.modifier,
-            a_mode=self.a_mode,
-            a_field=self.a_field,
-            b_mode=self.b_mode,
-            b_field=self.b_field,
-            label=self.label,
-        )
-
-
-def _tokenize_instruction(line: str):
-    tokens = []
-    current: List[str] = []
-    for ch in line:
-        if ch.isspace():
-            if current:
-                tokens.append(''.join(current))
-                current = []
-        elif ch == ',':
-            if current:
-                tokens.append(''.join(current))
-                current = []
-            tokens.append(',')
-        elif ch in ADDRESSING_MODES and current and (
-            current[-1].isalnum() or current[-1] in '._:'
-        ):
-            tokens.append(''.join(current))
-            current = [ch]
-        else:
-            current.append(ch)
-    if current:
-        tokens.append(''.join(current))
-    return tokens
-
-
-def _split_opcode_token(token: str):
-    parts = token.split('.', 1)
-    if len(parts) == 2:
-        return parts[0], parts[1]
-    return token, None
-
-
-def _is_opcode_token(token: str) -> bool:
-    opcode, _ = _split_opcode_token(token)
-    opcode = opcode.upper()
-    canonical_opcode = canonicalize_opcode(opcode)
-    return (
-        canonical_opcode in CANONICAL_SUPPORTED_OPCODES
-        or canonical_opcode in UNSUPPORTED_OPCODES
-    )
-
-
-_INT_LITERAL_RE = re.compile(r'^[+-]?\d+$')
-
-
-def _safe_int(value: str) -> int:
-    value = value.strip()
-    if not value:
-        raise ValueError("Empty integer literal")
-    if not _INT_LITERAL_RE.fullmatch(value):
-        raise ValueError(f"Invalid integer literal: '{value}'")
-    return int(value, 10)
-
-
-def _ensure_int(value) -> int:
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    return _safe_int(str(value))
-
-
-def _parse_operand(operand: str, operand_name: str):
-    operand = operand.strip()
-    if not operand:
-        raise ValueError(f"Missing {operand_name}-field operand")
-    mode = operand[0]
-    if mode not in ADDRESSING_MODES:
-        raise ValueError(
-            f"Missing addressing mode for {operand_name}-field operand '{operand}'"
-        )
-    value_part = operand[1:]
-    if not value_part.strip():
-        raise ValueError(f"Missing value for {operand_name}-field operand")
-    try:
-        value = _safe_int(value_part)
-    except ValueError as exc:
-        raise ValueError(
-            f"Invalid {operand_name}-field operand '{operand}': {exc}"
-        ) from exc
-    return mode, value
-
-
-_INSTRUCTION_HEADER_RE = re.compile(
-    r"""
-    ^
-    (?P<opcode>[A-Za-z]+)
-    (?:\s*\.\s*(?P<modifier>[A-Za-z]+))?
-    (?P<rest>.*)
-    $
-    """,
-    re.VERBOSE,
-)
-
-
-def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
-    if not line:
-        return None
-    code_part = line.split(';', 1)[0].strip()
-    if not code_part:
-        return None
-    tokens = _tokenize_instruction(code_part)
-    if not tokens:
-        return None
-
-    label: Optional[str] = None
-    if len(tokens) >= 2 and not _is_opcode_token(tokens[0]) and _is_opcode_token(tokens[1]):
-        label = tokens[0]
-
-    remaining = code_part
-    if label is not None:
-        remaining = code_part[len(label) :].lstrip()
-
-    header_match = _INSTRUCTION_HEADER_RE.match(remaining)
-    if not header_match:
-        raise ValueError(f"Unable to parse instruction '{code_part}'")
-
-    opcode_part = header_match.group('opcode')
-    modifier_part = header_match.group('modifier')
-    rest = header_match.group('rest') or ''
-
-    opcode = opcode_part.upper()
-    canonical_opcode = canonicalize_opcode(opcode)
-    if not modifier_part:
-        raise ValueError(
-            f"Instruction '{code_part}' is missing a modifier; expected opcode.modifier"
-        )
-    modifier = modifier_part.upper()
-
-    if canonical_opcode in UNSUPPORTED_OPCODES:
-        raise ValueError(f"Opcode '{opcode}' is not supported")
-    if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
-        raise ValueError(f"Unknown opcode '{opcode}'")
-
-    operand_tokens = _tokenize_instruction(rest)
-    operands = []
-    current_operand = ''
-    idx = 0
-    while idx < len(operand_tokens):
-        tok = operand_tokens[idx]
-        idx += 1
-        if tok == ',':
-            operands.append(current_operand)
-            current_operand = ''
-        else:
-            current_operand += tok
-    if current_operand or (operand_tokens and operand_tokens[-1] == ','):
-        operands.append(current_operand)
-
-    if not operands:
-        raise ValueError(
-            f"Instruction '{code_part}' is missing operands; expected two operands"
-        )
-    if len(operands) < 2:
-        raise ValueError(
-            f"Instruction '{code_part}' is missing operands; expected two operands"
-        )
-    if len(operands) > 2:
-        raise ValueError(
-            f"Instruction '{code_part}' has too many operands; expected exactly two"
-        )
-
-    a_mode, a_field = _parse_operand(operands[0], 'A')
-    b_mode, b_field = _parse_operand(operands[1], 'B')
-
-    return RedcodeInstruction(
-        opcode=canonical_opcode,
-        modifier=modifier,
-        a_mode=a_mode,
-        a_field=a_field,
-        b_mode=b_mode,
-        b_field=b_field,
-        label=label,
-    )
-
-
-def default_instruction() -> RedcodeInstruction:
-    return RedcodeInstruction(
-        opcode='DAT',
-        modifier=DEFAULT_MODIFIER,
-        a_mode=DEFAULT_MODE,
-        a_field=0,
-        b_mode=DEFAULT_MODE,
-        b_field=0,
-    )
-
-
-def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstruction:
-    sanitized = instr.copy()
-    original_opcode = (sanitized.opcode or '').upper()
-    canonical_opcode = canonicalize_opcode(original_opcode)
-    sanitized.opcode = canonical_opcode
-    if not sanitized.modifier:
-        raise ValueError("Missing modifier for instruction")
-    sanitized.modifier = sanitized.modifier.upper()
-    if canonical_opcode in UNSUPPORTED_OPCODES:
-        raise ValueError(f"Opcode '{original_opcode}' is not supported")
-    if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
-        raise ValueError(f"Unknown opcode '{original_opcode}'")
-    if sanitized.a_mode not in ADDRESSING_MODES:
-        raise ValueError(
-            f"Invalid addressing mode '{sanitized.a_mode}' for A-field operand"
-        )
-    if sanitized.b_mode not in ADDRESSING_MODES:
-        raise ValueError(
-            f"Invalid addressing mode '{sanitized.b_mode}' for B-field operand"
-        )
-    sanitized.a_field = corenorm(
-        coremod(_ensure_int(sanitized.a_field), config.sanitize_list[arena]),
-        config.coresize_list[arena],
-    )
-    sanitized.b_field = corenorm(
-        coremod(_ensure_int(sanitized.b_field), config.sanitize_list[arena]),
-        config.coresize_list[arena],
-    )
-    sanitized.label = None
-    return sanitized
-
-
-def format_redcode_instruction(instr: RedcodeInstruction) -> str:
-    return (
-        f"{instr.opcode}.{instr.modifier} "
-        f"{instr.a_mode}{_ensure_int(instr.a_field)},"
-        f"{instr.b_mode}{_ensure_int(instr.b_field)}\n"
-    )
-
-
-def instruction_to_line(instr: RedcodeInstruction, arena: int) -> str:
-    return format_redcode_instruction(sanitize_instruction(instr, arena))
-
-
-def parse_instruction_or_default(line: str) -> RedcodeInstruction:
-    parsed = parse_redcode_instruction(line)
-    return parsed if parsed else default_instruction()
-
-
-def choose_random_opcode() -> str:
-    if GENERATION_OPCODE_POOL:
-        return _get_random_choice(GENERATION_OPCODE_POOL)
-    return 'DAT'
-
-
-def choose_random_modifier() -> str:
-    if config.instr_modif:
-        return _get_random_choice(config.instr_modif).upper()
-    return DEFAULT_MODIFIER
-
-
-def choose_random_mode() -> str:
-    if config.instr_modes:
-        return _get_random_choice(config.instr_modes)
-    return DEFAULT_MODE
-
-
-def generate_random_instruction(arena: int) -> RedcodeInstruction:
-    num1 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
-    num2 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
-    opcode = choose_random_opcode()
-    canonical_opcode = canonicalize_opcode(opcode)
-    return RedcodeInstruction(
-        opcode=canonical_opcode,
-        modifier=choose_random_modifier(),
-        a_mode=choose_random_mode(),
-        a_field=num1,
-        b_mode=choose_random_mode(),
-        b_field=num2,
-    )
-
-
-def _can_generate_non_dat_opcode() -> bool:
-    return any(opcode != 'DAT' for opcode in GENERATION_OPCODE_POOL)
-
-
-def _generate_warrior_lines_until_non_dat(
-    generator: Callable[[], list[str]],
-    context: str,
-) -> list[str]:
-    if not _can_generate_non_dat_opcode():
-        raise RuntimeError(
-            f"{context}: configuration cannot generate non-DAT opcodes. "
-            "Check the INSTR_SET configuration to include at least one opcode other than DAT."
-        )
-
-    lines: list[str] = []
-    while True:
-        lines = generator()
-        if not lines:
-            continue
-        first_instruction = parse_instruction_or_default(lines[0])
-        if first_instruction.opcode != 'DAT':
-            return lines
-
-def create_directory_if_not_exists(directory):
-    if not os.path.exists(directory):
-        os.mkdir(directory)
-
-
-class ArenaStorage:
-    """Abstract storage backend for warrior arena data."""
-
-    def load_existing(self) -> None:
-        """Populate storage from disk when warriors already exist."""
-
-    def get_warrior_lines(self, arena: int, warrior_id: int) -> list[str]:
-        raise NotImplementedError
-
-    def set_warrior_lines(
-        self, arena: int, warrior_id: int, lines: Sequence[str]
-    ) -> None:
-        raise NotImplementedError
-
-    def ensure_warriors_on_disk(
-        self, arena: int, warrior_ids: Sequence[int]
-    ) -> None:
-        """Ensure the specified warriors are available on disk for battle engines."""
-
-    def flush_arena(self, arena: int) -> bool:
-        """Persist all warriors for a specific arena to disk."""
-
-    def flush_all(self) -> bool:
-        """Persist all arenas to disk."""
-
-
-class DiskArenaStorage(ArenaStorage):
-    """Storage backend that writes warrior changes directly to disk."""
-
-    def load_existing(self) -> None:
-        return None
-
-    def get_warrior_lines(self, arena: int, warrior_id: int) -> list[str]:
-        arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
-        try:
-            with open(warrior_path, "r") as handle:
-                return handle.readlines()
-        except OSError:
-            return []
-
-    def set_warrior_lines(
-        self, arena: int, warrior_id: int, lines: Sequence[str]
-    ) -> None:
-        arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        create_directory_if_not_exists(arena_dir)
-        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
-        with open(warrior_path, "w") as handle:
-            handle.writelines(lines)
-
-    def ensure_warriors_on_disk(
-        self, arena: int, warrior_ids: Sequence[int]
-    ) -> None:
-        return None
-
-    def flush_arena(self, arena: int) -> bool:
-        return False
-
-    def flush_all(self) -> bool:
-        return False
-
-
-class InMemoryArenaStorage(ArenaStorage):
-    """Store arena warriors in memory and persist on demand."""
-
-    def __init__(self) -> None:
-        self._arenas: dict[int, dict[int, list[str]]] = defaultdict(dict)
-        self._dirty: set[tuple[int, int]] = set()
-
-    def load_existing(self) -> None:
-        for arena in range(0, config.last_arena + 1):
-            arena_dir = os.path.join(config.base_path, f"arena{arena}")
-            if not os.path.isdir(arena_dir):
-                continue
-            for warrior_id in range(1, config.numwarriors + 1):
-                warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
-                try:
-                    with open(warrior_path, "r") as handle:
-                        self._arenas[arena][warrior_id] = handle.readlines()
-                except OSError:
-                    self._arenas[arena][warrior_id] = []
-        self._dirty.clear()
-
-    def get_warrior_lines(self, arena: int, warrior_id: int) -> list[str]:
-        if arena in self._arenas and warrior_id in self._arenas[arena]:
-            return list(self._arenas[arena][warrior_id])
-        arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
-        try:
-            with open(warrior_path, "r") as handle:
-                lines = handle.readlines()
-                self._arenas[arena][warrior_id] = list(lines)
-                return list(lines)
-        except OSError:
-            return []
-
-    def set_warrior_lines(
-        self, arena: int, warrior_id: int, lines: Sequence[str]
-    ) -> None:
-        self._arenas[arena][warrior_id] = list(lines)
-        self._dirty.add((arena, warrior_id))
-
-    def ensure_warriors_on_disk(
-        self, arena: int, warrior_ids: Sequence[int]
-    ) -> None:
-        """Write warriors required by external engines to disk on demand.
-
-        This method is intentionally the sole proactive disk-write path for
-        in-memory runs. All other code paths defer persistence until either an
-        engine explicitly requests warriors or a final checkpoint occurs.
-        """
-        for warrior_id in warrior_ids:
-            if (arena, warrior_id) in self._dirty or not self._warrior_exists_on_disk(
-                arena, warrior_id
-            ):
-                self._write_warrior(arena, warrior_id)
-
-    def _warrior_exists_on_disk(self, arena: int, warrior_id: int) -> bool:
-        arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
-        return os.path.isfile(warrior_path)
-
-    def _write_warrior(self, arena: int, warrior_id: int) -> None:
-        arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        create_directory_if_not_exists(arena_dir)
-        warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
-        lines = self._arenas.get(arena, {}).get(warrior_id, [])
-        with open(warrior_path, "w") as handle:
-            handle.writelines(lines)
-        self._dirty.discard((arena, warrior_id))
-
-    def flush_arena(self, arena: int) -> bool:
-        wrote_any = False
-        for warrior_id in list(self._arenas.get(arena, {}).keys()):
-            if (arena, warrior_id) in self._dirty or not self._warrior_exists_on_disk(
-                arena, warrior_id
-            ):
-                self._write_warrior(arena, warrior_id)
-                wrote_any = True
-        return wrote_any
-
-    def flush_all(self) -> bool:
-        wrote_any = False
-        for arena in list(self._arenas.keys()):
-            if self.flush_arena(arena):
-                wrote_any = True
-        return wrote_any
-
-
-class _ArenaStorageNotLoaded:
-    def __getattr__(self, item: str):
-        raise RuntimeError(
-            "Arena storage has not been initialized. Call set_arena_storage() before use."
-        )
-
-
-_ARENA_STORAGE: Union[ArenaStorage, _ArenaStorageNotLoaded] = _ArenaStorageNotLoaded()
-
-
-def set_arena_storage(storage: ArenaStorage) -> None:
-    global _ARENA_STORAGE
-    _ARENA_STORAGE = storage
-
-
-def get_arena_storage() -> ArenaStorage:
-    storage = _ARENA_STORAGE
-    if isinstance(storage, _ArenaStorageNotLoaded):
-        raise RuntimeError(
-            "Arena storage has not been initialized. Call set_arena_storage() before use."
-        )
-    return storage
-
-
-def create_arena_storage(config: EvolverConfig) -> ArenaStorage:
-    if config.use_in_memory_arenas:
-        return InMemoryArenaStorage()
-    return DiskArenaStorage()
-
-
-def _should_persist_to_disk(current_config: EvolverConfig) -> bool:
-    return not (
-        current_config.use_in_memory_arenas
-        and current_config.battle_engine == 'internal'
-    )
-
-
-def _should_flush_on_exit(current_config: EvolverConfig) -> bool:
-    """Determine whether the final shutdown should flush arenas to disk."""
-
-    if (
-        current_config.use_in_memory_arenas
-        and current_config.battle_engine == "internal"
-    ):
-        # The in-memory/internal configuration uses RAM for day-to-day battles, but
-        # still needs to leave behind a final checkpoint so interrupted runs can be
-        # resumed. Always flush during shutdown in this mode to satisfy that
-        # requirement without forcing every intermediate update onto disk.
-        return True
-
-    return _should_persist_to_disk(current_config)
-
-
-MutationHandler = Callable[[RedcodeInstruction, int, EvolverConfig, int], RedcodeInstruction]
-
-
-def _apply_major_mutation(
-    _instruction: RedcodeInstruction,
-    arena: int,
-    _config: EvolverConfig,
-    _magic_number: int,
-) -> RedcodeInstruction:
-    return generate_random_instruction(arena)
-
-
-def _apply_nab_instruction(
-    instruction: RedcodeInstruction,
-    arena: int,
-    config: EvolverConfig,
-    _magic_number: int,
-) -> RedcodeInstruction:
-    if config.last_arena == 0:
-        return instruction
-
-    donor_arena = get_random_int(0, config.last_arena)
-    while donor_arena == arena and config.last_arena > 0:
-        donor_arena = get_random_int(0, config.last_arena)
-
-    _log_verbose("Nab instruction from arena " + str(donor_arena))
-    storage = get_arena_storage()
-    donor_warrior = get_random_int(1, config.numwarriors)
-    donor_lines = storage.get_warrior_lines(donor_arena, donor_warrior)
-
-    if donor_lines:
-        return parse_instruction_or_default(_get_random_choice(donor_lines))
-
-    _log_verbose("Donor warrior empty; skipping mutation.")
-    return instruction
-
-
-def _apply_minor_mutation(
-    instruction: RedcodeInstruction,
-    arena: int,
-    config: EvolverConfig,
-    _magic_number: int,
-) -> RedcodeInstruction:
-    r = get_random_int(1, 6)
-    if r == 1:
-        instruction.opcode = choose_random_opcode()
-    elif r == 2:
-        instruction.modifier = choose_random_modifier()
-    elif r == 3:
-        instruction.a_mode = choose_random_mode()
-    elif r == 4:
-        instruction.a_field = weighted_random_number(
-            config.coresize_list[arena], config.warlen_list[arena]
-        )
-    elif r == 5:
-        instruction.b_mode = choose_random_mode()
-    elif r == 6:
-        instruction.b_field = weighted_random_number(
-            config.coresize_list[arena], config.warlen_list[arena]
-        )
-    return instruction
-
-
-def _apply_micro_mutation(
-    instruction: RedcodeInstruction,
-    _arena: int,
-    _config: EvolverConfig,
-    _magic_number: int,
-) -> RedcodeInstruction:
-    target_field = "a_field" if get_random_int(1, 2) == 1 else "b_field"
-    current_value = _ensure_int(getattr(instruction, target_field))
-    if get_random_int(1, 2) == 1:
-        current_value += 1
-    else:
-        current_value -= 1
-    setattr(instruction, target_field, current_value)
-    return instruction
-
-
-def _apply_instruction_library(
-    instruction: RedcodeInstruction,
-    _arena: int,
-    config: EvolverConfig,
-    _magic_number: int,
-) -> RedcodeInstruction:
-    if not config.library_path or not os.path.exists(config.library_path):
-        return instruction
-
-    #print("Instruction library")
-    with open(config.library_path, "r") as library_handle:
-        library_lines = library_handle.readlines()
-    if library_lines:
-        return parse_instruction_or_default(_get_random_choice(library_lines))
-    return default_instruction()
-
-
-def _apply_magic_number_mutation(
-    instruction: RedcodeInstruction,
-    _arena: int,
-    _config: EvolverConfig,
-    magic_number: int,
-) -> RedcodeInstruction:
-    if get_random_int(1, 2) == 1:
-        instruction.a_field = magic_number
-    else:
-        instruction.b_field = magic_number
-    return instruction
-
-
-MUTATION_HANDLERS: dict[Marble, MutationHandler] = {
-    Marble.MAJOR_MUTATION: _apply_major_mutation,
-    Marble.NAB_INSTRUCTION: _apply_nab_instruction,
-    Marble.MINOR_MUTATION: _apply_minor_mutation,
-    Marble.MICRO_MUTATION: _apply_micro_mutation,
-    Marble.INSTRUCTION_LIBRARY: _apply_instruction_library,
-    Marble.MAGIC_NUMBER_MUTATION: _apply_magic_number_mutation,
-}
 
 
 def _format_duration(seconds: float) -> str:
@@ -2289,34 +748,44 @@ def _get_progress_status(
     return progress_line, detail_line
 
 
-def run_final_tournament(config: EvolverConfig):
+def _build_marble_bag(era: int, active_config: EvolverConfig) -> list[Marble]:
+    return (
+        [Marble.DO_NOTHING] * active_config.nothing_list[era]
+        + [Marble.MAJOR_MUTATION] * active_config.random_list[era]
+        + [Marble.NAB_INSTRUCTION] * active_config.nab_list[era]
+        + [Marble.MINOR_MUTATION] * active_config.mini_mut_list[era]
+        + [Marble.MICRO_MUTATION] * active_config.micro_mut_list[era]
+        + [Marble.INSTRUCTION_LIBRARY] * active_config.library_list[era]
+        + [Marble.MAGIC_NUMBER_MUTATION] * active_config.magic_number_list[era]
+    )
+
+
+def run_final_tournament(active_config: EvolverConfig):
     console_clear_status()
-    if config.last_arena < 0:
+    if active_config.last_arena < 0:
         console_log(
             "No arenas configured. Skipping final tournament.",
             minimum_level=VerbosityLevel.TERSE,
         )
         return
-    if config.numwarriors <= 1:
+    if active_config.numwarriors <= 1:
         console_log(
             "Not enough warriors to run a final tournament.",
             minimum_level=VerbosityLevel.TERSE,
         )
         return
-    if not config.battlerounds_list:
+    if not active_config.battlerounds_list:
         console_log(
             "Battle rounds configuration missing. Cannot run final tournament.",
             minimum_level=VerbosityLevel.TERSE,
         )
         return
 
-    final_era_index = max(0, len(config.battlerounds_list) - 1)
+    final_era_index = max(0, len(active_config.battlerounds_list) - 1)
     use_in_memory_internal = (
-        config.use_in_memory_arenas and config.battle_engine == 'internal'
+        active_config.use_in_memory_arenas and active_config.battle_engine == 'internal'
     )
-    storage: Optional[ArenaStorage] = None
-    if use_in_memory_internal:
-        storage = get_arena_storage()
+    storage = get_arena_storage() if use_in_memory_internal else None
     console_log(
         "\n================ Final Tournament ================",
         minimum_level=VerbosityLevel.TERSE,
@@ -2324,17 +793,17 @@ def run_final_tournament(config: EvolverConfig):
     arenas_to_run: list[tuple[int, list[int]]] = []
     total_battles = 0
     arena_summaries: list[dict[str, object]] = []
-    warrior_scores_by_arena: dict[int, list[int]] = defaultdict(list)
-    for arena in range(0, config.last_arena + 1):
+    warrior_scores_by_arena: dict[int, list[int]] = {}
+    for arena in range(0, active_config.last_arena + 1):
         if use_in_memory_internal:
             assert storage is not None
             warrior_ids = [
                 warrior_id
-                for warrior_id in range(1, config.numwarriors + 1)
+                for warrior_id in range(1, active_config.numwarriors + 1)
                 if storage.get_warrior_lines(arena, warrior_id)
             ]
         else:
-            arena_dir = os.path.join(config.base_path, f"arena{arena}")
+            arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
             if not os.path.isdir(arena_dir):
                 console_log(
                     f"Arena {arena} directory '{arena_dir}' not found. Skipping.",
@@ -2344,7 +813,7 @@ def run_final_tournament(config: EvolverConfig):
 
             warrior_ids = [
                 warrior_id
-                for warrior_id in range(1, config.numwarriors + 1)
+                for warrior_id in range(1, active_config.numwarriors + 1)
                 if os.path.exists(os.path.join(arena_dir, f"{warrior_id}.red"))
             ]
 
@@ -2365,6 +834,10 @@ def run_final_tournament(config: EvolverConfig):
         )
         return
 
+    for _, warrior_ids in arenas_to_run:
+        for warrior_id in warrior_ids:
+            warrior_scores_by_arena.setdefault(warrior_id, [])
+
     tournament_start = time.time()
     battles_completed = 0
     try:
@@ -2377,7 +850,7 @@ def run_final_tournament(config: EvolverConfig):
                         _stable_internal_battle_seed(
                             arena, cont1, cont2, final_era_index
                         )
-                        if config.battle_engine == 'internal'
+                        if active_config.battle_engine == 'internal'
                         else None
                     )
                     warriors, scores = execute_battle(
@@ -2391,16 +864,17 @@ def run_final_tournament(config: EvolverConfig):
                     )
                     for warrior_id, score in zip(warriors, scores):
                         total_scores[warrior_id] = total_scores.get(warrior_id, 0) + score
+                        warrior_scores_by_arena.setdefault(warrior_id, []).append(score)
 
                     battles_completed += 1
                     percent_complete = (
                         battles_completed / total_battles * 100 if total_battles else 100.0
                     )
                     time_progress, default_detail = _get_progress_status(
-                        tournament_start, config.clock_time, final_era_index
+                        tournament_start, active_config.clock_time, final_era_index
                     )
                     progress_segments = []
-                    if config.clock_time:
+                    if active_config.clock_time:
                         progress_segments.append(time_progress)
                     progress_segments.append(
                         f"Final Tournament Progress: {battles_completed}/{total_battles} "
@@ -2427,7 +901,6 @@ def run_final_tournament(config: EvolverConfig):
                     f"{position}. Warrior {warrior_id}: {score} points",
                     minimum_level=VerbosityLevel.TERSE,
                 )
-                warrior_scores_by_arena[warrior_id].append(score)
             champion_id, champion_score = rankings[0]
             console_log(
                 f"Champion: Warrior {champion_id} with {champion_score} points",
@@ -2454,7 +927,7 @@ def run_final_tournament(config: EvolverConfig):
     console_clear_status()
     duration = time.time() - tournament_start
     _report_final_tournament_statistics(arena_summaries, warrior_scores_by_arena)
-    _export_final_tournament_results(arena_summaries, config)
+    _export_final_tournament_results(arena_summaries, active_config)
     console_log(
         f"Final tournament completed in {_format_duration(duration)}.",
         minimum_level=VerbosityLevel.TERSE,
@@ -2560,12 +1033,12 @@ def _report_final_tournament_statistics(
 
 
 def _export_final_tournament_results(
-    arena_summaries: Sequence[dict[str, object]], config: EvolverConfig
+    arena_summaries: Sequence[dict[str, object]], active_config: EvolverConfig
 ) -> None:
-    if not config.final_tournament_csv or not arena_summaries:
+    if not active_config.final_tournament_csv or not arena_summaries:
         return
 
-    output_path = config.final_tournament_csv
+    output_path = active_config.final_tournament_csv
     directory = os.path.dirname(output_path)
     if directory:
         os.makedirs(directory, exist_ok=True)
@@ -2597,208 +1070,6 @@ def _export_final_tournament_results(
             f"Unable to write final tournament CSV '{output_path}': {exc}",
             minimum_level=VerbosityLevel.TERSE,
         )
-
-
-def _build_marble_bag(era: int, config: EvolverConfig) -> list[Marble]:
-    return (
-        [Marble.DO_NOTHING] * config.nothing_list[era]
-        + [Marble.MAJOR_MUTATION] * config.random_list[era]
-        + [Marble.NAB_INSTRUCTION] * config.nab_list[era]
-        + [Marble.MINOR_MUTATION] * config.mini_mut_list[era]
-        + [Marble.MICRO_MUTATION] * config.micro_mut_list[era]
-        + [Marble.INSTRUCTION_LIBRARY] * config.library_list[era]
-        + [Marble.MAGIC_NUMBER_MUTATION] * config.magic_number_list[era]
-    )
-
-
-def select_opponents(
-    num_warriors: int, champion: Optional[int] = None
-) -> tuple[int, int]:
-    if champion is not None and random.random() < 0.5:
-        challenger = champion
-        while challenger == champion:
-            challenger = random.randint(1, num_warriors)
-        return champion, challenger
-
-    cont1 = random.randint(1, num_warriors)
-    cont2 = cont1
-    while cont2 == cont1:
-        cont2 = random.randint(1, num_warriors)
-    return cont1, cont2
-
-
-def determine_winner_and_loser(
-    warriors: list[int], scores: list[int]
-) -> tuple[int, int, bool]:
-    if len(warriors) < 2 or len(scores) < 2:
-        raise ValueError("Expected scores for two warriors")
-
-    if scores[1] == scores[0]:
-        draw_selection = get_random_int(1, 2)
-        if draw_selection == 1:
-            winner = warriors[1]
-            loser = warriors[0]
-        else:
-            winner = warriors[0]
-            loser = warriors[1]
-        return winner, loser, True
-    if scores[1] > scores[0]:
-        return warriors[1], warriors[0], False
-    return warriors[0], warriors[1], False
-
-
-@dataclass
-class ArchivingEvent:
-    action: Literal["archived", "unarchived"]
-    warrior_id: int
-    archive_filename: Optional[str] = None
-
-
-@dataclass
-class ArchivingResult:
-    skip_breeding: bool = False
-    events: list[ArchivingEvent] = field(default_factory=list)
-
-
-def handle_archiving(
-    winner: int, loser: int, arena: int, era: int, config: EvolverConfig
-) -> ArchivingResult:
-    archive_dir = os.path.join(config.base_path, "archive")
-    events: list[ArchivingEvent] = []
-    storage = get_arena_storage()
-
-    if config.archive_list[era] != 0 and get_random_int(1, config.archive_list[era]) == 1:
-        winlines = storage.get_warrior_lines(arena, winner)
-        archive_filename = f"{get_random_int(1, 9999)}.red"
-        create_directory_if_not_exists(archive_dir)
-        with open(os.path.join(archive_dir, archive_filename), "w") as fd:
-            fd.writelines(winlines)
-        events.append(
-            ArchivingEvent(
-                action="archived",
-                warrior_id=winner,
-                archive_filename=archive_filename,
-            )
-        )
-
-    if config.unarchive_list[era] != 0 and get_random_int(1, config.unarchive_list[era]) == 1:
-        if not os.path.isdir(archive_dir):
-            return ArchivingResult(events=events)
-        archive_files = os.listdir(archive_dir)
-        if not archive_files:
-            return ArchivingResult(events=events)
-        archive_choice = _get_random_choice(archive_files)
-        with open(os.path.join(archive_dir, archive_choice)) as fs:
-            sourcelines = fs.readlines()
-
-        instructions_written = 0
-        new_lines: list[str] = []
-        for line in sourcelines:
-            instruction = parse_redcode_instruction(line)
-            if instruction is None:
-                continue
-            new_lines.append(instruction_to_line(instruction, arena))
-            instructions_written += 1
-            if instructions_written >= config.warlen_list[arena]:
-                break
-        while instructions_written < config.warlen_list[arena]:
-            new_lines.append(instruction_to_line(default_instruction(), arena))
-            instructions_written += 1
-        storage.set_warrior_lines(arena, loser, new_lines)
-        events.append(
-            ArchivingEvent(
-                action="unarchived",
-                warrior_id=loser,
-                archive_filename=archive_choice,
-            )
-        )
-        return ArchivingResult(skip_breeding=True, events=events)
-
-    return ArchivingResult(events=events)
-
-
-def breed_offspring(
-    winner: int,
-    loser: int,
-    arena: int,
-    era: int,
-    config: EvolverConfig,
-    bag: list[Marble],
-    data_logger: DataLogger,
-    scores: list[int],
-    warriors: list[int],
-):
-    storage = get_arena_storage()
-    winlines = storage.get_warrior_lines(arena, winner)
-
-    partner_id = get_random_int(1, config.numwarriors)
-    ranlines = storage.get_warrior_lines(arena, partner_id)
-
-    if get_random_int(1, config.transpositionrate_list[era]) == 1:
-        transpositions = get_random_int(1, int((config.warlen_list[arena] + 1) / 2))
-        for _ in range(1, transpositions):
-            fromline = get_random_int(0, config.warlen_list[arena] - 1)
-            toline = get_random_int(0, config.warlen_list[arena] - 1)
-            if get_random_int(1, 2) == 1:
-                if fromline < len(winlines) and toline < len(winlines):
-                    winlines[toline], winlines[fromline] = (
-                        winlines[fromline],
-                        winlines[toline],
-                    )
-            else:
-                if fromline < len(ranlines) and toline < len(ranlines):
-                    ranlines[toline], ranlines[fromline] = (
-                        ranlines[fromline],
-                        ranlines[toline],
-                    )
-
-    def _breed_offspring_once() -> list[str]:
-        if config.prefer_winner_list[era] is True:
-            pickingfrom = 1
-        else:
-            pickingfrom = get_random_int(1, 2)
-
-        magic_number = weighted_random_number(
-            config.coresize_list[arena], config.warlen_list[arena]
-        )
-        offspring_lines: list[str] = []
-        for i in range(0, config.warlen_list[arena]):
-            if get_random_int(1, config.crossoverrate_list[era]) == 1:
-                pickingfrom = 2 if pickingfrom == 1 else 1
-
-            if pickingfrom == 1:
-                source_line = winlines[i] if i < len(winlines) else ""
-            else:
-                source_line = ranlines[i] if i < len(ranlines) else ""
-
-            instruction = parse_instruction_or_default(source_line)
-            chosen_marble = _get_random_choice(bag)
-            handler = MUTATION_HANDLERS.get(chosen_marble)
-            if handler:
-                instruction = handler(instruction, arena, config, magic_number)
-
-            offspring_lines.append(instruction_to_line(instruction, arena))
-            magic_number = magic_number - 1
-
-        return offspring_lines
-
-    new_lines = _generate_warrior_lines_until_non_dat(
-        _breed_offspring_once,
-        context=f"Breeding offspring for arena {arena}, warrior {loser}",
-    )
-
-    storage.set_warrior_lines(arena, loser, new_lines)
-
-    data_logger.log_data(
-        era=era,
-        arena=arena,
-        winner=winner,
-        loser=loser,
-        score1=scores[0],
-        score2=scores[1],
-        bred_with=str(partner_id),
-    )
-    return partner_id
 
 def _main_impl(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="Python Evolver Stage")
@@ -2879,13 +1150,10 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
             create_directory_if_not_exists(arena_dir)
             for warrior_id in range(1, active_config.numwarriors + 1):
-                new_lines = _generate_warrior_lines_until_non_dat(
-                    lambda arena=arena: [
-                        instruction_to_line(generate_random_instruction(arena), arena)
-                        for _ in range(1, active_config.warlen_list[arena] + 1)
-                    ],
-                    context=f"Seeding warrior {warrior_id} in arena {arena}",
-                )
+                new_lines = [
+                    instruction_to_line(generate_random_instruction(arena), arena)
+                    for _ in range(1, active_config.warlen_list[arena] + 1)
+                ]
                 storage.set_warrior_lines(arena, warrior_id, new_lines)
         if _should_persist_to_disk(active_config):
             storage.flush_all()
@@ -3003,7 +1271,6 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 progress_line, default_detail = _get_progress_status(
                     start_time, active_config.clock_time, era
                 )
-                console_clear_status()
                 last_event_line = ""
                 for event in archiving_result.events:
                     if event.action == "archived":
