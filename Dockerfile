@@ -18,7 +18,6 @@ RUN mkdir -p build \
     && cmake .. \
     && cmake --build . \
     && cp ../redcode_worker.so /usr/local/lib/ \
-    && git submodule update --init --recursive \
     && make -C pMars/src \
     && cp pMars/src/pmars /usr/local/bin/pmars
 
