@@ -413,10 +413,10 @@ def test_rebuild_instruction_tables_requires_non_dat_opcodes():
     config = replace(_DEFAULT_CONFIG, instr_set=["DAT"])
     try:
         with pytest.raises(ValueError, match="INSTR_SET") as excinfo:
-            evolverstage._rebuild_instruction_tables(config)
+            evolverstage.rebuild_instruction_tables(config)
         assert "opcode other than DAT" in str(excinfo.value)
     finally:
-        evolverstage._rebuild_instruction_tables(_DEFAULT_CONFIG)
+        evolverstage.rebuild_instruction_tables(_DEFAULT_CONFIG)
 
 
 def test_validate_config_rejects_invalid_instr_modes():
@@ -1331,16 +1331,16 @@ def test_micro_mutation_handler():
     )
     evolverstage.set_rng_sequence([1, 1, 1, 2, 2, 1, 2, 2])
     try:
-        instruction = evolverstage._apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        instruction = evolverstage.apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
         assert instruction.a_field == 6
 
-        instruction = evolverstage._apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        instruction = evolverstage.apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
         assert instruction.a_field == 5
 
-        instruction = evolverstage._apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        instruction = evolverstage.apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
         assert instruction.b_field == 11
 
-        instruction = evolverstage._apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        instruction = evolverstage.apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
         assert instruction.b_field == 10
     finally:
         evolverstage.set_rng_sequence([])
@@ -1364,7 +1364,7 @@ def test_minor_mutation_handler(monkeypatch):
 
     evolverstage.set_rng_sequence([1, 1, 2, 1, 3, 0, 4, 2, 3, 5, 0, 6, 1, -7])
     try:
-        mutated = evolverstage._apply_minor_mutation(
+        mutated = evolverstage.apply_minor_mutation(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
@@ -1372,7 +1372,7 @@ def test_minor_mutation_handler(monkeypatch):
         )
         assert mutated.opcode == "ADD"
 
-        mutated = evolverstage._apply_minor_mutation(
+        mutated = evolverstage.apply_minor_mutation(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
@@ -1380,7 +1380,7 @@ def test_minor_mutation_handler(monkeypatch):
         )
         assert mutated.modifier == "B"
 
-        mutated = evolverstage._apply_minor_mutation(
+        mutated = evolverstage.apply_minor_mutation(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
@@ -1388,7 +1388,7 @@ def test_minor_mutation_handler(monkeypatch):
         )
         assert mutated.a_mode == "#"
 
-        mutated = evolverstage._apply_minor_mutation(
+        mutated = evolverstage.apply_minor_mutation(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
@@ -1396,7 +1396,7 @@ def test_minor_mutation_handler(monkeypatch):
         )
         assert mutated.a_field == 3
 
-        mutated = evolverstage._apply_minor_mutation(
+        mutated = evolverstage.apply_minor_mutation(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
@@ -1404,7 +1404,7 @@ def test_minor_mutation_handler(monkeypatch):
         )
         assert mutated.b_mode == "#"
 
-        mutated = evolverstage._apply_minor_mutation(
+        mutated = evolverstage.apply_minor_mutation(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
@@ -1419,7 +1419,7 @@ def test_generate_warrior_lines_until_non_dat_with_dat_only_pool(monkeypatch):
     monkeypatch.setattr(evolverstage, "GENERATION_OPCODE_POOL", ["DAT"])
 
     with pytest.raises(RuntimeError, match="cannot generate non-DAT opcodes"):
-        evolverstage._generate_warrior_lines_until_non_dat(
+        evolverstage.generate_warrior_lines_until_non_dat(
             lambda: ["DAT.F $0, $0\n"],
             context="Test context",
         )
@@ -1437,7 +1437,7 @@ def test_generate_warrior_lines_until_non_dat_retries_until_success(monkeypatch)
             return ["DAT.F $0, $0\n"]
         return ["MOV.I $0, $0\n"]
 
-    lines = evolverstage._generate_warrior_lines_until_non_dat(
+    lines = evolverstage.generate_warrior_lines_until_non_dat(
         generator,
         context="Test context",
     )
