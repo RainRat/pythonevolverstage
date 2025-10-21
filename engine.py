@@ -10,6 +10,7 @@ import random
 import re
 import shutil
 import subprocess
+import tempfile
 import time
 import sys
 from collections import defaultdict
@@ -803,21 +804,7 @@ def _stable_internal_battle_seed(arena: int, cont1: int, cont2: int, era: int) -
     return _normalize_internal_seed(value)
 
 
-def run_internal_battle(
-    arena,
-    cont1,
-    cont2,
-    coresize,
-    cycles,
-    processes,
-    readlimit,
-    writelimit,
-    wardistance,
-    warlen,
-    battlerounds,
-    seed,
-):
-    config = _require_config()
+def _get_internal_worker_library():
     module = sys.modules.get("evolverstage")
     override_applied = False
     module_lib = None
@@ -835,6 +822,25 @@ def run_internal_battle(
             "Internal battle engine is required by the configuration but the "
             "C++ worker library is not loaded."
         )
+    return worker_lib
+
+
+def run_internal_battle(
+    arena,
+    cont1,
+    cont2,
+    coresize,
+    cycles,
+    processes,
+    readlimit,
+    writelimit,
+    wardistance,
+    warlen,
+    battlerounds,
+    seed,
+):
+    config = _require_config()
+    worker_lib = _get_internal_worker_library()
 
     max_min_distance = coresize // 2
     if wardistance < CPP_WORKER_MIN_DISTANCE or wardistance > max_min_distance:
@@ -899,6 +905,76 @@ def run_internal_battle(
         raise RuntimeError(
             f"An error occurred while running the internal battle: {exc}"
         )
+
+
+def _parse_battle_output(
+    raw_output: str,
+    engine_name: str,
+    verbose: bool,
+    expected_warriors: Sequence[int],
+) -> tuple[list[int], list[int]]:
+    scores: list[int] = []
+    warriors: list[int] = []
+    numline = 0
+    output_lines = raw_output.splitlines()
+    if not output_lines:
+        raise RuntimeError("Battle engine produced no output to parse")
+
+    is_pmars = engine_name == "pmars"
+    score_lines_found = 0
+    for line in output_lines:
+        numline += 1
+        if "scores" in line:
+            score_lines_found += 1
+            if verbose:
+                console_log(line.strip(), minimum_level=VerbosityLevel.VERBOSE)
+            if is_pmars:
+                match = re.search(r"scores\s+(-?\d+)", line)
+                if not match:
+                    raise RuntimeError(
+                        f"Unexpected pMARS score line format: {line.strip()}"
+                    )
+                scores.append(int(match.group(1)))
+            else:
+                splittedline = line.split()
+                if len(splittedline) < 5:
+                    raise RuntimeError(
+                        f"Unexpected score line format: {line.strip()}"
+                    )
+                scores.append(int(splittedline[4]))
+                warriors.append(int(splittedline[0]))
+    if not is_pmars and score_lines_found == 0:
+        raise RuntimeError("nMars output did not include any lines containing 'scores'.")
+    if len(scores) < 2:
+        raise RuntimeError("Battle engine output did not include scores for both warriors")
+    if is_pmars:
+        warriors = [int(expected_warriors[0]), int(expected_warriors[1])]
+    expected_set = {int(warrior) for warrior in expected_warriors}
+    returned_warriors = set(warriors)
+    if returned_warriors != expected_set:
+        raise RuntimeError(
+            "Battle engine returned mismatched warrior IDs: "
+            f"expected {sorted(expected_set)}, got {sorted(returned_warriors)}"
+        )
+    if verbose:
+        console_log(str(numline), minimum_level=VerbosityLevel.VERBOSE)
+    return warriors, scores
+
+
+def _process_battle_output(
+    raw_output: Union[str, bytes, None],
+    engine_name: str,
+    verbose: bool,
+    expected_warriors: Sequence[int],
+) -> tuple[list[int], list[int]]:
+    if raw_output is None:
+        raise RuntimeError("Battle engine returned no output")
+    if isinstance(raw_output, bytes):
+        raw_output = raw_output.decode("utf-8")
+    raw_output_stripped = raw_output.strip()
+    if raw_output_stripped.startswith("ERROR:"):
+        raise RuntimeError(f"Battle engine reported an error: {raw_output_stripped}")
+    return _parse_battle_output(raw_output, engine_name, verbose, expected_warriors)
 
 
 def execute_battle(
@@ -986,60 +1062,110 @@ def execute_battle(
             flag_args,
         )
 
-    if raw_output is None:
-        raise RuntimeError("Battle engine returned no output")
-    if isinstance(raw_output, bytes):
-        raw_output = raw_output.decode("utf-8")
-    raw_output_stripped = raw_output.strip()
-    if raw_output_stripped.startswith("ERROR:"):
-        raise RuntimeError(f"Battle engine reported an error: {raw_output_stripped}")
+    return _process_battle_output(
+        raw_output,
+        engine_name,
+        verbose,
+        [cont1, cont2],
+    )
 
-    scores: list[int] = []
-    warriors: list[int] = []
-    numline = 0
-    output_lines = raw_output.splitlines()
-    if not output_lines:
-        raise RuntimeError("Battle engine produced no output to parse")
 
-    is_pmars = engine_name == "pmars"
-    score_lines_found = 0
-    for line in output_lines:
-        numline += 1
-        if "scores" in line:
-            score_lines_found += 1
-            if verbose:
-                console_log(line.strip(), minimum_level=VerbosityLevel.VERBOSE)
-            if is_pmars:
-                match = re.search(r"scores\s+(-?\d+)", line)
-                if not match:
-                    raise RuntimeError(
-                        f"Unexpected pMARS score line format: {line.strip()}"
-                    )
-                scores.append(int(match.group(1)))
-            else:
-                splittedline = line.split()
-                if len(splittedline) < 5:
-                    raise RuntimeError(
-                        f"Unexpected score line format: {line.strip()}"
-                    )
-                scores.append(int(splittedline[4]))
-                warriors.append(int(splittedline[0]))
-    if not is_pmars and score_lines_found == 0:
-        raise RuntimeError("nMars output did not include any lines containing 'scores'.")
-    if len(scores) < 2:
-        raise RuntimeError("Battle engine output did not include scores for both warriors")
-    if is_pmars:
-        warriors = [cont1, cont2]
-    expected_warriors = {cont1, cont2}
-    returned_warriors = set(warriors)
-    if returned_warriors != expected_warriors:
-        raise RuntimeError(
-            "Battle engine returned mismatched warrior IDs: "
-            f"expected {sorted(expected_warriors)}, got {sorted(returned_warriors)}"
+def _ensure_trailing_newline(source: str) -> str:
+    if not source.endswith("\n"):
+        return source + "\n"
+    return source
+
+
+def execute_battle_with_sources(
+    arena: int,
+    cont1: int,
+    cont1_code: str,
+    cont2: int,
+    cont2_code: str,
+    era: int,
+    verbose: bool = False,
+    battlerounds_override: Optional[int] = None,
+    seed: Optional[int] = None,
+) -> tuple[list[int], list[int]]:
+    config = _require_config()
+    engine_name = config.battle_engine
+    battlerounds = (
+        battlerounds_override
+        if battlerounds_override is not None
+        else config.battlerounds_list[era]
+    )
+
+    normalized_w1 = _ensure_trailing_newline(cont1_code)
+    normalized_w2 = _ensure_trailing_newline(cont2_code)
+
+    if engine_name == "internal":
+        worker_lib = _get_internal_worker_library()
+        internal_seed = -1 if seed is None else _normalize_internal_seed(seed)
+        result_ptr = worker_lib.run_battle(
+            normalized_w1.encode("utf-8"),
+            cont1,
+            normalized_w2.encode("utf-8"),
+            cont2,
+            config.coresize_list[arena],
+            config.cycles_list[arena],
+            config.processes_list[arena],
+            config.readlimit_list[arena],
+            config.writelimit_list[arena],
+            config.wardistance_list[arena],
+            config.warlen_list[arena],
+            battlerounds,
+            internal_seed,
         )
-    if verbose:
-        console_log(str(numline), minimum_level=VerbosityLevel.VERBOSE)
-    return warriors, scores
+        raw_output = result_ptr
+    else:
+        resolve_command = _get_evolverstage_override(
+            "_resolve_external_command", _resolve_external_command
+        )
+        run_command = _get_evolverstage_override(
+            "_run_external_command", _run_external_command
+        )
+        if engine_name == "pmars":
+            candidate_fn = _get_evolverstage_override(
+                "_candidate_pmars_paths", _candidate_pmars_paths
+            )
+            engine_label = "pMARS"
+            flag_args = {
+                "-r": battlerounds,
+                "-p": config.processes_list[arena],
+                "-c": config.cycles_list[arena],
+                "-s": config.coresize_list[arena],
+            }
+            if seed is not None:
+                flag_args["-S"] = seed
+        else:
+            candidate_fn = _get_evolverstage_override(
+                "_candidate_nmars_paths", _candidate_nmars_paths
+            )
+            engine_label = "nMars"
+            flag_args = {
+                "-r": battlerounds,
+                "-p": config.processes_list[arena],
+                "-c": config.cycles_list[arena],
+                "-s": config.coresize_list[arena],
+                "-l": config.readlimit_list[arena],
+                "-w": config.writelimit_list[arena],
+            }
+
+        executable = resolve_command(engine_label, candidate_fn())
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            warrior1_path = os.path.join(tmp_dir, f"{cont1}.red")
+            warrior2_path = os.path.join(tmp_dir, f"{cont2}.red")
+            with open(warrior1_path, "w") as handle:
+                handle.write(normalized_w1)
+            with open(warrior2_path, "w") as handle:
+                handle.write(normalized_w2)
+            raw_output = run_command(
+                executable,
+                [warrior1_path, warrior2_path],
+                flag_args,
+            )
+
+    return _process_battle_output(raw_output, engine_name, verbose, [cont1, cont2])
 
 
 class _ArenaStorageNotLoaded:
@@ -1594,6 +1720,7 @@ __all__ = [
     "_run_external_command",
     "run_internal_battle",
     "execute_battle",
+    "execute_battle_with_sources",
     "ArenaStorage",
     "DiskArenaStorage",
     "InMemoryArenaStorage",
