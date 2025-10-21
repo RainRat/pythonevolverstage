@@ -1165,8 +1165,12 @@ def execute_battle_with_sources(
 
         executable = resolve_command(engine_label, candidate_fn())
         with tempfile.TemporaryDirectory() as tmp_dir:
-            warrior1_path = os.path.join(tmp_dir, f"warrior_{cont1}.red")
-            warrior2_path = os.path.join(tmp_dir, f"warrior_{cont2}.red")
+            # External engines such as nMars expect the warrior filename to begin
+            # with an integer identifier that matches the contender number. Keep
+            # the numeric basename so the downstream parser continues to extract
+            # the correct warrior ids from stdout.
+            warrior1_path = os.path.join(tmp_dir, f"{cont1}.red")
+            warrior2_path = os.path.join(tmp_dir, f"{cont2}.red")
             with open(warrior1_path, "w") as handle:
                 handle.write(normalized_w1)
             with open(warrior2_path, "w") as handle:
