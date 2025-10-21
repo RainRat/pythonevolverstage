@@ -10,13 +10,14 @@ If you have a suggestion, submit a pull request. I put it on Github to encourage
 
 For all of these, modify the constants in settings.ini.
 
-1. Edit the ARENA lists to contain the parameters of the competitions you want to compete in. If you just want to compete in one arena, you have lists of length 1.
-2. Set ALREADYSEEDED to False. If you interrupt it and want to resume, set it to True.
-3. Choose how much actual wall clock time (in hours) you plan to run the project for and modify CLOCK_TIME
-4. Select the battle engine by setting `BATTLE_ENGINE` to `nmars`, `internal`, or `pmars` in `settings.ini`. Use `nmars` to call the external nMars executable, `internal` to use the bundled C++ worker, or `pmars` to shell out to a local pMARS binary.
-5. (Optional) Enable `IN_MEMORY_ARENAS` to cache warriors in RAM and reduce disk writes; adjust `ARENA_CHECKPOINT_INTERVAL` to control how often arenas are saved when running in this mode.
-6. python evolverstage.py (add `--verbosity {terse,default,verbose,pseudo-graphical}` to control console output; use `--run-final-tournament` to immediately run the post-training bracket when the evolution loop completes)
-7. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
+1. Edit the **per-arena lists** (like `CORESIZE_LIST`, `CYCLES_LIST`, etc.) to contain the parameters of the competitions you want to compete in. If you just want to compete in one arena, you have lists of length 1.
+2. Set the **per-era lists** (like `BATTLEROUNDS_LIST`, `NOTHING_LIST`, `RANDOM_LIST`, etc.) to control the evolution process over time. The number of eras is defined by the number of entries in `BATTLEROUNDS_LIST`.
+3. Set ALREADYSEEDED to False. If you interrupt it and want to resume, set it to True.
+4. Choose how much actual wall clock time (in hours) you plan to run the project for and modify CLOCK_TIME
+5. Select the battle engine by setting `BATTLE_ENGINE` to `nmars`, `internal`, or `pmars` in `settings.ini`. Use `nmars` to call the external nMars executable, `internal` to use the bundled C++ worker, or `pmars` to shell out to a local pMARS binary.
+6. (Optional) Enable `IN_MEMORY_ARENAS` to cache warriors in RAM and reduce disk writes; adjust `ARENA_CHECKPOINT_INTERVAL` to control how often arenas are saved when running in this mode.
+7. python evolverstage.py (add `--verbosity {terse,default,verbose,pseudo-graphical}` to control console output; use `--run-final-tournament` to immediately run the post-training bracket when the evolution loop completes)
+8. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
 
 ## Special Features:
 
