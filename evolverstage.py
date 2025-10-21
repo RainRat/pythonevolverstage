@@ -29,6 +29,13 @@ from ui import (
 
 
 @dataclass
+class BenchmarkWarrior:
+    name: str
+    code: str
+    path: str
+
+
+@dataclass
 class EvolverConfig:
     battle_engine: str
     last_arena: int
@@ -67,6 +74,9 @@ class EvolverConfig:
     instr_modif: list[str]
     run_final_tournament: bool
     final_tournament_csv: Optional[str]
+    benchmark_root: Optional[str]
+    benchmark_final_tournament: bool
+    benchmark_sets: dict[int, list[BenchmarkWarrior]] = field(default_factory=dict)
 
 
 class _ConfigNotLoaded:
@@ -81,6 +91,8 @@ config = cast(EvolverConfig, _ConfigNotLoaded())
 
 _RNG_SEQUENCE: Optional[list[int]] = None
 _RNG_INDEX: int = 0
+
+_BENCHMARK_WARRIOR_ID_BASE = MAX_WARRIOR_FILENAME_ID - 10_000
 
 T = TypeVar("T")
 
@@ -214,6 +226,18 @@ def _validate_arena_parameters(idx: int, active_config: EvolverConfig) -> None:
 def validate_config(active_config: EvolverConfig, config_path: Optional[str] = None) -> None:
     if active_config.last_arena is None:
         raise ValueError("LAST_ARENA must be specified in the configuration.")
+
+    if (
+        active_config.benchmark_final_tournament
+        and not active_config.benchmark_root
+    ):
+        warnings.warn(
+            "BENCHMARK_FINAL_TOURNAMENT is enabled but BENCHMARK_ROOT is not set; "
+            "benchmark-based tournaments will be disabled.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        active_config.benchmark_final_tournament = False
 
     valid_engines = {"nmars", "internal", "pmars"}
     if active_config.battle_engine not in valid_engines:
@@ -363,6 +387,16 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
     archive_dir = os.path.join(base_path, "archive")
     required_directories.append(archive_dir)
 
+    if active_config.benchmark_root:
+        benchmark_root = active_config.benchmark_root
+        if not os.path.isabs(benchmark_root):
+            benchmark_root = os.path.abspath(benchmark_root)
+            active_config.benchmark_root = benchmark_root
+        if not os.path.isdir(benchmark_root):
+            raise FileNotFoundError(
+                f"Benchmark directory '{benchmark_root}' does not exist or is not a directory."
+            )
+
     if not os.path.isdir(base_path):
         raise FileNotFoundError(
             f"Configuration directory '{base_path}' does not exist or is not a directory."
@@ -432,6 +466,54 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
             )
 
 
+def _load_benchmark_sets(active_config: EvolverConfig) -> dict[int, list[BenchmarkWarrior]]:
+    benchmark_root = active_config.benchmark_root
+    if not benchmark_root:
+        return {}
+
+    benchmark_sets: dict[int, list[BenchmarkWarrior]] = {}
+    arena_count = active_config.last_arena + 1
+    for arena in range(arena_count):
+        arena_dir = os.path.join(benchmark_root, f"arena{arena}")
+        if not os.path.isdir(arena_dir):
+            warnings.warn(
+                f"Benchmark directory '{arena_dir}' missing for arena {arena}.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            continue
+
+        entries = sorted(
+            entry for entry in os.listdir(arena_dir) if entry.lower().endswith(".red")
+        )
+        warriors: list[BenchmarkWarrior] = []
+        for entry in entries:
+            full_path = os.path.join(arena_dir, entry)
+            try:
+                with open(full_path, "r") as handle:
+                    code = handle.read()
+            except OSError as exc:
+                warnings.warn(
+                    f"Unable to read benchmark warrior '{full_path}': {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                continue
+            name, _ = os.path.splitext(entry)
+            warriors.append(BenchmarkWarrior(name=name, code=code, path=full_path))
+
+        if warriors:
+            benchmark_sets[arena] = warriors
+        elif active_config.benchmark_final_tournament:
+            warnings.warn(
+                f"No benchmark warriors found for arena {arena} in '{arena_dir}'.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
+    return benchmark_sets
+
+
 def load_configuration(path: str) -> EvolverConfig:
     parser = configparser.ConfigParser()
     read_files = parser.read(path)
@@ -476,6 +558,10 @@ def load_configuration(path: str) -> EvolverConfig:
     if library_path:
         library_path = os.path.abspath(os.path.join(base_path, library_path))
 
+    benchmark_root = _read_config('BENCHMARK_ROOT', data_type='str')
+    if benchmark_root:
+        benchmark_root = os.path.abspath(os.path.join(base_path, benchmark_root))
+
     active_config = EvolverConfig(
         battle_engine=_read_config('BATTLE_ENGINE', data_type='str', default='internal') or 'internal',
         last_arena=_read_config('LAST_ARENA', data_type='int'),
@@ -514,6 +600,8 @@ def load_configuration(path: str) -> EvolverConfig:
         instr_modif=_read_config('INSTR_MODIF', data_type='string_list') or [],
         run_final_tournament=_read_config('RUN_FINAL_TOURNAMENT', data_type='bool', default=False) or False,
         final_tournament_csv=final_tournament_csv,
+        benchmark_root=benchmark_root,
+        benchmark_final_tournament=_read_config('BENCHMARK_FINAL_TOURNAMENT', data_type='bool', default=False) or False,
     )
     if not active_config.readlimit_list:
         active_config.readlimit_list = list(active_config.coresize_list)
@@ -521,6 +609,8 @@ def load_configuration(path: str) -> EvolverConfig:
         active_config.writelimit_list = list(active_config.coresize_list)
 
     validate_config(active_config, config_path=path)
+    if active_config.benchmark_root:
+        active_config.benchmark_sets = _load_benchmark_sets(active_config)
     return active_config
 
 
@@ -714,7 +804,11 @@ def run_final_tournament(active_config: EvolverConfig):
             minimum_level=VerbosityLevel.TERSE,
         )
         return
-    if active_config.numwarriors <= 1:
+    benchmark_available = (
+        active_config.benchmark_final_tournament
+        and any(active_config.benchmark_sets.values())
+    )
+    if active_config.numwarriors <= 1 and not benchmark_available:
         console_log(
             "Not enough warriors to run a final tournament.",
             minimum_level=VerbosityLevel.TERSE,
@@ -731,24 +825,21 @@ def run_final_tournament(active_config: EvolverConfig):
     use_in_memory_internal = (
         active_config.use_in_memory_arenas and active_config.battle_engine == 'internal'
     )
-    storage = get_arena_storage() if use_in_memory_internal else None
+    storage = get_arena_storage()
+    use_benchmarks = (
+        active_config.benchmark_final_tournament
+        and any(active_config.benchmark_sets.values())
+    )
     console_log(
         "\n================ Final Tournament ================",
         minimum_level=VerbosityLevel.TERSE,
     )
-    arenas_to_run: list[tuple[int, list[int]]] = []
+    arenas_to_run: list[tuple[int, list[int], list[BenchmarkWarrior]]] = []
     total_battles = 0
     arena_summaries: list[dict[str, object]] = []
     warrior_scores_by_arena: dict[int, list[int]] = {}
     for arena in range(0, active_config.last_arena + 1):
-        if use_in_memory_internal:
-            assert storage is not None
-            warrior_ids = [
-                warrior_id
-                for warrior_id in range(1, active_config.numwarriors + 1)
-                if storage.get_warrior_lines(arena, warrior_id)
-            ]
-        else:
+        if not use_in_memory_internal:
             arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
             if not os.path.isdir(arena_dir):
                 console_log(
@@ -757,21 +848,48 @@ def run_final_tournament(active_config: EvolverConfig):
                 )
                 continue
 
-            warrior_ids = [
-                warrior_id
-                for warrior_id in range(1, active_config.numwarriors + 1)
-                if os.path.exists(os.path.join(arena_dir, f"{warrior_id}.red"))
-            ]
+        warrior_ids = [
+            warrior_id
+            for warrior_id in range(1, active_config.numwarriors + 1)
+            if storage.get_warrior_lines(arena, warrior_id)
+        ]
 
-        if len(warrior_ids) < 2:
+        if not warrior_ids:
             console_log(
-                f"Arena {arena}: not enough warriors for a tournament. Skipping.",
+                f"Arena {arena}: no warriors available for the final tournament.",
                 minimum_level=VerbosityLevel.TERSE,
             )
             continue
 
-        arenas_to_run.append((arena, warrior_ids))
-        total_battles += len(warrior_ids) * (len(warrior_ids) - 1) // 2
+        benchmark_warriors = (
+            list(active_config.benchmark_sets.get(arena, [])) if use_benchmarks else []
+        )
+        if use_benchmarks and not benchmark_warriors:
+            console_log(
+                f"Arena {arena}: no benchmark warriors configured; using round-robin scoring.",
+                minimum_level=VerbosityLevel.TERSE,
+            )
+
+        if benchmark_warriors:
+            arena_battles = len(warrior_ids) * len(benchmark_warriors)
+        else:
+            if len(warrior_ids) < 2:
+                console_log(
+                    f"Arena {arena}: not enough warriors for a round-robin tournament. Skipping.",
+                    minimum_level=VerbosityLevel.TERSE,
+                )
+                continue
+            arena_battles = len(warrior_ids) * (len(warrior_ids) - 1) // 2
+
+        if arena_battles == 0:
+            console_log(
+                f"Arena {arena}: no battles scheduled; skipping.",
+                minimum_level=VerbosityLevel.TERSE,
+            )
+            continue
+
+        arenas_to_run.append((arena, warrior_ids, benchmark_warriors))
+        total_battles += arena_battles
 
     if not arenas_to_run:
         console_log(
@@ -780,57 +898,144 @@ def run_final_tournament(active_config: EvolverConfig):
         )
         return
 
-    for _, warrior_ids in arenas_to_run:
+    for _, warrior_ids, _ in arenas_to_run:
         for warrior_id in warrior_ids:
             warrior_scores_by_arena.setdefault(warrior_id, [])
 
     tournament_start = time.time()
     battles_completed = 0
     try:
-        for arena, warrior_ids in arenas_to_run:
+        for arena, warrior_ids, benchmark_warriors in arenas_to_run:
             total_scores = {warrior_id: 0 for warrior_id in warrior_ids}
+            benchmark_totals: dict[int, float] = {}
+            benchmark_counts: dict[int, int] = {}
+            missing_warriors: set[tuple[int, int]] = set()
 
-            for idx, cont1 in enumerate(warrior_ids):
-                for cont2 in warrior_ids[idx + 1 :]:
-                    match_seed = _stable_internal_battle_seed(
-                        arena, cont1, cont2, final_era_index
+            if benchmark_warriors:
+                for bench_index, benchmark in enumerate(benchmark_warriors):
+                    benchmark_totals.setdefault(bench_index, 0.0)
+                    benchmark_counts.setdefault(bench_index, 0)
+                    bench_identifier = max(
+                        1,
+                        _BENCHMARK_WARRIOR_ID_BASE - (arena * 1000 + bench_index),
                     )
-                    warriors, scores = execute_battle(
-                        arena,
-                        cont1,
-                        cont2,
-                        final_era_index,
-                        verbose=False,
-                        battlerounds_override=1,
-                        seed=match_seed,
-                    )
-                    for warrior_id, score in zip(warriors, scores):
-                        total_scores[warrior_id] = total_scores.get(warrior_id, 0) + score
-                        warrior_scores_by_arena.setdefault(warrior_id, []).append(score)
 
-                    battles_completed += 1
-                    percent_complete = (
-                        battles_completed / total_battles * 100 if total_battles else 100.0
-                    )
-                    time_progress, default_detail = _get_progress_status(
-                        tournament_start, active_config.clock_time, final_era_index
-                    )
-                    progress_segments = []
-                    if active_config.clock_time:
-                        progress_segments.append(time_progress)
-                    progress_segments.append(
-                        f"Final Tournament Progress: {battles_completed}/{total_battles} "
-                        f"battles ({percent_complete:.2f}% complete)"
-                    )
-                    progress_line = " | ".join(progress_segments)
-                    if len(warriors) >= 2 and len(scores) >= 2:
-                        battle_line = (
-                            f"Arena {arena} | {warriors[0]} ({scores[0]}) vs "
-                            f"{warriors[1]} ({scores[1]})"
+                    for warrior_id in warrior_ids:
+                        warrior_lines = storage.get_warrior_lines(arena, warrior_id)
+                        if not warrior_lines:
+                            if (arena, warrior_id) not in missing_warriors:
+                                console_log(
+                                    f"Arena {arena}: warrior {warrior_id} has no code; skipping benchmark match.",
+                                    minimum_level=VerbosityLevel.TERSE,
+                                )
+                                missing_warriors.add((arena, warrior_id))
+                            continue
+                        warrior_code = "".join(warrior_lines)
+                        if not warrior_code.strip():
+                            if (arena, warrior_id) not in missing_warriors:
+                                console_log(
+                                    f"Arena {arena}: warrior {warrior_id} is empty; skipping benchmark match.",
+                                    minimum_level=VerbosityLevel.TERSE,
+                                )
+                                missing_warriors.add((arena, warrior_id))
+                            continue
+
+                        match_seed = _stable_internal_battle_seed(
+                            arena, warrior_id, bench_identifier, final_era_index
                         )
-                    else:
-                        battle_line = f"Arena {arena} battle in progress"
-                    console_update_status(progress_line, battle_line or default_detail)
+                        warriors, scores = execute_battle_with_sources(
+                            arena,
+                            warrior_id,
+                            warrior_code,
+                            bench_identifier,
+                            benchmark.code,
+                            final_era_index,
+                            verbose=False,
+                            seed=match_seed,
+                        )
+
+                        try:
+                            warrior_pos = warriors.index(warrior_id)
+                            benchmark_pos = warriors.index(bench_identifier)
+                        except ValueError:
+                            console_log(
+                                "Benchmark battle returned unexpected warrior identifiers; ignoring result.",
+                                minimum_level=VerbosityLevel.TERSE,
+                            )
+                            continue
+
+                        warrior_score = scores[warrior_pos]
+                        benchmark_score = scores[benchmark_pos]
+                        total_scores[warrior_id] = total_scores.get(warrior_id, 0) + warrior_score
+                        warrior_scores_by_arena.setdefault(warrior_id, []).append(
+                            warrior_score
+                        )
+                        benchmark_totals[bench_index] += benchmark_score
+                        benchmark_counts[bench_index] += 1
+
+                        battles_completed += 1
+                        percent_complete = (
+                            battles_completed / total_battles * 100 if total_battles else 100.0
+                        )
+                        time_progress, default_detail = _get_progress_status(
+                            tournament_start, active_config.clock_time, final_era_index
+                        )
+                        progress_segments = []
+                        if active_config.clock_time:
+                            progress_segments.append(time_progress)
+                        progress_segments.append(
+                            f"Final Tournament Progress: {battles_completed}/{total_battles} "
+                            f"battles ({percent_complete:.2f}% complete)"
+                        )
+                        progress_line = " | ".join(progress_segments)
+                        battle_line = (
+                            f"Arena {arena} | Warrior {warrior_id} ({warrior_score}) vs "
+                            f"benchmark {benchmark.name} ({benchmark_score})"
+                        )
+                        console_update_status(progress_line, battle_line or default_detail)
+
+            else:
+                for idx, cont1 in enumerate(warrior_ids):
+                    for cont2 in warrior_ids[idx + 1 :]:
+                        match_seed = _stable_internal_battle_seed(
+                            arena, cont1, cont2, final_era_index
+                        )
+                        warriors, scores = execute_battle(
+                            arena,
+                            cont1,
+                            cont2,
+                            final_era_index,
+                            verbose=False,
+                            battlerounds_override=1,
+                            seed=match_seed,
+                        )
+                        for warrior_id, score in zip(warriors, scores):
+                            total_scores[warrior_id] = total_scores.get(warrior_id, 0) + score
+                            warrior_scores_by_arena.setdefault(warrior_id, []).append(score)
+
+                        battles_completed += 1
+                        percent_complete = (
+                            battles_completed / total_battles * 100 if total_battles else 100.0
+                        )
+                        time_progress, default_detail = _get_progress_status(
+                            tournament_start, active_config.clock_time, final_era_index
+                        )
+                        progress_segments = []
+                        if active_config.clock_time:
+                            progress_segments.append(time_progress)
+                        progress_segments.append(
+                            f"Final Tournament Progress: {battles_completed}/{total_battles} "
+                            f"battles ({percent_complete:.2f}% complete)"
+                        )
+                        progress_line = " | ".join(progress_segments)
+                        if len(warriors) >= 2 and len(scores) >= 2:
+                            battle_line = (
+                                f"Arena {arena} | {warriors[0]} ({scores[0]}) vs "
+                                f"{warriors[1]} ({scores[1]})"
+                            )
+                        else:
+                            battle_line = f"Arena {arena} battle in progress"
+                        console_update_status(progress_line, battle_line or default_detail)
 
             console_clear_status()
             console_log(
@@ -851,13 +1056,47 @@ def run_final_tournament(active_config: EvolverConfig):
             arena_average = (
                 statistics.mean(total_scores.values()) if total_scores else 0.0
             )
-            arena_summaries.append(
-                {
-                    "arena": arena,
-                    "rankings": list(rankings),
-                    "average": arena_average,
-                }
-            )
+            summary_entry: dict[str, object] = {
+                "arena": arena,
+                "rankings": list(rankings),
+                "average": arena_average,
+                "mode": "benchmark" if benchmark_warriors else "round_robin",
+            }
+
+            if benchmark_warriors:
+                benchmark_summary: list[dict[str, object]] = []
+                for bench_index, benchmark in enumerate(benchmark_warriors):
+                    count = benchmark_counts.get(bench_index, 0)
+                    average = (
+                        benchmark_totals.get(bench_index, 0.0) / count
+                        if count
+                        else 0.0
+                    )
+                    benchmark_summary.append(
+                        {
+                            "name": benchmark.name,
+                            "average": average,
+                            "matches": count,
+                            "path": benchmark.path,
+                        }
+                    )
+                if benchmark_summary:
+                    summary_entry["benchmark"] = benchmark_summary
+                    console_log(
+                        "Benchmark reference (scores from the benchmark perspective):",
+                        minimum_level=VerbosityLevel.TERSE,
+                    )
+                    for entry in benchmark_summary:
+                        console_log(
+                            "  {name}: {avg:.2f} over {count} match(es)".format(
+                                name=entry["name"],
+                                avg=entry["average"],
+                                count=entry["matches"],
+                            ),
+                            minimum_level=VerbosityLevel.TERSE,
+                        )
+
+            arena_summaries.append(summary_entry)
     except KeyboardInterrupt:
         console_clear_status()
         console_log(
@@ -893,6 +1132,20 @@ def _report_final_tournament_statistics(
             f"  Arena {arena_id} average score: {arena_average:.2f}",
             minimum_level=VerbosityLevel.TERSE,
         )
+        benchmark_info = summary.get("benchmark")
+        if benchmark_info:
+            console_log(
+                "    Benchmark reference averages (benchmark perspective):",
+                minimum_level=VerbosityLevel.TERSE,
+            )
+            for entry in benchmark_info:
+                name = entry.get("name", "unknown")
+                average = float(entry.get("average", 0.0))
+                count = int(entry.get("matches", 0))
+                console_log(
+                    f"      {name}: {average:.2f} over {count} match(es)",
+                    minimum_level=VerbosityLevel.TERSE,
+                )
 
     all_scores = [score for scores in warrior_scores_by_arena.values() for score in scores]
     if all_scores:
