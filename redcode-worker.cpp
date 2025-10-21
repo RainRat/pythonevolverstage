@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <cctype>
 #include <cstdint>
+#include <cstring>
 
 constexpr int WARRIOR_COUNT = 2;
 
@@ -270,13 +271,18 @@ Instruction parse_line(const std::string& line) {
         }
 
         constexpr const char* VALID_MODES = "#$*@{}<>";
-        if (std::string(VALID_MODES).find(operand[0]) == std::string::npos) {
+        if (std::strchr(VALID_MODES, operand[0]) == nullptr) {
             throw std::runtime_error(std::string("Missing addressing mode prefix in ") +
                                      operand_name + "-field operand in line: " +
                                      original_line);
         }
 
         mode_target = get_mode(operand[0]);
+        if (operand.length() < 2) {
+            throw std::runtime_error("Missing value for " + std::string(operand_name) +
+                                     "-field operand in line: " + original_line);
+        }
+
         field_target = parse_numeric_field(trim(operand.substr(1)), "line: " + original_line);
     };
 
