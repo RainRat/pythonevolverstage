@@ -11,67 +11,7 @@ import warnings
 from dataclasses import dataclass, field
 from typing import List, Optional, Sequence, Tuple, TypeVar, Union, cast
 
-from engine import (
-    ArchivingEvent,
-    ArchivingResult,
-    Marble,
-    MUTATION_HANDLERS,
-    RedcodeInstruction,
-    ADDRESSING_MODES,
-    BASE_ADDRESSING_MODES,
-    CPP_WORKER_LIB,
-    CPP_WORKER_MAX_CORE_SIZE,
-    CPP_WORKER_MAX_CYCLES,
-    CPP_WORKER_MAX_PROCESSES,
-    CPP_WORKER_MAX_ROUNDS,
-    CPP_WORKER_MAX_WARRIOR_LENGTH,
-    CPP_WORKER_MIN_CORE_SIZE,
-    CPP_WORKER_MIN_DISTANCE,
-    GENERATION_OPCODE_POOL,
-    MutationHandler,
-    _apply_instruction_library,
-    _apply_magic_number_mutation,
-    _apply_major_mutation,
-    _apply_micro_mutation,
-    _apply_minor_mutation,
-    _apply_nab_instruction,
-    _candidate_nmars_paths,
-    _candidate_pmars_paths,
-    _INTERNAL_ENGINE_MAX_SEED,
-    _generate_internal_battle_seed,
-    _generate_warrior_lines_until_non_dat,
-    MAX_WARRIOR_FILENAME_ID,
-    _rebuild_instruction_tables,
-    _run_external_command,
-    _should_flush_on_exit,
-    _should_persist_to_disk,
-    _stable_internal_battle_seed,
-    _resolve_external_command,
-    breed_offspring,
-    canonicalize_opcode,
-    choose_random_modifier,
-    choose_random_mode,
-    choose_random_opcode,
-    create_arena_storage,
-    create_directory_if_not_exists,
-    default_instruction,
-    determine_winner_and_loser,
-    execute_battle,
-    format_redcode_instruction,
-    generate_random_instruction,
-    get_arena_storage,
-    handle_archiving,
-    instruction_to_line,
-    parse_instruction_or_default,
-    parse_redcode_instruction,
-    run_internal_battle,
-    sanitize_instruction,
-    select_opponents,
-    set_arena_storage,
-    set_engine_config,
-    weighted_random_number,
-    configure_rng,
-)
+from engine import *
 from ui import (
     BattleStatisticsTracker,
     ConsoleInterface,
@@ -1221,9 +1161,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 f"Era {display_era}, Arena {arena_index} | {cont1} vs {cont2} | Running..."
             )
             console_update_status(progress_line, pending_battle_line)
-            battle_seed = (
-                _generate_internal_battle_seed() if seed_enabled else None
-            )
+            battle_seed = _generate_internal_battle_seed()
             warriors, scores = execute_battle(
                 arena_index,
                 cont1,

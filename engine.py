@@ -47,7 +47,7 @@ def set_engine_config(config: "EvolverConfig") -> None:
 
     global _active_config
     _active_config = config
-    _rebuild_instruction_tables(config)
+    rebuild_instruction_tables(config)
 
 
 def _require_config() -> "EvolverConfig":
@@ -133,7 +133,7 @@ GENERATION_OPCODE_POOL: list[str] = []
 _sync_export("GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL)
 
 
-def _rebuild_instruction_tables(active_config: "EvolverConfig") -> None:
+def rebuild_instruction_tables(active_config: "EvolverConfig") -> None:
     global ADDRESSING_MODES, GENERATION_OPCODE_POOL
 
     ADDRESSING_MODES = set(BASE_ADDRESSING_MODES)
@@ -220,18 +220,6 @@ class RedcodeInstruction:
 
 
 _INT_LITERAL_RE = re.compile(r"^[+-]?\d+$")
-_INSTRUCTION_HEADER_RE = re.compile(
-    r"""
-    ^
-    (?P<opcode>[A-Za-z]+)
-    (?:\s*\.\s*(?P<modifier>[A-Za-z]+))?
-    (?P<rest>.*)
-    $
-    """,
-    re.VERBOSE,
-)
-
-
 def _tokenize_instruction(line: str) -> list[str]:
     tokens = []
     current: List[str] = []
@@ -491,7 +479,7 @@ def _can_generate_non_dat_opcode() -> bool:
     return any(opcode != "DAT" for opcode in opcode_pool)
 
 
-def _generate_warrior_lines_until_non_dat(
+def generate_warrior_lines_until_non_dat(
     generator: Callable[[], list[str]],
     context: str,
 ) -> list[str]:
@@ -1254,7 +1242,7 @@ def _should_flush_on_exit(current_config: "EvolverConfig") -> bool:
 MutationHandler = Callable[[RedcodeInstruction, int, "EvolverConfig", int], RedcodeInstruction]
 
 
-def _apply_major_mutation(
+def apply_major_mutation(
     _instruction: RedcodeInstruction,
     arena: int,
     _config: "EvolverConfig",
@@ -1263,7 +1251,7 @@ def _apply_major_mutation(
     return generate_random_instruction(arena)
 
 
-def _apply_nab_instruction(
+def apply_nab_instruction(
     instruction: RedcodeInstruction,
     arena: int,
     config: "EvolverConfig",
@@ -1288,7 +1276,7 @@ def _apply_nab_instruction(
     return instruction
 
 
-def _apply_minor_mutation(
+def apply_minor_mutation(
     instruction: RedcodeInstruction,
     arena: int,
     config: "EvolverConfig",
@@ -1314,7 +1302,7 @@ def _apply_minor_mutation(
     return instruction
 
 
-def _apply_micro_mutation(
+def apply_micro_mutation(
     instruction: RedcodeInstruction,
     _arena: int,
     _config: "EvolverConfig",
@@ -1330,7 +1318,7 @@ def _apply_micro_mutation(
     return instruction
 
 
-def _apply_instruction_library(
+def apply_instruction_library(
     instruction: RedcodeInstruction,
     _arena: int,
     config: "EvolverConfig",
@@ -1346,7 +1334,7 @@ def _apply_instruction_library(
     return default_instruction()
 
 
-def _apply_magic_number_mutation(
+def apply_magic_number_mutation(
     instruction: RedcodeInstruction,
     _arena: int,
     _config: "EvolverConfig",
@@ -1361,12 +1349,12 @@ def _apply_magic_number_mutation(
 
 MUTATION_HANDLERS: dict[Marble, MutationHandler] = {
     Marble.DO_NOTHING: lambda instr, *_: instr,
-    Marble.MAJOR_MUTATION: _apply_major_mutation,
-    Marble.NAB_INSTRUCTION: _apply_nab_instruction,
-    Marble.MINOR_MUTATION: _apply_minor_mutation,
-    Marble.MICRO_MUTATION: _apply_micro_mutation,
-    Marble.INSTRUCTION_LIBRARY: _apply_instruction_library,
-    Marble.MAGIC_NUMBER_MUTATION: _apply_magic_number_mutation,
+    Marble.MAJOR_MUTATION: apply_major_mutation,
+    Marble.NAB_INSTRUCTION: apply_nab_instruction,
+    Marble.MINOR_MUTATION: apply_minor_mutation,
+    Marble.MICRO_MUTATION: apply_micro_mutation,
+    Marble.INSTRUCTION_LIBRARY: apply_instruction_library,
+    Marble.MAGIC_NUMBER_MUTATION: apply_magic_number_mutation,
 }
 
 
@@ -1505,7 +1493,7 @@ def breed_offspring(
 
         return offspring_lines
 
-    new_lines = _generate_warrior_lines_until_non_dat(
+    new_lines = generate_warrior_lines_until_non_dat(
         _breed_offspring_once,
         context=f"Breeding offspring for arena {arena}, warrior {loser}",
     )
@@ -1564,6 +1552,7 @@ def select_opponents(
 __all__ = [
     "set_engine_config",
     "configure_rng",
+    "rebuild_instruction_tables",
     "DEFAULT_MODE",
     "DEFAULT_MODIFIER",
     "BASE_ADDRESSING_MODES",
@@ -1587,6 +1576,7 @@ __all__ = [
     "choose_random_modifier",
     "choose_random_mode",
     "generate_random_instruction",
+    "generate_warrior_lines_until_non_dat",
     "CPP_WORKER_LIB",
     "CPP_WORKER_MIN_DISTANCE",
     "CPP_WORKER_MIN_CORE_SIZE",
@@ -1615,6 +1605,12 @@ __all__ = [
     "_should_flush_on_exit",
     "Marble",
     "MutationHandler",
+    "apply_major_mutation",
+    "apply_nab_instruction",
+    "apply_minor_mutation",
+    "apply_micro_mutation",
+    "apply_instruction_library",
+    "apply_magic_number_mutation",
     "MUTATION_HANDLERS",
     "ArchivingEvent",
     "ArchivingResult",
