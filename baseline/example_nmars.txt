@@ -1,0 +1,20 @@
+Example nMars output. If there isn't a name in a comment inside the warrior (like ours are), the filename without the ".red" is the warrior name.
+
+Note that the results are not the same order as specified.
+
+>nmars 123.red 456.red -r 10
+nMars.exe 0.9.5.0 - http://sourceforge.net/projects/nmars
+
+Program "123" (length 1) by "Anonymous"
+
+       ORG      START
+START  MOV.I  $     0, $     1
+
+Program "456" (length 1) by "Anonymous"
+
+       ORG      START
+START  DAT.F  #     0, $     0
+
+456 by Anonymous scores 0
+123 by Anonymous scores 30
+Results: 0 10 0
