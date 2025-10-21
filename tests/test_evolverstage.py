@@ -2,6 +2,7 @@ import importlib
 import io
 import os
 import pathlib
+import re
 import sys
 import textwrap
 import types
@@ -26,44 +27,52 @@ evolverstage.set_active_config(_DEFAULT_CONFIG)
 evolverstage.set_arena_storage(evolverstage.create_arena_storage(_DEFAULT_CONFIG))
 
 
-def test_load_configuration_parses_types(tmp_path):
-    config_path = tmp_path / "config.ini"
-    config_path.write_text(
-        textwrap.dedent(
-            """
-            [DEFAULT]
-            BATTLE_ENGINE = internal
-            LAST_ARENA = 1
-            CORESIZE_LIST = 8000, 8192
-            SANITIZE_LIST = 80, 81
-            CYCLES_LIST = 1000, 2000
-            PROCESSES_LIST = 8, 16
-            WARLEN_LIST = 20, 40
-            WARDISTANCE_LIST = 20, 40
-            NUMWARRIORS = 50
-            ALREADYSEEDED = false
-            CLOCK_TIME = 12.5
-            BATTLE_LOG_FILE = logs.csv
-            FINAL_ERA_ONLY = false
-            NOTHING_LIST = 1,2
-            RANDOM_LIST = 4,5
-            NAB_LIST = 6,7
-            MINI_MUT_LIST = 8,9
-            MICRO_MUT_LIST = 10,11
-            LIBRARY_LIST = 12, 13
-            MAGIC_NUMBER_LIST = 14, 15
-            ARCHIVE_LIST = 16,17
-            UNARCHIVE_LIST = 18,19
-            LIBRARY_PATH = ./library
-            CROSSOVERRATE_LIST = 20,21
-            TRANSPOSITIONRATE_LIST = 22,23
-            BATTLEROUNDS_LIST = 24, 48
-            PREFER_WINNER_LIST = true, false
-            INSTR_SET = MOV, ADD
-            INSTR_MODES = #, $
-            INSTR_MODIF = A, B
-            """
-        ).strip()
+@pytest.fixture
+def write_config(tmp_path):
+    def _write_config(body: str, *, filename: str = "config.ini") -> pathlib.Path:
+        config_path = tmp_path / filename
+        if "[DEFAULT]" not in body:
+            body = "[DEFAULT]\n" + body
+        config_path.write_text(textwrap.dedent(body).strip())
+        return config_path
+
+    return _write_config
+
+
+def test_load_configuration_parses_types(tmp_path, write_config):
+    config_path = write_config(
+        """
+        BATTLE_ENGINE = internal
+        LAST_ARENA = 1
+        CORESIZE_LIST = 8000, 8192
+        SANITIZE_LIST = 80, 81
+        CYCLES_LIST = 1000, 2000
+        PROCESSES_LIST = 8, 16
+        WARLEN_LIST = 20, 40
+        WARDISTANCE_LIST = 20, 40
+        NUMWARRIORS = 50
+        ALREADYSEEDED = false
+        CLOCK_TIME = 12.5
+        BATTLE_LOG_FILE = logs.csv
+        FINAL_ERA_ONLY = false
+        NOTHING_LIST = 1,2
+        RANDOM_LIST = 4,5
+        NAB_LIST = 6,7
+        MINI_MUT_LIST = 8,9
+        MICRO_MUT_LIST = 10,11
+        LIBRARY_LIST = 12, 13
+        MAGIC_NUMBER_LIST = 14, 15
+        ARCHIVE_LIST = 16,17
+        UNARCHIVE_LIST = 18,19
+        LIBRARY_PATH = ./library
+        CROSSOVERRATE_LIST = 20,21
+        TRANSPOSITIONRATE_LIST = 22,23
+        BATTLEROUNDS_LIST = 24, 48
+        PREFER_WINNER_LIST = true, false
+        INSTR_SET = MOV, ADD
+        INSTR_MODES = #, $
+        INSTR_MODIF = A, B
+        """
     )
 
     from evolverstage import load_configuration
@@ -105,48 +114,44 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.benchmark_sets == {}
 
 
-def test_load_configuration_with_benchmarks(tmp_path):
+def test_load_configuration_with_benchmarks(tmp_path, write_config):
     benchmark_root = tmp_path / "benchmarks" / "arena0"
     benchmark_root.mkdir(parents=True)
     (benchmark_root / "alpha.red").write_text("MOV 0, 0\n")
 
-    config_path = tmp_path / "config.ini"
-    config_path.write_text(
-        textwrap.dedent(
-            """
-            [DEFAULT]
-            BATTLE_ENGINE = internal
-            LAST_ARENA = 0
-            CORESIZE_LIST = 8000
-            SANITIZE_LIST = 8000
-            CYCLES_LIST = 80000
-            PROCESSES_LIST = 8
-            WARLEN_LIST = 100
-            WARDISTANCE_LIST = 100
-            NUMWARRIORS = 10
-            ALREADYSEEDED = false
-            CLOCK_TIME = 1.0
-            NOTHING_LIST = 1
-            RANDOM_LIST = 1
-            NAB_LIST = 0
-            MINI_MUT_LIST = 0
-            MICRO_MUT_LIST = 0
-            LIBRARY_LIST = 0
-            MAGIC_NUMBER_LIST = 0
-            ARCHIVE_LIST = 0
-            UNARCHIVE_LIST = 0
-            CROSSOVERRATE_LIST = 1
-            TRANSPOSITIONRATE_LIST = 1
-            BATTLEROUNDS_LIST = 5
-            PREFER_WINNER_LIST = true
-            INSTR_SET = MOV
-            INSTR_MODES = $
-            INSTR_MODIF = F
-            RUN_FINAL_TOURNAMENT = true
-            BENCHMARK_ROOT = benchmarks
-            BENCHMARK_FINAL_TOURNAMENT = true
-            """
-        ).strip()
+    config_path = write_config(
+        """
+        BATTLE_ENGINE = internal
+        LAST_ARENA = 0
+        CORESIZE_LIST = 8000
+        SANITIZE_LIST = 8000
+        CYCLES_LIST = 80000
+        PROCESSES_LIST = 8
+        WARLEN_LIST = 100
+        WARDISTANCE_LIST = 100
+        NUMWARRIORS = 10
+        ALREADYSEEDED = false
+        CLOCK_TIME = 1.0
+        NOTHING_LIST = 1
+        RANDOM_LIST = 1
+        NAB_LIST = 0
+        MINI_MUT_LIST = 0
+        MICRO_MUT_LIST = 0
+        LIBRARY_LIST = 0
+        MAGIC_NUMBER_LIST = 0
+        ARCHIVE_LIST = 0
+        UNARCHIVE_LIST = 0
+        CROSSOVERRATE_LIST = 1
+        TRANSPOSITIONRATE_LIST = 1
+        BATTLEROUNDS_LIST = 5
+        PREFER_WINNER_LIST = true
+        INSTR_SET = MOV
+        INSTR_MODES = $
+        INSTR_MODIF = F
+        RUN_FINAL_TOURNAMENT = true
+        BENCHMARK_ROOT = benchmarks
+        BENCHMARK_FINAL_TOURNAMENT = true
+        """
     )
 
     config = evolverstage.load_configuration(str(config_path))
@@ -161,7 +166,7 @@ def test_load_configuration_with_benchmarks(tmp_path):
     assert benchmark.path == str((benchmark_root / "alpha.red").resolve())
 
 
-def test_final_tournament_with_benchmarks(monkeypatch, tmp_path):
+def test_final_tournament_with_benchmarks(monkeypatch, tmp_path, write_config):
     base_dir = tmp_path
     arena_dir = base_dir / "arena0"
     archive_dir = base_dir / "archive"
@@ -174,45 +179,41 @@ def test_final_tournament_with_benchmarks(monkeypatch, tmp_path):
     benchmark_dir.mkdir(parents=True)
     (benchmark_dir / "bench.red").write_text("MOV 0, 0\n")
 
-    config_path = base_dir / "config.ini"
-    config_path.write_text(
-        textwrap.dedent(
-            """
-            [DEFAULT]
-            BATTLE_ENGINE = internal
-            LAST_ARENA = 0
-            CORESIZE_LIST = 8000
-            SANITIZE_LIST = 8000
-            CYCLES_LIST = 80000
-            PROCESSES_LIST = 8
-            WARLEN_LIST = 100
-            WARDISTANCE_LIST = 100
-            NUMWARRIORS = 2
-            ALREADYSEEDED = true
-            IN_MEMORY_ARENAS = false
-            ARENA_CHECKPOINT_INTERVAL = 1000
-            CLOCK_TIME = 1.0
-            NOTHING_LIST = 1
-            RANDOM_LIST = 1
-            NAB_LIST = 0
-            MINI_MUT_LIST = 0
-            MICRO_MUT_LIST = 0
-            LIBRARY_LIST = 0
-            MAGIC_NUMBER_LIST = 0
-            ARCHIVE_LIST = 0
-            UNARCHIVE_LIST = 0
-            CROSSOVERRATE_LIST = 1
-            TRANSPOSITIONRATE_LIST = 1
-            BATTLEROUNDS_LIST = 3
-            PREFER_WINNER_LIST = true
-            INSTR_SET = MOV
-            INSTR_MODES = $
-            INSTR_MODIF = F
-            RUN_FINAL_TOURNAMENT = true
-            BENCHMARK_ROOT = benchmarks
-            BENCHMARK_FINAL_TOURNAMENT = true
-            """
-        ).strip()
+    config_path = write_config(
+        """
+        BATTLE_ENGINE = internal
+        LAST_ARENA = 0
+        CORESIZE_LIST = 8000
+        SANITIZE_LIST = 8000
+        CYCLES_LIST = 80000
+        PROCESSES_LIST = 8
+        WARLEN_LIST = 100
+        WARDISTANCE_LIST = 100
+        NUMWARRIORS = 2
+        ALREADYSEEDED = true
+        IN_MEMORY_ARENAS = false
+        ARENA_CHECKPOINT_INTERVAL = 1000
+        CLOCK_TIME = 1.0
+        NOTHING_LIST = 1
+        RANDOM_LIST = 1
+        NAB_LIST = 0
+        MINI_MUT_LIST = 0
+        MICRO_MUT_LIST = 0
+        LIBRARY_LIST = 0
+        MAGIC_NUMBER_LIST = 0
+        ARCHIVE_LIST = 0
+        UNARCHIVE_LIST = 0
+        CROSSOVERRATE_LIST = 1
+        TRANSPOSITIONRATE_LIST = 1
+        BATTLEROUNDS_LIST = 3
+        PREFER_WINNER_LIST = true
+        INSTR_SET = MOV
+        INSTR_MODES = $
+        INSTR_MODIF = F
+        RUN_FINAL_TOURNAMENT = true
+        BENCHMARK_ROOT = benchmarks
+        BENCHMARK_FINAL_TOURNAMENT = true
+        """
     )
 
     config = evolverstage.load_configuration(str(config_path))
@@ -411,42 +412,38 @@ def test_get_progress_status_clamps_percent_complete(monkeypatch):
     assert detail_line == "Era 1"
 
 
-def test_load_configuration_reads_in_memory_settings(tmp_path):
-    config_path = tmp_path / "config.ini"
-    config_path.write_text(
-        textwrap.dedent(
-            """
-            [DEFAULT]
-            BATTLE_ENGINE = internal
-            LAST_ARENA = 0
-            CORESIZE_LIST = 80
-            SANITIZE_LIST = 80
-            CYCLES_LIST = 800
-            PROCESSES_LIST = 8
-            READLIMIT_LIST = 80
-            WRITELIMIT_LIST = 80
-            WARLEN_LIST = 5
-            WARDISTANCE_LIST = 5
-            NUMWARRIORS = 2
-            ALREADYSEEDED = true
-            CLOCK_TIME = 1
-            BATTLEROUNDS_LIST = 1
-            NOTHING_LIST = 1
-            RANDOM_LIST = 0
-            NAB_LIST = 0
-            MINI_MUT_LIST = 0
-            MICRO_MUT_LIST = 0
-            LIBRARY_LIST = 0
-            MAGIC_NUMBER_LIST = 0
-            ARCHIVE_LIST = 0
-            UNARCHIVE_LIST = 0
-            CROSSOVERRATE_LIST = 1
-            TRANSPOSITIONRATE_LIST = 1
-            PREFER_WINNER_LIST = false
-            IN_MEMORY_ARENAS = true
-            ARENA_CHECKPOINT_INTERVAL = 20000
-            """
-        ).strip()
+def test_load_configuration_reads_in_memory_settings(tmp_path, write_config):
+    config_path = write_config(
+        """
+        BATTLE_ENGINE = internal
+        LAST_ARENA = 0
+        CORESIZE_LIST = 80
+        SANITIZE_LIST = 80
+        CYCLES_LIST = 800
+        PROCESSES_LIST = 8
+        READLIMIT_LIST = 80
+        WRITELIMIT_LIST = 80
+        WARLEN_LIST = 5
+        WARDISTANCE_LIST = 5
+        NUMWARRIORS = 2
+        ALREADYSEEDED = true
+        CLOCK_TIME = 1
+        BATTLEROUNDS_LIST = 1
+        NOTHING_LIST = 1
+        RANDOM_LIST = 0
+        NAB_LIST = 0
+        MINI_MUT_LIST = 0
+        MICRO_MUT_LIST = 0
+        LIBRARY_LIST = 0
+        MAGIC_NUMBER_LIST = 0
+        ARCHIVE_LIST = 0
+        UNARCHIVE_LIST = 0
+        CROSSOVERRATE_LIST = 1
+        TRANSPOSITIONRATE_LIST = 1
+        PREFER_WINNER_LIST = false
+        IN_MEMORY_ARENAS = true
+        ARENA_CHECKPOINT_INTERVAL = 20000
+        """
     )
 
     (tmp_path / "arena0").mkdir()
@@ -459,89 +456,65 @@ def test_load_configuration_reads_in_memory_settings(tmp_path):
     assert config.arena_checkpoint_interval == 20000
 
 
-def test_load_configuration_overrides_alreadyseeded_when_directories_missing(tmp_path, capsys):
-    config_path = tmp_path / "config.ini"
-    config_path.write_text(
-        textwrap.dedent(
-            """
-            [DEFAULT]
-            BATTLE_ENGINE = internal
-            LAST_ARENA = 0
-            CORESIZE_LIST = 80
-            SANITIZE_LIST = 80
-            CYCLES_LIST = 800
-            PROCESSES_LIST = 8
-            WARLEN_LIST = 5
-            WARDISTANCE_LIST = 5
-            NUMWARRIORS = 10
-            ALREADYSEEDED = true
-            CLOCK_TIME = 1
-            BATTLEROUNDS_LIST = 1
-            NOTHING_LIST = 1
-            RANDOM_LIST = 1
-            NAB_LIST = 0
-            MINI_MUT_LIST = 0
-            MICRO_MUT_LIST = 0
-            LIBRARY_LIST = 0
-            MAGIC_NUMBER_LIST = 0
-            ARCHIVE_LIST = 0
-            UNARCHIVE_LIST = 0
-            CROSSOVERRATE_LIST = 1
-            TRANSPOSITIONRATE_LIST = 1
-            PREFER_WINNER_LIST = false
-            """
-        ).strip()
+@pytest.mark.parametrize(
+    "existing_dirs, expected_seeded, expected_message, expect_archive",
+    [
+        ([], False, "ALREADYSEEDED was True", None),
+        (["arena0"], True, None, True),
+    ],
+)
+def test_load_configuration_handles_missing_directories(
+    tmp_path,
+    capsys,
+    write_config,
+    existing_dirs,
+    expected_seeded,
+    expected_message,
+    expect_archive,
+):
+    config_path = write_config(
+        """
+        BATTLE_ENGINE = internal
+        LAST_ARENA = 0
+        CORESIZE_LIST = 80
+        SANITIZE_LIST = 80
+        CYCLES_LIST = 800
+        PROCESSES_LIST = 8
+        WARLEN_LIST = 5
+        WARDISTANCE_LIST = 5
+        NUMWARRIORS = 10
+        ALREADYSEEDED = true
+        CLOCK_TIME = 1
+        BATTLEROUNDS_LIST = 1
+        NOTHING_LIST = 1
+        RANDOM_LIST = 1
+        NAB_LIST = 0
+        MINI_MUT_LIST = 0
+        MICRO_MUT_LIST = 0
+        LIBRARY_LIST = 0
+        MAGIC_NUMBER_LIST = 0
+        ARCHIVE_LIST = 0
+        UNARCHIVE_LIST = 0
+        CROSSOVERRATE_LIST = 1
+        TRANSPOSITIONRATE_LIST = 1
+        PREFER_WINNER_LIST = false
+        """
     )
+
+    for directory in existing_dirs:
+        (tmp_path / directory).mkdir()
 
     config = evolverstage.load_configuration(str(config_path))
     captured = capsys.readouterr()
 
-    assert config.alreadyseeded is False
-    assert "ALREADYSEEDED was True" in captured.out
+    assert config.alreadyseeded is expected_seeded
+    if expected_message:
+        assert expected_message in captured.out
+    else:
+        assert "ALREADYSEEDED was True" not in captured.out
 
-
-def test_load_configuration_retains_alreadyseeded_when_only_archive_missing(tmp_path, capsys):
-    config_path = tmp_path / "config.ini"
-    config_path.write_text(
-        textwrap.dedent(
-            """
-            [DEFAULT]
-            BATTLE_ENGINE = internal
-            LAST_ARENA = 0
-            CORESIZE_LIST = 80
-            SANITIZE_LIST = 80
-            CYCLES_LIST = 800
-            PROCESSES_LIST = 8
-            WARLEN_LIST = 5
-            WARDISTANCE_LIST = 5
-            NUMWARRIORS = 10
-            ALREADYSEEDED = true
-            CLOCK_TIME = 1
-            BATTLEROUNDS_LIST = 1
-            NOTHING_LIST = 1
-            RANDOM_LIST = 1
-            NAB_LIST = 0
-            MINI_MUT_LIST = 0
-            MICRO_MUT_LIST = 0
-            LIBRARY_LIST = 0
-            MAGIC_NUMBER_LIST = 0
-            ARCHIVE_LIST = 0
-            UNARCHIVE_LIST = 0
-            CROSSOVERRATE_LIST = 1
-            TRANSPOSITIONRATE_LIST = 1
-            PREFER_WINNER_LIST = false
-            """
-        ).strip()
-    )
-
-    (tmp_path / "arena0").mkdir()
-
-    config = evolverstage.load_configuration(str(config_path))
-    captured = capsys.readouterr()
-
-    assert config.alreadyseeded is True
-    assert "ALREADYSEEDED was True" not in captured.out
-    assert (tmp_path / "archive").is_dir()
+    if expect_archive is not None:
+        assert (tmp_path / "archive").is_dir() is expect_archive
 
 
 def test_validate_config_accepts_pmars_engine():
@@ -615,12 +588,11 @@ def test_validate_config_rejects_invalid_instr_modes():
     assert "X" in str(excinfo.value)
 
 
-def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
-    config_path = tmp_path / "config.ini"
-    config_path.write_text(
-        textwrap.dedent(
+@pytest.mark.parametrize(
+    "body, error_pattern",
+    [
+        (
             """
-            [DEFAULT]
             LAST_ARENA = 1
             CORESIZE_LIST = 8000
             SANITIZE_LIST = 80, 81
@@ -644,40 +616,11 @@ def test_load_configuration_rejects_mismatched_arena_lengths(tmp_path):
             CROSSOVERRATE_LIST = 1, 1
             TRANSPOSITIONRATE_LIST = 1, 1
             PREFER_WINNER_LIST = false, false
+            """,
+            "CORESIZE_LIST",
+        ),
+        (
             """
-        ).strip()
-    )
-
-    from evolverstage import load_configuration
-
-    with pytest.raises(ValueError, match="CORESIZE_LIST"):
-        load_configuration(str(config_path))
-
-
-def test_validate_config_warns_when_lists_longer_than_last_arena():
-    config = replace(
-        _DEFAULT_CONFIG,
-        last_arena=0,
-        coresize_list=list(_DEFAULT_CONFIG.coresize_list[:2]),
-        sanitize_list=list(_DEFAULT_CONFIG.sanitize_list[:2]),
-        cycles_list=list(_DEFAULT_CONFIG.cycles_list[:2]),
-        processes_list=list(_DEFAULT_CONFIG.processes_list[:2]),
-        readlimit_list=list(_DEFAULT_CONFIG.readlimit_list[:2]),
-        writelimit_list=list(_DEFAULT_CONFIG.writelimit_list[:2]),
-        warlen_list=list(_DEFAULT_CONFIG.warlen_list[:2]),
-        wardistance_list=list(_DEFAULT_CONFIG.wardistance_list[:2]),
-    )
-
-    with pytest.warns(UserWarning, match="LAST_ARENA limits"):
-        evolverstage.validate_config(config)
-
-
-def test_load_configuration_rejects_negative_marble_counts(tmp_path):
-    config_path = tmp_path / "config.ini"
-    config_path.write_text(
-        textwrap.dedent(
-            """
-            [DEFAULT]
             LAST_ARENA = 0
             CORESIZE_LIST = 8000
             SANITIZE_LIST = 80
@@ -701,14 +644,36 @@ def test_load_configuration_rejects_negative_marble_counts(tmp_path):
             CROSSOVERRATE_LIST = 1
             TRANSPOSITIONRATE_LIST = 1
             PREFER_WINNER_LIST = false
-            """
-        ).strip()
-    )
-
+            """,
+            "NAB_LIST",
+        ),
+    ],
+)
+def test_load_configuration_rejects_invalid_configs(write_config, body, error_pattern):
     from evolverstage import load_configuration
 
-    with pytest.raises(ValueError, match="NAB_LIST"):
+    config_path = write_config(body)
+
+    with pytest.raises(ValueError, match=error_pattern):
         load_configuration(str(config_path))
+
+
+def test_validate_config_warns_when_lists_longer_than_last_arena():
+    config = replace(
+        _DEFAULT_CONFIG,
+        last_arena=0,
+        coresize_list=list(_DEFAULT_CONFIG.coresize_list[:2]),
+        sanitize_list=list(_DEFAULT_CONFIG.sanitize_list[:2]),
+        cycles_list=list(_DEFAULT_CONFIG.cycles_list[:2]),
+        processes_list=list(_DEFAULT_CONFIG.processes_list[:2]),
+        readlimit_list=list(_DEFAULT_CONFIG.readlimit_list[:2]),
+        writelimit_list=list(_DEFAULT_CONFIG.writelimit_list[:2]),
+        warlen_list=list(_DEFAULT_CONFIG.warlen_list[:2]),
+        wardistance_list=list(_DEFAULT_CONFIG.wardistance_list[:2]),
+    )
+
+    with pytest.warns(UserWarning, match="LAST_ARENA limits"):
+        evolverstage.validate_config(config)
 
 
 def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
@@ -798,6 +763,60 @@ def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
 
     storage._write_warrior = original_write  # type: ignore[attr-defined]
     evolverstage.set_active_config(_DEFAULT_CONFIG)
+
+
+def test_build_marble_bag_combines_marble_counts():
+    config = replace(
+        _DEFAULT_CONFIG,
+        nothing_list=[1],
+        random_list=[2],
+        nab_list=[3],
+        mini_mut_list=[4],
+        micro_mut_list=[5],
+        library_list=[6],
+        magic_number_list=[7],
+    )
+
+    bag = evolverstage._build_marble_bag(0, config)
+
+    assert bag.count(evolverstage.Marble.DO_NOTHING) == 1
+    assert bag.count(evolverstage.Marble.MAJOR_MUTATION) == 2
+    assert bag.count(evolverstage.Marble.NAB_INSTRUCTION) == 3
+    assert bag.count(evolverstage.Marble.MINOR_MUTATION) == 4
+    assert bag.count(evolverstage.Marble.MICRO_MUTATION) == 5
+    assert bag.count(evolverstage.Marble.INSTRUCTION_LIBRARY) == 6
+    assert bag.count(evolverstage.Marble.MAGIC_NUMBER_MUTATION) == 7
+    assert len(bag) == sum(range(1, 8))
+
+
+def test_count_archive_warriors_counts_only_red_files(tmp_path):
+    base_path = tmp_path
+    archive_dir = base_path / "archive"
+    archive_dir.mkdir()
+    (archive_dir / "alpha.red").write_text("", encoding="utf-8")
+    (archive_dir / "beta.RED").write_text("", encoding="utf-8")
+    (archive_dir / "ignored.txt").write_text("", encoding="utf-8")
+    (archive_dir / "subdir").mkdir()
+    (archive_dir / "subdir" / "nested.red").write_text("", encoding="utf-8")
+
+    assert evolverstage._count_archive_warriors(str(base_path)) == 2
+
+
+def test_count_instruction_library_entries_ignores_comments(tmp_path):
+    library_path = tmp_path / "library.txt"
+    library_path.write_text(
+        """; comment
+
+MOV 0, 0
+; another comment
+ADD 0, 1
+    ; indented comment
+""",
+        encoding="utf-8",
+    )
+
+    assert evolverstage._count_instruction_library_entries(str(library_path)) == 2
+    assert evolverstage._count_instruction_library_entries(None) == 0
     evolverstage.set_arena_storage(evolverstage.create_arena_storage(_DEFAULT_CONFIG))
 
 
@@ -1635,67 +1654,78 @@ def test_generate_warrior_lines_until_non_dat_retries_until_success(monkeypatch)
     assert attempts == 3
 
 
-def test_parse_instruction_requires_modifier():
+@pytest.mark.parametrize(
+    "source, error_pattern",
+    [
+        ("MOV $1, $2", "missing a modifier"),
+        ("MOV.F 1, $2", "addressing mode"),
+        ("MOV.F 1,2", "addressing mode"),
+    ],
+)
+def test_parse_instruction_rejects_invalid_inputs(source, error_pattern):
     from evolverstage import parse_redcode_instruction
 
-    with pytest.raises(ValueError, match="missing a modifier"):
-        parse_redcode_instruction("MOV $1, $2")
+    with pytest.raises(ValueError, match=error_pattern):
+        parse_redcode_instruction(source)
 
 
-def test_parse_instruction_requires_addressing_modes():
+@pytest.mark.parametrize(
+    "source, expected",
+    [
+        (
+            "MOV.F$1,$2",
+            {
+                "label": None,
+                "opcode": "MOV",
+                "modifier": "F",
+                "a_mode": "$",
+                "a_field": 1,
+                "b_mode": "$",
+                "b_field": 2,
+            },
+        ),
+        (
+            "label MOV . F $-3,$4",
+            {
+                "label": "label",
+                "opcode": "MOV",
+                "modifier": "F",
+                "a_mode": "$",
+                "a_field": -3,
+                "b_mode": "$",
+                "b_field": 4,
+            },
+        ),
+    ],
+)
+def test_parse_instruction_parses_whitespace_variations(source, expected):
     from evolverstage import parse_redcode_instruction
 
-    with pytest.raises(ValueError, match="addressing mode"):
-        parse_redcode_instruction("MOV.F 1, $2")
-
-
-def test_parse_instruction_requires_addressing_modes_for_both_operands():
-    from evolverstage import parse_redcode_instruction
-
-    with pytest.raises(ValueError, match="addressing mode"):
-        parse_redcode_instruction("MOV.F 1,2")
-
-
-def test_parse_instruction_supports_compact_whitespace():
-    from evolverstage import parse_redcode_instruction
-
-    parsed = parse_redcode_instruction("MOV.F$1,$2")
+    parsed = parse_redcode_instruction(source)
 
     assert parsed is not None
-    assert parsed.opcode == "MOV"
-    assert parsed.modifier == "F"
-    assert parsed.a_mode == "$"
-    assert parsed.a_field == 1
-    assert parsed.b_mode == "$"
-    assert parsed.b_field == 2
+    for key, value in expected.items():
+        assert getattr(parsed, key) == value
 
 
-def test_parse_instruction_allows_spaces_around_modifier_separator():
-    from evolverstage import parse_redcode_instruction
-
-    parsed = parse_redcode_instruction("label MOV . F $-3,$4")
-
-    assert parsed is not None
-    assert parsed.label == "label"
-    assert parsed.opcode == "MOV"
-    assert parsed.modifier == "F"
-    assert parsed.a_mode == "$"
-    assert parsed.a_field == -3
-    assert parsed.b_mode == "$"
-    assert parsed.b_field == 4
-
-
-def test_sanitize_instruction_rejects_invalid_modes():
+@pytest.mark.parametrize(
+    "a_mode, b_mode, expected_message",
+    [
+        ("?", "$", "Invalid addressing mode '?' for A-field operand"),
+        ("$", "?", "Invalid addressing mode '?' for B-field operand"),
+    ],
+)
+def test_sanitize_instruction_rejects_invalid_modes(a_mode, b_mode, expected_message):
     from evolverstage import RedcodeInstruction, sanitize_instruction
 
     instr = RedcodeInstruction(
         opcode="MOV",
         modifier="F",
-        a_mode="?",
+        a_mode=a_mode,
         a_field=0,
-        b_mode="$",
+        b_mode=b_mode,
         b_field=0,
     )
 
-    with pytest.raises(ValueError, match=r"Invalid addressing mode '\?' for A-field operand"):
+    with pytest.raises(ValueError, match=re.escape(expected_message)):
         sanitize_instruction(instr, arena=0)
