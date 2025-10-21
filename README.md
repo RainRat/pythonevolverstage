@@ -17,7 +17,9 @@ For all of these, modify the constants in settings.ini.
 5. Select the battle engine by setting `BATTLE_ENGINE` to `nmars`, `internal`, or `pmars` in `settings.ini`. Use `nmars` to call the external nMars executable, `internal` to use the bundled C++ worker, or `pmars` to shell out to a local pMARS binary.
 6. (Optional) Enable `IN_MEMORY_ARENAS` to cache warriors in RAM and reduce disk writes; adjust `ARENA_CHECKPOINT_INTERVAL` to control how often arenas are saved when running in this mode.
 7. python evolverstage.py (add `--verbosity {terse,default,verbose,pseudo-graphical}` to control console output; use `--run-final-tournament` to immediately run the post-training bracket when the evolution loop completes)
-8. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
+    * Use `--seed <number>` when you want to replay the same evolution history. The evolver seeds Python's RNG with the provided value before selecting arenas, mutation strategies, or battle pairings, so every probabilistic decision—from "bag of marbles" draws to arena selection—follows the same sequence. This is invaluable when you are tuning settings and need to compare like-for-like behaviour.
+8. When the program starts it prints a concise run summary based on `settings.ini` (and any command-line overrides). You will see which battle engine is active, how many arenas will be maintained, whether battles are logged, how warriors are stored, and if the final tournament (including CSV export) is enabled. This makes it easy to confirm that the configuration on disk matches your expectations before a long training session.
+9. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
 
 ## Special Features:
 
@@ -94,6 +96,15 @@ Evolver output will now rewrite numbers either negative or positive, whichever i
 
 11. (New) Optional log file
 Results of battles saved so you can analyse your progress. Current fields are 'era', 'arena', 'winner', 'loser', 'score1', 'score2', and 'bred_with'. Edit BATTLE_LOG_FILE setting to choose a file name; comment out or leave blank for no log.
+
+12. Champion-aware matchmaking
+        Each arena tracks its current "champion"—the most recent warrior to win a non-draw battle there. When selecting contestants, there is roughly a 50% chance that the champion will be slotted into the next match. This gentle bias lets you repeatedly pressure successful warriors without turning every round into a deterministic ladder climb, and it encourages newcomers to prove themselves against the reigning specialist in that arena.
+
+13. Tournament and evolution reporting
+        The evolver now reports on itself so that long sessions leave an audit trail:
+        - After the final tournament, the console prints arena averages, benchmark comparisons, and a per-warrior summary showing average score, standard deviation, and how many arenas each competitor appeared in. The report also highlights the most consistent performers (low variance with strong results) so that you can spot reliable generalists at a glance.
+        - If you export the tournament standings (`--final-tournament-csv`), the rankings for every arena are written to disk alongside those console insights.
+        - Whenever the main loop finishes—or you interrupt it with Ctrl+C—the evolver prints an evolution statistics digest listing battles per era, the total battle count, and the approximate speed in battles per hour. This makes it easy to compare throughput between different hardware setups or parameter combinations.
 
 ## Compiling `redcode-worker.cpp`
 
