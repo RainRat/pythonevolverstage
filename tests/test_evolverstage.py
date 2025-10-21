@@ -6,6 +6,7 @@ import sys
 import textwrap
 import types
 from dataclasses import replace
+from typing import Optional
 
 import pytest
 
@@ -99,6 +100,65 @@ def test_load_configuration_parses_types(tmp_path):
     assert config.instr_set == ["MOV", "ADD"]
     assert config.instr_modes == ["#", "$"]
     assert config.instr_modif == ["A", "B"]
+    assert config.benchmark_root is None
+    assert config.benchmark_final_tournament is False
+    assert config.benchmark_sets == {}
+
+
+def test_load_configuration_with_benchmarks(tmp_path):
+    benchmark_root = tmp_path / "benchmarks" / "arena0"
+    benchmark_root.mkdir(parents=True)
+    (benchmark_root / "alpha.red").write_text("MOV 0, 0\n")
+
+    config_path = tmp_path / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            BATTLE_ENGINE = internal
+            LAST_ARENA = 0
+            CORESIZE_LIST = 8000
+            SANITIZE_LIST = 8000
+            CYCLES_LIST = 80000
+            PROCESSES_LIST = 8
+            WARLEN_LIST = 100
+            WARDISTANCE_LIST = 100
+            NUMWARRIORS = 10
+            ALREADYSEEDED = false
+            CLOCK_TIME = 1.0
+            NOTHING_LIST = 1
+            RANDOM_LIST = 1
+            NAB_LIST = 0
+            MINI_MUT_LIST = 0
+            MICRO_MUT_LIST = 0
+            LIBRARY_LIST = 0
+            MAGIC_NUMBER_LIST = 0
+            ARCHIVE_LIST = 0
+            UNARCHIVE_LIST = 0
+            CROSSOVERRATE_LIST = 1
+            TRANSPOSITIONRATE_LIST = 1
+            BATTLEROUNDS_LIST = 5
+            PREFER_WINNER_LIST = true
+            INSTR_SET = MOV
+            INSTR_MODES = $
+            INSTR_MODIF = F
+            RUN_FINAL_TOURNAMENT = true
+            BENCHMARK_ROOT = benchmarks
+            BENCHMARK_FINAL_TOURNAMENT = true
+            """
+        ).strip()
+    )
+
+    config = evolverstage.load_configuration(str(config_path))
+    expected_root = str((tmp_path / "benchmarks").resolve())
+    assert config.benchmark_root == expected_root
+    assert config.benchmark_final_tournament is True
+    assert 0 in config.benchmark_sets
+    assert len(config.benchmark_sets[0]) == 1
+    benchmark = config.benchmark_sets[0][0]
+    assert benchmark.name == "alpha"
+    assert benchmark.code.strip() == "MOV 0, 0"
+    assert benchmark.path == str((benchmark_root / "alpha.red").resolve())
 
 
 def test_set_console_verbosity_falls_back_on_curses_error(monkeypatch):
@@ -131,6 +191,127 @@ def test_set_console_verbosity_falls_back_on_curses_error(monkeypatch):
         assert isinstance(evolverstage.get_console(), evolverstage.SimpleConsole)
     finally:
         evolverstage.set_console_verbosity(evolverstage.VerbosityLevel.DEFAULT)
+
+
+def test_final_tournament_with_benchmarks(monkeypatch, tmp_path):
+    base_dir = tmp_path
+    arena_dir = base_dir / "arena0"
+    archive_dir = base_dir / "archive"
+    arena_dir.mkdir()
+    archive_dir.mkdir()
+    (arena_dir / "1.red").write_text("MOV 0, 1\n")
+    (arena_dir / "2.red").write_text("MOV 0, 1\n")
+
+    benchmark_dir = base_dir / "benchmarks" / "arena0"
+    benchmark_dir.mkdir(parents=True)
+    (benchmark_dir / "bench.red").write_text("MOV 0, 0\n")
+
+    config_path = base_dir / "config.ini"
+    config_path.write_text(
+        textwrap.dedent(
+            """
+            [DEFAULT]
+            BATTLE_ENGINE = internal
+            LAST_ARENA = 0
+            CORESIZE_LIST = 8000
+            SANITIZE_LIST = 8000
+            CYCLES_LIST = 80000
+            PROCESSES_LIST = 8
+            WARLEN_LIST = 100
+            WARDISTANCE_LIST = 100
+            NUMWARRIORS = 2
+            ALREADYSEEDED = true
+            IN_MEMORY_ARENAS = false
+            ARENA_CHECKPOINT_INTERVAL = 1000
+            CLOCK_TIME = 1.0
+            NOTHING_LIST = 1
+            RANDOM_LIST = 1
+            NAB_LIST = 0
+            MINI_MUT_LIST = 0
+            MICRO_MUT_LIST = 0
+            LIBRARY_LIST = 0
+            MAGIC_NUMBER_LIST = 0
+            ARCHIVE_LIST = 0
+            UNARCHIVE_LIST = 0
+            CROSSOVERRATE_LIST = 1
+            TRANSPOSITIONRATE_LIST = 1
+            BATTLEROUNDS_LIST = 3
+            PREFER_WINNER_LIST = true
+            INSTR_SET = MOV
+            INSTR_MODES = $
+            INSTR_MODIF = F
+            RUN_FINAL_TOURNAMENT = true
+            BENCHMARK_ROOT = benchmarks
+            BENCHMARK_FINAL_TOURNAMENT = true
+            """
+        ).strip()
+    )
+
+    config = evolverstage.load_configuration(str(config_path))
+    evolverstage.set_active_config(config)
+    storage = evolverstage.create_arena_storage(config)
+    evolverstage.set_arena_storage(storage)
+
+    call_records: list[tuple[int, int, int, str, str, Optional[int]]] = []
+
+    def fake_execute_battle_with_sources(
+        arena, cont1, cont1_code, cont2, cont2_code, era, verbose=False, battlerounds_override=None, seed=None
+    ):
+        call_records.append(
+            (arena, cont1, cont2, cont1_code.strip(), cont2_code.strip(), seed)
+        )
+        if cont1 == 1:
+            return [cont1, cont2], [15, -15]
+        return [cont1, cont2], [5, -5]
+
+    def unexpected_execute_battle(*_args, **_kwargs):
+        raise AssertionError("execute_battle should not be used when benchmarks are available")
+
+    captured: dict[str, object] = {}
+
+    def fake_report(arena_summaries, warrior_scores):
+        captured["arena_summaries"] = list(arena_summaries)
+        captured["warrior_scores"] = {
+            key: list(value) for key, value in warrior_scores.items()
+        }
+
+    monkeypatch.setattr(evolverstage, "execute_battle_with_sources", fake_execute_battle_with_sources)
+    monkeypatch.setattr(evolverstage, "execute_battle", unexpected_execute_battle)
+    monkeypatch.setattr(evolverstage, "console_update_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(evolverstage, "console_clear_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(evolverstage, "console_log", lambda *args, **kwargs: None)
+    monkeypatch.setattr(evolverstage, "_report_final_tournament_statistics", fake_report)
+    monkeypatch.setattr(evolverstage, "_export_final_tournament_results", lambda *args, **kwargs: None)
+
+    evolverstage.run_final_tournament(config)
+
+    assert len(call_records) == 2
+    for record in call_records:
+        assert record[5] is not None
+
+    bench_id = max(
+        1,
+        evolverstage._BENCHMARK_WARRIOR_ID_BASE - (0 * 1000 + 0),
+    )
+    expected_seed_w1 = evolverstage._stable_internal_battle_seed(0, 1, bench_id, 0)
+    expected_seed_w2 = evolverstage._stable_internal_battle_seed(0, 2, bench_id, 0)
+    assert {rec[5] for rec in call_records} == {expected_seed_w1, expected_seed_w2}
+    assert {rec[2] for rec in call_records} == {bench_id}
+
+    arena_summaries = captured.get("arena_summaries")
+    assert arena_summaries is not None
+    summary = arena_summaries[0]
+    rankings = summary["rankings"]
+    assert rankings[0][0] == 1
+    assert rankings[0][1] == 15
+    assert rankings[1][0] == 2
+    benchmark_info = summary["benchmark"]
+    assert benchmark_info[0]["name"] == "bench"
+    assert pytest.approx(benchmark_info[0]["average"], rel=1e-6) == -10.0
+    assert benchmark_info[0]["matches"] == 2
+
+    warrior_scores = captured.get("warrior_scores")
+    assert warrior_scores == {1: [15], 2: [5]}
 
 
 def test_pseudo_graphical_console_close_restores_terminal_on_refresh_error(monkeypatch):
