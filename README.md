@@ -23,6 +23,8 @@ For all of these, modify the constants in settings.ini.
 10. When done, out of the warriors in each arena, you will need to pick which is actually the best:
   a. Set `RUN_FINAL_TOURNAMENT=True` to run a Round Robin.
   b. Set up known benchmark warriors in a folder designated by `BENCHMARK_ROOT` and set `BENCHMARK_FINAL_TOURNAMENT=True`.
+     * The evolver expects a directory structure of `BENCHMARK_ROOT/arenaX/` for each configured arena, filled with assembled `.red` warriors. When the flag is enabled every evolved warrior in arena `X` will fight each benchmark warrior from `arenaX`, reusing the stable seeding that round-robin tournaments rely on so that repeated runs are comparable.
+     * Scores from benchmark matches are aggregated per warrior to rank the evolved population; benchmark warriors themselves are only used as opponents, so you can keep curated test suites without polluting your archives. If an arena does not provide benchmarks the evolver falls back to the standard round-robin tournament and emits a warning so you can fix the directory.
   c. Any external benchmarking tool, or program that can run a Round Robin (ie. CoreWin in round robin mode)
 
 
