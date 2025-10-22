@@ -16,9 +16,9 @@ For all of these, modify the constants in settings.ini.
 4. Choose how much actual wall clock time (in hours) you plan to run the project for and modify CLOCK_TIME
 5. Select the battle engine by setting `BATTLE_ENGINE` to `nmars`, `internal`, or `pmars` in `settings.ini`. Use `nmars` to call the external nMars executable, `internal` to use the bundled C++ worker, or `pmars` to shell out to a local pMARS binary.
 6. (Optional) Enable `IN_MEMORY_ARENAS` to cache warriors in RAM and reduce disk writes; adjust `ARENA_CHECKPOINT_INTERVAL` to control how often arenas are saved when running in this mode.
-7. python evolverstage.py (add `--verbosity {terse,default,verbose,pseudo-graphical}` to control console output; use `--run-final-tournament` to immediately run the post-training bracket when the evolution loop completes)
+7. Run `python evolverstage.py` (add `--verbosity {terse,default,verbose,pseudo-graphical}` to control console output).
     * Use `--seed <number>` when you want to replay the same evolution history. The evolver seeds Python's RNG with the provided value before selecting arenas, mutation strategies, or battle pairings, so every probabilistic decision—from "bag of marbles" draws to arena selection—follows the same sequence. This is invaluable when you are tuning settings and need to compare like-for-like behaviour.
-8. When the program starts it prints a concise run summary based on `settings.ini` (and any command-line overrides). You will see which battle engine is active, how many arenas will be maintained, whether battles are logged, how warriors are stored, and if the final tournament (including CSV export) is enabled. This makes it easy to confirm that the configuration on disk matches your expectations before a long training session.
+8. When the program starts it prints a concise run summary based on `settings.ini`. You will see which battle engine is active, how many arenas will be maintained, whether battles are logged, how warriors are stored, and if the final tournament (including CSV export) is enabled. This makes it easy to confirm that the configuration on disk matches your expectations before a long training session.
 9. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
 10. To share archived warriors between multiple evolver instances, set `ARCHIVE_PATH` to an absolute path (or a path relative to the configuration file). Every instance can then keep its own arenas while writing to the same archive directory.
 
@@ -104,7 +104,7 @@ Results of battles saved so you can analyse your progress. Current fields are 'e
 13. Tournament and evolution reporting
         The evolver now reports on itself so that long sessions leave an audit trail:
         - After the final tournament, the console prints arena averages, benchmark comparisons, and a per-warrior summary showing average score, standard deviation, and how many arenas each competitor appeared in. The report also highlights the most consistent performers (low variance with strong results) so that you can spot reliable generalists at a glance.
-        - If you export the tournament standings (`--final-tournament-csv`), the rankings for every arena are written to disk alongside those console insights.
+        - If you export the tournament standings (`FINAL_TOURNAMENT_CSV` in `settings.ini`), the rankings for every arena are written to disk alongside those console insights.
         - Whenever the main loop finishes—or you interrupt it with Ctrl+C—the evolver prints an evolution statistics digest listing battles per era, the total battle count, and the approximate speed in battles per hour. This makes it easy to compare throughput between different hardware setups or parameter combinations.
 
 ## Compiling `redcode-worker.cpp`

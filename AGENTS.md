@@ -4,6 +4,8 @@ Currently evolverstage.py shells to the external program nMars.exe, and the inte
 
 "spec" refers to the "Draft of Proposed 1994 Core War Standard" (1994_core_war_standard.txt) + the features in the Extended draft (1994_extended.txt)
 
+Configuration overrides belong in `settings.ini`. Command-line flags such as `--engine`, `--final-tournament`, `--final-tournament-csv`, and `--verbose` have been removed, so treat the INI file as the single source of truth.
+
 The Python program:
 -Expects to receive programs that are already assembled, with all fields present, like:
 ```

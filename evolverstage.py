@@ -1312,20 +1312,6 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         help="Path to configuration INI file (default: settings.ini)",
     )
     parser.add_argument(
-        "--engine",
-        choices=["internal", "nmars", "pmars"],
-        help="Override the configured battle engine",
-    )
-    parser.add_argument(
-        "--final-tournament",
-        action="store_true",
-        help="Force a final tournament once the evolution loop completes",
-    )
-    parser.add_argument(
-        "--final-tournament-csv",
-        help="Optional path to export final tournament standings as CSV",
-    )
-    parser.add_argument(
         "--seed",
         type=int,
         help="Seed the RNG for reproducible runs",
@@ -1336,32 +1322,13 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         default=VerbosityLevel.DEFAULT.value,
         help="Console verbosity: terse, default, verbose, or pseudo-graphical",
     )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print battle engine output while evolving (deprecated; equivalent to --verbosity verbose)",
-    )
-
     args = parser.parse_args(argv)
 
     verbosity = VerbosityLevel(args.verbosity)
-    if args.verbose:
-        verbosity = VerbosityLevel.VERBOSE
 
     verbosity = set_console_verbosity(verbosity)
 
     active_config = load_configuration(args.config)
-    if args.engine:
-        active_config.battle_engine = args.engine
-    if args.final_tournament:
-        active_config.run_final_tournament = True
-    if args.final_tournament_csv:
-        if not os.path.isabs(args.final_tournament_csv):
-            active_config.final_tournament_csv = os.path.abspath(
-                os.path.join(os.getcwd(), args.final_tournament_csv)
-            )
-        else:
-            active_config.final_tournament_csv = args.final_tournament_csv
 
     set_active_config(active_config)
 
