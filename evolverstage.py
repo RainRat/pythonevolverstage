@@ -14,6 +14,7 @@ from typing import List, Optional, Sequence, Tuple, TypeVar, Union, cast
 from engine import *
 from ui import (
     BattleStatisticsTracker,
+    ChampionDisplay,
     ConsoleInterface,
     PseudoGraphicalConsole,
     SimpleConsole,
@@ -22,6 +23,7 @@ from ui import (
     close_console,
     console_clear_status,
     console_log,
+    console_update_champions,
     console_update_status,
     get_console,
     set_console_verbosity,
@@ -1366,6 +1368,18 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         arena_index: 1 for arena_index in range(active_config.last_arena + 1)
     }
 
+    def _sync_champion_display() -> None:
+        champion_payload: dict[int, ChampionDisplay] = {}
+        for arena_index, warrior_id in champions.items():
+            lines = storage.get_warrior_lines(arena_index, warrior_id)
+            sanitized = tuple(line.rstrip("\r\n") for line in lines)
+            champion_payload[arena_index] = ChampionDisplay(
+                warrior_id=warrior_id, lines=sanitized
+            )
+        console_update_champions(champion_payload)
+
+    _sync_champion_display()
+
     try:
         while True:
             previous_era = era
@@ -1440,6 +1454,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 and winner != champion_id
             ):
                 champions[arena_index] = winner
+                _sync_champion_display()
             get_console().record_battle(winner, loser, was_draw)
 
             if len(warriors) >= 2 and len(scores) >= 2:
