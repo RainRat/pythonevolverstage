@@ -78,10 +78,6 @@ def configure_rng(
     _rng_choice = random_choice_func
 
 
-def _log_verbose(message: str) -> None:
-    console_log(message, minimum_level=VerbosityLevel.VERBOSE)
-
-
 def _sync_export(name: str, value) -> None:
     module = sys.modules.get("evolverstage")
     if module is not None:
@@ -421,8 +417,8 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
 def format_redcode_instruction(instr: RedcodeInstruction) -> str:
     return (
         f"{instr.opcode}.{instr.modifier} "
-        f"{instr.a_mode}{_ensure_int(instr.a_field)},"
-        f"{instr.b_mode}{_ensure_int(instr.b_field)}\n"
+        f"{instr.a_mode}{instr.a_field},"
+        f"{instr.b_mode}{instr.b_field}\n"
     )
 
 
@@ -704,26 +700,23 @@ def _load_cpp_worker_library() -> None:
 _load_cpp_worker_library()
 
 
-def _candidate_pmars_paths() -> list[str]:
-    exe_name = "pmars.exe" if os.name == "nt" else "pmars"
+def _find_mars_executable(base_name: str, env_var: str) -> list[str]:
+    exe_name = f"{base_name}.exe" if os.name == "nt" else base_name
     candidates = _find_command_candidates(
         exe_name,
-        "PMARS_CMD",
-        project_dirs=[Path("pMars"), Path("pMars/src"), Path("." )],
-        base_dirs=[Path("pMars"), Path("pMars/src")],
-    )
-    return [str(candidate) for candidate in candidates]
-
-
-def _candidate_nmars_paths() -> list[str]:
-    exe_name = "nmars.exe" if os.name == "nt" else "nmars"
-    candidates = _find_command_candidates(
-        exe_name,
-        "NMARS_CMD",
-        project_dirs=[Path("pMars"), Path("pMars/src"), Path("." )],
+        env_var,
+        project_dirs=[Path("pMars"), Path("pMars/src"), Path(".")],
         base_dirs=[Path("pMars"), Path("pMars/src"), Path(".")],
     )
     return [str(candidate) for candidate in candidates]
+
+
+def _candidate_pmars_paths() -> list[str]:
+    return _find_mars_executable("pmars", "PMARS_CMD")
+
+
+def _candidate_nmars_paths() -> list[str]:
+    return _find_mars_executable("nmars", "NMARS_CMD")
 
 
 def _resolve_external_command(engine_name: str, candidates: Sequence[str]) -> str:
@@ -781,6 +774,60 @@ def _run_external_command(
     if not output and result.stderr:
         output = result.stderr
     return output
+
+
+def _run_external_battle(
+    engine_name: str,
+    arena_index: int,
+    era_index: int,
+    battlerounds: Optional[int],
+    seed: Optional[int],
+    warrior1_path: str,
+    warrior2_path: str,
+) -> Optional[str]:
+    config = _require_config()
+    resolve_command = _get_evolverstage_override(
+        "_resolve_external_command", _resolve_external_command
+    )
+    run_command = _get_evolverstage_override(
+        "_run_external_command", _run_external_command
+    )
+    rounds = (
+        battlerounds
+        if battlerounds is not None
+        else config.battlerounds_list[era_index]
+    )
+    warrior_files = [warrior1_path, warrior2_path]
+
+    if engine_name == "pmars":
+        candidate_fn = _get_evolverstage_override(
+            "_candidate_pmars_paths", _candidate_pmars_paths
+        )
+        engine_label = "pMARS"
+        flag_args: dict[str, Optional[object]] = {
+            "-r": rounds,
+            "-p": config.processes_list[arena_index],
+            "-c": config.cycles_list[arena_index],
+            "-s": config.coresize_list[arena_index],
+        }
+        if seed is not None:
+            flag_args["-S"] = seed
+    else:
+        candidate_fn = _get_evolverstage_override(
+            "_candidate_nmars_paths", _candidate_nmars_paths
+        )
+        engine_label = "nMars"
+        flag_args = {
+            "-r": rounds,
+            "-p": config.processes_list[arena_index],
+            "-c": config.cycles_list[arena_index],
+            "-s": config.coresize_list[arena_index],
+            "-l": config.readlimit_list[arena_index],
+            "-w": config.writelimit_list[arena_index],
+        }
+
+    executable = resolve_command(engine_label, candidate_fn())
+    return run_command(executable, warrior_files, flag_args)
 
 
 def _normalize_internal_seed(seed: int) -> int:
@@ -842,18 +889,6 @@ def run_internal_battle(
 ):
     config = _require_config()
     worker_lib = _get_internal_worker_library()
-
-    max_min_distance = coresize // 2
-    if wardistance < CPP_WORKER_MIN_DISTANCE or wardistance > max_min_distance:
-        raise ValueError(
-            f"WARDISTANCE must be between {CPP_WORKER_MIN_DISTANCE} and {max_min_distance} "
-            f"(CORESIZE/2) for coresize={coresize} (got {wardistance})."
-        )
-    if wardistance < warlen:
-        raise ValueError(
-            "WARDISTANCE must be 0..(CORESIZE/2) and greater than or equal to WARLEN "
-            f"(got wardistance={wardistance}, warlen={warlen})."
-        )
 
     try:
         if config.use_in_memory_arenas:
@@ -1017,50 +1052,15 @@ def execute_battle(
             internal_seed,
         )
     else:
-        resolve_command = _get_evolverstage_override(
-            "_resolve_external_command", _resolve_external_command
-        )
-        run_command = _get_evolverstage_override(
-            "_run_external_command", _run_external_command
-        )
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        warrior_files = [
+        raw_output = _run_external_battle(
+            engine_name,
+            arena,
+            era,
+            battlerounds,
+            seed,
             os.path.join(arena_dir, f"{cont1}.red"),
             os.path.join(arena_dir, f"{cont2}.red"),
-        ]
-
-        if engine_name == "pmars":
-            candidate_fn = _get_evolverstage_override(
-                "_candidate_pmars_paths", _candidate_pmars_paths
-            )
-            engine_label = "pMARS"
-            flag_args = {
-                "-r": battlerounds,
-                "-p": config.processes_list[arena],
-                "-c": config.cycles_list[arena],
-                "-s": config.coresize_list[arena],
-            }
-            if seed is not None:
-                flag_args["-S"] = seed
-        else:
-            candidate_fn = _get_evolverstage_override(
-                "_candidate_nmars_paths", _candidate_nmars_paths
-            )
-            engine_label = "nMars"
-            flag_args = {
-                "-r": battlerounds,
-                "-p": config.processes_list[arena],
-                "-c": config.cycles_list[arena],
-                "-s": config.coresize_list[arena],
-                "-l": config.readlimit_list[arena],
-                "-w": config.writelimit_list[arena],
-            }
-
-        executable = resolve_command(engine_label, candidate_fn())
-        raw_output = run_command(
-            executable,
-            warrior_files,
-            flag_args,
         )
 
     return _process_battle_output(
@@ -1119,40 +1119,6 @@ def execute_battle_with_sources(
         )
         raw_output = result_ptr
     else:
-        resolve_command = _get_evolverstage_override(
-            "_resolve_external_command", _resolve_external_command
-        )
-        run_command = _get_evolverstage_override(
-            "_run_external_command", _run_external_command
-        )
-        if engine_name == "pmars":
-            candidate_fn = _get_evolverstage_override(
-                "_candidate_pmars_paths", _candidate_pmars_paths
-            )
-            engine_label = "pMARS"
-            flag_args = {
-                "-r": battlerounds,
-                "-p": config.processes_list[arena],
-                "-c": config.cycles_list[arena],
-                "-s": config.coresize_list[arena],
-            }
-            if seed is not None:
-                flag_args["-S"] = seed
-        else:
-            candidate_fn = _get_evolverstage_override(
-                "_candidate_nmars_paths", _candidate_nmars_paths
-            )
-            engine_label = "nMars"
-            flag_args = {
-                "-r": battlerounds,
-                "-p": config.processes_list[arena],
-                "-c": config.cycles_list[arena],
-                "-s": config.coresize_list[arena],
-                "-l": config.readlimit_list[arena],
-                "-w": config.writelimit_list[arena],
-            }
-
-        executable = resolve_command(engine_label, candidate_fn())
         with tempfile.TemporaryDirectory() as tmp_dir:
             warrior1_path = os.path.join(tmp_dir, f"{cont1}.red")
             warrior2_path = os.path.join(tmp_dir, f"{cont2}.red")
@@ -1160,10 +1126,14 @@ def execute_battle_with_sources(
                 handle.write(normalized_w1)
             with open(warrior2_path, "w") as handle:
                 handle.write(normalized_w2)
-            raw_output = run_command(
-                executable,
-                [warrior1_path, warrior2_path],
-                flag_args,
+            raw_output = _run_external_battle(
+                engine_name,
+                arena,
+                era,
+                battlerounds,
+                seed,
+                warrior1_path,
+                warrior2_path,
             )
 
     return _process_battle_output(raw_output, engine_name, verbose, [cont1, cont2])
@@ -1220,7 +1190,7 @@ class DiskArenaStorage(ArenaStorage):
     ) -> None:
         config = _require_config()
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        create_directory_if_not_exists(arena_dir)
+        os.makedirs(arena_dir, exist_ok=True)
         warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
         with open(warrior_path, "w") as handle:
             handle.writelines(lines)
@@ -1297,7 +1267,7 @@ class InMemoryArenaStorage(ArenaStorage):
     def _write_warrior(self, arena: int, warrior_id: int) -> None:
         config = _require_config()
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
-        create_directory_if_not_exists(arena_dir)
+        os.makedirs(arena_dir, exist_ok=True)
         warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
         lines = self._arenas.get(arena, {}).get(warrior_id, [])
         with open(warrior_path, "w") as handle:
@@ -1345,25 +1315,8 @@ def create_arena_storage(config: "EvolverConfig") -> ArenaStorage:
     return DiskArenaStorage()
 
 
-def create_directory_if_not_exists(directory: str) -> None:
-    os.makedirs(directory, exist_ok=True)
-
-
-def _should_persist_to_disk(current_config: "EvolverConfig") -> bool:
-    return not (
-        current_config.use_in_memory_arenas
-        and current_config.battle_engine == "internal"
-    )
-
-
 def _should_flush_on_exit(current_config: "EvolverConfig") -> bool:
-    if (
-        current_config.use_in_memory_arenas
-        and current_config.battle_engine == "internal"
-    ):
-        return True
-
-    return _should_persist_to_disk(current_config)
+    return True
 
 
 MutationHandler = Callable[[RedcodeInstruction, int, "EvolverConfig", int], RedcodeInstruction]
@@ -1391,7 +1344,10 @@ def apply_nab_instruction(
     while donor_arena == arena and config.last_arena > 0:
         donor_arena = _rng_int(0, config.last_arena)
 
-    _log_verbose("Nab instruction from arena " + str(donor_arena))
+    console_log(
+        "Nab instruction from arena " + str(donor_arena),
+        minimum_level=VerbosityLevel.VERBOSE,
+    )
     storage = get_arena_storage()
     donor_warrior = _rng_int(1, config.numwarriors)
     donor_lines = storage.get_warrior_lines(donor_arena, donor_warrior)
@@ -1399,7 +1355,10 @@ def apply_nab_instruction(
     if donor_lines:
         return parse_instruction_or_default(_rng_choice(donor_lines))
 
-    _log_verbose("Donor warrior empty; skipping mutation.")
+    console_log(
+        "Donor warrior empty; skipping mutation.",
+        minimum_level=VerbosityLevel.VERBOSE,
+    )
     return instruction
 
 
@@ -1507,7 +1466,7 @@ def handle_archiving(
 
     if config.archive_list[era] != 0 and _rng_int(1, config.archive_list[era]) == 1:
         winlines = storage.get_warrior_lines(arena, winner)
-        create_directory_if_not_exists(archive_dir)
+        os.makedirs(archive_dir, exist_ok=True)
         archive_filename: Optional[str] = None
         for _ in range(10):
             candidate = f"{_rng_int(1, MAX_WARRIOR_FILENAME_ID)}.red"
@@ -1745,8 +1704,6 @@ __all__ = [
     "set_arena_storage",
     "get_arena_storage",
     "create_arena_storage",
-    "create_directory_if_not_exists",
-    "_should_persist_to_disk",
     "_should_flush_on_exit",
     "Marble",
     "MutationHandler",
