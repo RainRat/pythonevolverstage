@@ -9,7 +9,7 @@ import sys
 import time
 import warnings
 from dataclasses import dataclass, field
-from typing import List, Optional, Sequence, Tuple, TypeVar, Union, cast
+from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union, cast
 
 from engine import *
 from ui import (
@@ -142,8 +142,43 @@ def _get_random_choice(sequence: Sequence[T]) -> T:
 configure_rng(get_random_int, _get_random_choice)
 
 
-def _log_verbose(message: str) -> None:
-    console_log(message, minimum_level=VerbosityLevel.VERBOSE)
+def _parse_int(value: str, *, key: str, parser: configparser.ConfigParser) -> int:
+    return int(value)
+
+
+def _parse_float(value: str, *, key: str, parser: configparser.ConfigParser) -> float:
+    return float(value)
+
+
+def _parse_bool(value: str, *, key: str, parser: configparser.ConfigParser) -> bool:
+    return parser['DEFAULT'].getboolean(key)
+
+
+def _parse_int_list(value: str, *, key: str, parser: configparser.ConfigParser) -> list[int]:
+    return [int(item.strip()) for item in value.split(',') if item.strip()]
+
+
+def _parse_bool_list(value: str, *, key: str, parser: configparser.ConfigParser) -> list[bool]:
+    return [item.strip().lower() == 'true' for item in value.split(',') if item.strip()]
+
+
+def _parse_string_list(value: str, *, key: str, parser: configparser.ConfigParser) -> list[str]:
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
+def _parse_str(value: str, *, key: str, parser: configparser.ConfigParser) -> str:
+    return value
+
+
+_CONFIG_PARSERS: dict[str, Callable[..., object]] = {
+    'int': _parse_int,
+    'float': _parse_float,
+    'bool': _parse_bool,
+    'int_list': _parse_int_list,
+    'bool_list': _parse_bool_list,
+    'string_list': _parse_string_list,
+    'str': _parse_str,
+}
 
 
 def set_active_config(new_config: EvolverConfig) -> None:
@@ -529,23 +564,12 @@ def load_configuration(path: str) -> EvolverConfig:
         value = parser['DEFAULT'].get(key, fallback=default)
         if value in (None, ''):
             return default
-        if data_type == 'int':
-            return int(value)
-        if data_type == 'float':
-            return float(value)
-        if data_type == 'bool':
-            if key in parser['DEFAULT']:
-                return parser['DEFAULT'].getboolean(key)
-            return default
-        if data_type == 'int_list':
-            return [int(item.strip()) for item in value.split(',') if item.strip()]
-        if data_type == 'bool_list':
-            return [item.strip().lower() == 'true' for item in value.split(',') if item.strip()]
-        if data_type == 'string_list':
-            return [item.strip() for item in value.split(',') if item.strip()]
-        if data_type == 'str':
+        if key not in parser['DEFAULT']:
             return value
-        raise ValueError(f"Unsupported data type: {data_type}")
+        parser_fn = _CONFIG_PARSERS.get(data_type)
+        if parser_fn is None:
+            raise ValueError(f"Unsupported data type: {data_type}")
+        return parser_fn(value, key=key, parser=parser)
 
     battle_log_file = _read_config('BATTLE_LOG_FILE', data_type='str')
     if battle_log_file:
