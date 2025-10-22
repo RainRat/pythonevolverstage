@@ -20,6 +20,7 @@ For all of these, modify the constants in settings.ini.
     * Use `--seed <number>` when you want to replay the same evolution history. The evolver seeds Python's RNG with the provided value before selecting arenas, mutation strategies, or battle pairings, so every probabilistic decision—from "bag of marbles" draws to arena selection—follows the same sequence. This is invaluable when you are tuning settings and need to compare like-for-like behaviour.
 8. When the program starts it prints a concise run summary based on `settings.ini` (and any command-line overrides). You will see which battle engine is active, how many arenas will be maintained, whether battles are logged, how warriors are stored, and if the final tournament (including CSV export) is enabled. This makes it easy to confirm that the configuration on disk matches your expectations before a long training session.
 9. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
+10. To share archived warriors between multiple evolver instances, set `ARCHIVE_PATH` to an absolute path (or a path relative to the configuration file). Every instance can then keep its own arenas while writing to the same archive directory.
 
 ## Special Features:
 
@@ -89,10 +90,10 @@ Evolver output will now rewrite numbers either negative or positive, whichever i
 		- Previous evolution runs
 		- Other evolved warriors
 		- Other handwritten warriors
-	- Collaborate with other instances (will need to edit source code to use absolute path)
-		- Other instances on same machine
-		- Over a LAN
-		- Over the Internet with Google Drive, etc.
+        - Collaborate with other instances by pointing `ARCHIVE_PATH` at a shared directory
+                - Other instances on same machine
+                - Over a LAN
+                - Over the Internet with Google Drive, etc.
 
 11. (New) Optional log file
 Results of battles saved so you can analyse your progress. Current fields are 'era', 'arena', 'winner', 'loser', 'score1', 'score2', and 'bred_with'. Edit BATTLE_LOG_FILE setting to choose a file name; comment out or leave blank for no log.
@@ -158,6 +159,25 @@ docker run --rm -it corewar-evolver
 ```
 
 The build step compiles the optional C++ worker (`redcode-worker.cpp`) so the library is ready to use inside the container.
+
+### Running multiple containers with a shared archive
+
+You can run several Dockerised evolvers on the same machine while letting them trade warriors through a common archive:
+
+1. Prepare a host directory for each evolver run (for example `runs/run-a` and `runs/run-b`) and copy `settings.ini` into each. Update every copy so that `ARCHIVE_PATH = /shared-archive` (or any other shared location inside the container) and adjust other settings as desired.
+2. Create a host directory to hold the shared archive, such as `runs/shared-archive`.
+3. Launch each container with two bind mounts: one for its private run directory (arenas, logs, checkpoints) and one for the shared archive. Point the evolver at the mounted configuration file, for example:
+
+   ```
+   docker run --rm -it \
+     -v "$(pwd)/runs/run-a:/data" \
+     -v "$(pwd)/runs/shared-archive:/shared-archive" \
+     corewar-evolver python evolverstage.py --config /data/settings.ini
+   ```
+
+   Start a second container with a different run directory (for example `runs/run-b`) but mount the same `shared-archive` volume. Both containers will evolve independently while exchanging warriors through the shared archive directory.
+
+The evolver now writes archived warriors using exclusive file creation, so concurrent containers avoid clobbering each other even when they roll the same random filename.
 
 ### Running on Windows 11 with Docker Desktop and WSL
 

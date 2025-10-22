@@ -42,6 +42,7 @@ class EvolverConfig:
     battle_engine: str
     last_arena: int
     base_path: str
+    archive_path: str
     coresize_list: list[int]
     sanitize_list: list[int]
     cycles_list: list[int]
@@ -386,7 +387,7 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
             base_path = config_directory
 
     required_directories = [os.path.join(base_path, f"arena{i}") for i in range(arena_count)]
-    archive_dir = os.path.join(base_path, "archive")
+    archive_dir = active_config.archive_path
     required_directories.append(archive_dir)
 
     if active_config.benchmark_root:
@@ -412,7 +413,7 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
         missing_arenas = [
             directory
             for directory in missing_required_directories
-            if os.path.basename(directory) != "archive"
+            if directory != archive_dir
         ]
         if missing_arenas:
             console_log(
@@ -564,10 +565,21 @@ def load_configuration(path: str) -> EvolverConfig:
     if benchmark_root:
         benchmark_root = os.path.abspath(os.path.join(base_path, benchmark_root))
 
+    archive_path = _read_config('ARCHIVE_PATH', data_type='str')
+    if archive_path:
+        archive_path = os.path.expanduser(archive_path)
+        if not os.path.isabs(archive_path):
+            archive_path = os.path.abspath(os.path.join(base_path, archive_path))
+        else:
+            archive_path = os.path.abspath(archive_path)
+    else:
+        archive_path = os.path.abspath(os.path.join(base_path, "archive"))
+
     active_config = EvolverConfig(
         battle_engine=_read_config('BATTLE_ENGINE', data_type='str', default='internal') or 'internal',
         last_arena=_read_config('LAST_ARENA', data_type='int'),
         base_path=base_path,
+        archive_path=archive_path,
         coresize_list=_read_config('CORESIZE_LIST', data_type='int_list') or [],
         sanitize_list=_read_config('SANITIZE_LIST', data_type='int_list') or [],
         cycles_list=_read_config('CYCLES_LIST', data_type='int_list') or [],
@@ -630,8 +642,8 @@ class DataLogger:
                 writer.writerow(kwargs)
 
 
-def _count_archive_warriors(base_path: str) -> int:
-    archive_dir = os.path.join(base_path, "archive")
+def _count_archive_warriors(archive_dir: str) -> int:
+    archive_dir = os.path.abspath(archive_dir)
     try:
         entries = os.listdir(archive_dir)
     except FileNotFoundError:
@@ -677,7 +689,7 @@ def _count_instruction_library_entries(library_path: Optional[str]) -> int:
 def _print_run_configuration_summary(active_config: EvolverConfig) -> None:
     log_display = active_config.battle_log_file if active_config.battle_log_file else "Disabled"
     arena_count = active_config.last_arena + 1 if active_config.last_arena is not None else 0
-    archive_count = _count_archive_warriors(active_config.base_path)
+    archive_count = _count_archive_warriors(active_config.archive_path)
     library_entries = _count_instruction_library_entries(active_config.library_path)
     if active_config.library_path:
         library_display = f"{library_entries} entries from {active_config.library_path}"
@@ -1341,7 +1353,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
 
     if not active_config.alreadyseeded:
         console_log("Seeding", minimum_level=VerbosityLevel.TERSE)
-        archive_dir = os.path.join(active_config.base_path, "archive")
+        archive_dir = active_config.archive_path
         create_directory_if_not_exists(archive_dir)
         for arena in range(0, active_config.last_arena + 1):
             arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
