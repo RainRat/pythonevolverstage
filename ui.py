@@ -6,8 +6,9 @@ import sys
 import time
 import warnings
 from collections import deque
+from dataclasses import dataclass
 from enum import Enum
-from typing import Deque, Optional, Tuple
+from typing import Deque, Mapping, Optional, Tuple
 
 
 class VerbosityLevel(Enum):
@@ -29,6 +30,31 @@ class VerbosityLevel(Enum):
 _VERBOSITY_LEVEL: VerbosityLevel = VerbosityLevel.DEFAULT
 
 _STATUS_UPDATE_MIN_INTERVAL = 0.1
+
+
+@dataclass(frozen=True)
+class ChampionDisplay:
+    """Renderable information about an arena's current champion."""
+
+    warrior_id: Optional[int]
+    lines: Tuple[str, ...] = ()
+
+    def formatted_lines(self, max_lines: int) -> list[str]:
+        """Return display lines capped at ``max_lines`` entries."""
+
+        header = (
+            "No champion"
+            if self.warrior_id is None
+            else f"Warrior {self.warrior_id}"
+        )
+        combined = [header, *self.lines]
+        if len(combined) <= max_lines:
+            return combined
+        if max_lines <= 0:
+            return []
+        visible = combined[: max_lines - 1]
+        visible.append("…")
+        return visible
 
 
 class BattleStatisticsTracker:
@@ -85,6 +111,11 @@ class ConsoleInterface:
 
     def record_battle(self, winner: int, loser: int, was_draw: bool) -> None:
         self.tracker.record_battle(winner, loser, was_draw)
+
+    def update_champions(self, champions: Mapping[int, ChampionDisplay]) -> None:
+        """Update the rendered champion roster (if supported)."""
+
+        return None
 
     def close(self) -> None:
         pass
@@ -193,6 +224,9 @@ class SimpleConsole(ConsoleInterface):
     def close(self) -> None:
         self.clear_status()
 
+    def update_champions(self, champions: Mapping[int, ChampionDisplay]) -> None:
+        return None
+
 
 class PseudoGraphicalConsole(ConsoleInterface):
     def __init__(self) -> None:
@@ -207,6 +241,8 @@ class PseudoGraphicalConsole(ConsoleInterface):
         self._log_lines: Deque[str] = deque(maxlen=200)
         self._progress_line = ""
         self._detail_line = ""
+        self._champions: dict[int, ChampionDisplay] = {}
+        self._max_champion_lines = 12
 
     def log(
         self,
@@ -230,42 +266,126 @@ class PseudoGraphicalConsole(ConsoleInterface):
         self._detail_line = ""
         self._refresh()
 
+    def update_champions(self, champions: Mapping[int, ChampionDisplay]) -> None:
+        self._champions = dict(champions)
+        self._refresh()
+
     def _refresh(self) -> None:
         height, width = self._screen.getmaxyx()
         self._screen.erase()
-        row = 0
 
-        header_lines = []
+        lines_to_draw: list[str] = []
+
+        champion_block = self._render_champions(width)
+        lines_to_draw.extend(champion_block)
+
+        header_block = self._render_status_block(height, width, len(champion_block))
+        lines_to_draw.extend(header_block)
+
+        remaining_rows = max(0, height - len(lines_to_draw))
+        if remaining_rows:
+            log_lines = list(self._log_lines)[-remaining_rows:]
+            lines_to_draw.extend(log_lines)
+
+        for row, line in enumerate(lines_to_draw[:height]):
+            self._screen.addnstr(row, 0, line, width - 1)
+
+        self._screen.refresh()
+
+    def _render_champions(self, width: int) -> list[str]:
+        if not self._champions or width < 4:
+            return []
+
+        sorted_items = sorted(self._champions.items())
+        num_arenas = len(sorted_items)
+        min_inner = 16
+
+        max_columns = max(1, (width - 1) // (min_inner + 1))
+        columns = min(num_arenas, max_columns)
+        while columns > 1:
+            total_inner = width - (columns + 1)
+            if total_inner >= columns * min_inner:
+                break
+            columns -= 1
+
+        total_inner = max(0, width - (columns + 1))
+        if columns <= 0 or total_inner < 0:
+            return []
+
+        base_width = total_inner // columns if columns else total_inner
+        remainder = total_inner % columns if columns else 0
+        column_widths = [
+            base_width + (1 if index < remainder else 0) for index in range(columns)
+        ]
+
+        lines: list[str] = []
+        for start_index in range(0, num_arenas, columns):
+            row_items = sorted_items[start_index : start_index + columns]
+            row_widths = column_widths[: len(row_items)]
+
+            header_line = "+"
+            for (arena_index, champion), col_width in zip(row_items, row_widths):
+                title = f" Arena {arena_index} Champion "
+                if champion.warrior_id is not None:
+                    title += f"#{champion.warrior_id} "
+                header_line += title.strip().center(col_width, "-")[:col_width]
+                header_line += "+"
+            lines.append(header_line)
+
+            formatted_columns = [
+                champion.formatted_lines(self._max_champion_lines)
+                for _arena, champion in row_items
+            ]
+            max_height = max((len(column) for column in formatted_columns), default=0)
+
+            for line_index in range(max_height):
+                content_line = "|"
+                for col_width, column_lines in zip(row_widths, formatted_columns):
+                    segment = (
+                        column_lines[line_index] if line_index < len(column_lines) else ""
+                    )
+                    segment = segment[:col_width]
+                    content_line += segment.ljust(col_width)
+                    content_line += "|"
+                lines.append(content_line)
+
+            footer_line = "+"
+            for col_width in row_widths:
+                footer_line += "-" * col_width
+                footer_line += "+"
+            lines.append(footer_line)
+
+        return lines
+
+    def _render_status_block(
+        self, height: int, width: int, champion_rows: int
+    ) -> list[str]:
+        available_rows = max(0, height - champion_rows)
+        if available_rows <= 0:
+            return []
+
+        header_lines: list[str] = []
         if self._progress_line:
             header_lines.append(self._progress_line)
         if self._detail_line:
             header_lines.append(self._detail_line)
 
         longest_warrior, longest_streak = self.tracker.longest_streak
-        if longest_warrior is not None and height - len(header_lines) > 0:
+        if longest_warrior is not None and available_rows > 0:
             header_lines.append(
                 f"Longest streak: Warrior {longest_warrior} ({longest_streak} wins)"
             )
 
-        for line in header_lines:
-            if row >= height:
-                break
-            self._screen.addnstr(row, 0, line, width - 1)
-            row += 1
+        if not header_lines or width < 4:
+            return header_lines[:available_rows]
 
-        remaining_rows = height - row
-        if remaining_rows <= 0:
-            self._screen.refresh()
-            return
-
-        log_lines = list(self._log_lines)[-remaining_rows:]
-        for line in log_lines:
-            if row >= height:
-                break
-            self._screen.addnstr(row, 0, line, width - 1)
-            row += 1
-
-        self._screen.refresh()
+        content_width = width - 2
+        box_lines = ["+" + "-" * content_width + "+"]
+        for line in ["[Statistics]"] + header_lines:
+            text = line[:content_width]
+            box_lines.append("|" + text.ljust(content_width) + "|")
+        box_lines.append("+" + "-" * content_width + "+")
+        return box_lines[:available_rows]
 
     def close(self) -> None:
         try:
@@ -339,6 +459,12 @@ def console_clear_status() -> None:
     get_console().clear_status()
 
 
+def console_update_champions(
+    champions: Mapping[int, ChampionDisplay]
+) -> None:
+    get_console().update_champions(champions)
+
+
 __all__ = [
     "VerbosityLevel",
     "BattleStatisticsTracker",
@@ -352,5 +478,7 @@ __all__ = [
     "console_log",
     "console_update_status",
     "console_clear_status",
+    "console_update_champions",
+    "ChampionDisplay",
 ]
 
