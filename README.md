@@ -11,16 +11,20 @@ If you have a suggestion, submit a pull request. I put it on Github to encourage
 For all of these, modify the constants in settings.ini.
 
 1. Edit the **per-arena lists** (like `CORESIZE_LIST`, `CYCLES_LIST`, etc.) to contain the parameters of the competitions you want to compete in. If you just want to compete in one arena, you have lists of length 1.
-2. Set the **per-era lists** (like `BATTLEROUNDS_LIST`, `NOTHING_LIST`, `RANDOM_LIST`, etc.) to control the evolution process over time. The number of eras is defined by the number of entries in `BATTLEROUNDS_LIST`.
+2. (Optional. Defaults are good for most.) Set the **per-era lists** (like `BATTLEROUNDS_LIST`, `NOTHING_LIST`, `RANDOM_LIST`, etc.) to control the evolution process over time. The number of eras is defined by the number of entries in `BATTLEROUNDS_LIST`.
 3. Set ALREADYSEEDED to False. If you interrupt it and want to resume, set it to True.
 4. Choose how much actual wall clock time (in hours) you plan to run the project for and modify CLOCK_TIME
 5. Select the battle engine by setting `BATTLE_ENGINE` to `nmars`, `internal`, or `pmars` in `settings.ini`. Use `nmars` to call the external nMars executable, `internal` to use the bundled C++ worker, or `pmars` to shell out to a local pMARS binary.
 6. (Optional) Enable `IN_MEMORY_ARENAS` to cache warriors in RAM and reduce disk writes; adjust `ARENA_CHECKPOINT_INTERVAL` to control how often arenas are saved when running in this mode.
-7. Run `python evolverstage.py` (add `--verbosity {terse,default,verbose,pseudo-graphical}` to control console output).
+7. (Optional) To share archived warriors between multiple evolver instances, set `ARCHIVE_PATH` to an absolute path (or a path relative to the configuration file). Every instance can then keep its own arenas while writing to the same archive directory.
+8. Run `python evolverstage.py` (add `--verbosity {terse,default,verbose,pseudo-graphical}` to control console output).
     * Use `--seed <number>` when you want to replay the same evolution history. The evolver seeds Python's RNG with the provided value before selecting arenas, mutation strategies, or battle pairings, so every probabilistic decision—from "bag of marbles" draws to arena selection—follows the same sequence. This is invaluable when you are tuning settings and need to compare like-for-like behaviour.
-8. When the program starts it prints a concise run summary based on `settings.ini`. You will see which battle engine is active, how many arenas will be maintained, whether battles are logged, how warriors are stored, and if the final tournament (including CSV export) is enabled. This makes it easy to confirm that the configuration on disk matches your expectations before a long training session.
-9. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
-10. To share archived warriors between multiple evolver instances, set `ARCHIVE_PATH` to an absolute path (or a path relative to the configuration file). Every instance can then keep its own arenas while writing to the same archive directory.
+9. When the program starts it prints a concise run summary based on `settings.ini`. You will see which battle engine is active, how many arenas will be maintained, whether battles are logged, how warriors are stored, and if the final tournament (including CSV export) is enabled. This makes it easy to confirm that the configuration on disk matches your expectations before a long training session.
+10. When done, out of the warriors in each arena, you will need to pick which is actually the best:
+  a. Set `RUN_FINAL_TOURNAMENT=True` to run a Round Robin.
+  b. Set up known benchmark warriors in a folder designated by `BENCHMARK_ROOT` and set `BENCHMARK_FINAL_TOURNAMENT=True`.
+  c. Any external benchmarking tool, or program that can run a Round Robin (ie. CoreWin in round robin mode)
+
 
 ## Special Features:
 
@@ -109,7 +113,7 @@ Results of battles saved so you can analyse your progress. Current fields are 'e
 
 ## Compiling `redcode-worker.cpp`
 
-An experimental C++ worker (`redcode-worker.cpp`) can be built as a shared library for use with the Python evolver.
+A C++ worker (`redcode-worker.cpp`) can be built as a shared library for use with the Python evolver.
 
 The easiest way to manage the build and test workflow is via the repository's `Makefile`:
 

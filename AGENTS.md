@@ -1,10 +1,13 @@
 Evolutionary algorithm for the competitive programming game Core War.
 
-Currently evolverstage.py shells to the external program nMars.exe, and the internal C++ server (`redcode-worker.cpp`) is now stable for day-to-day use.
+Currently evolverstage.py supports:
+ - shells to the external program nMars.exe.
+ - shells to the external program pMars (source included in pMars/)
+ - and the internal C++ server (`redcode-worker.cpp`)
 
 "spec" refers to the "Draft of Proposed 1994 Core War Standard" (1994_core_war_standard.txt) + the features in the Extended draft (1994_extended.txt)
 
-Configuration overrides belong in `settings.ini`. Command-line flags such as `--engine`, `--final-tournament`, `--final-tournament-csv`, and `--verbose` have been removed, so treat the INI file as the single source of truth.
+Configuration overrides belong in `settings.ini` as the single source of truth. Command-line flags are only `--config`, `--seed`, and `--verbosity`. Do not add more command-line flags unless specifically requested.
 
 The Python program:
 -Expects to receive programs that are already assembled, with all fields present, like:
@@ -33,11 +36,13 @@ Adherence to spec:
 
 Not supported:
 -Battles between more than 2 warriors at a time.
--ORG pseudo-opcode: All of the warriors being evolved start at the first instruction to be easier to combine. If the Python or CPP encounters one, an error should be raised and the run halted.
--LDP/STP opcodes: Listed in the extended draft, but it doesn't work well with evolution, so not supported
+-ORG pseudo-opcode: All of the warriors being evolved start at the first instruction to be easier to combine.
+-END pseudo-opcode: Not required.
+-LDP/STP opcodes: Listed in the extended draft, but it doesn't work well with evolution, so not supported.
+-No special error handling is needed for ORG/LDP/STP/END. The standard unknown opcode error should be raised and the run halted.
 
 Supported:
--Read/Write limits: enforced in both the Python and C++ implementations. Configuration files that request limits outside the core size are rejected during validation.
+-Read/Write limits: enforced in both the Python and C++ implementations.
 -JMN.I/DJN.I: we mirror the EMI94 reference implementation's "logical OR" semantics for multi-field tests. This matches the upstream test suite and avoids surprising contributors who compare against EMI94 or pMars.
 -NOP: in the Extended spec, so it is supported.
 -SNE, SEQ: in the Extended spec, so it is supported. SEQ is an alias for CMP, but CMP is more commonly used, so SEQ will be accepted as input, but internally only CMP is used.
