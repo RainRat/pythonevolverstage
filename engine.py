@@ -13,6 +13,7 @@ import subprocess
 import tempfile
 import time
 import sys
+import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1500,16 +1501,33 @@ class ArchivingResult:
 def handle_archiving(
     winner: int, loser: int, arena: int, era: int, config: "EvolverConfig"
 ) -> ArchivingResult:
-    archive_dir = os.path.join(config.base_path, "archive")
+    archive_dir = config.archive_path
     events: list[ArchivingEvent] = []
     storage = get_arena_storage()
 
     if config.archive_list[era] != 0 and _rng_int(1, config.archive_list[era]) == 1:
         winlines = storage.get_warrior_lines(arena, winner)
-        archive_filename = f"{_rng_int(1, MAX_WARRIOR_FILENAME_ID)}.red"
         create_directory_if_not_exists(archive_dir)
-        with open(os.path.join(archive_dir, archive_filename), "w") as handle:
-            handle.writelines(winlines)
+        archive_filename: Optional[str] = None
+        for _ in range(10):
+            candidate = f"{_rng_int(1, MAX_WARRIOR_FILENAME_ID)}.red"
+            candidate_path = os.path.join(archive_dir, candidate)
+            try:
+                fd = os.open(candidate_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+            except FileExistsError:
+                continue
+            else:
+                with os.fdopen(fd, "w") as handle:
+                    handle.writelines(winlines)
+                archive_filename = candidate
+                break
+
+        if archive_filename is None:
+            archive_filename = f"{uuid.uuid4().hex}.red"
+            fallback_path = os.path.join(archive_dir, archive_filename)
+            with open(fallback_path, "w") as handle:
+                handle.writelines(winlines)
+
         events.append(
             ArchivingEvent(
                 action="archived",

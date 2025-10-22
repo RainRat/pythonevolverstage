@@ -90,6 +90,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
     assert config.alreadyseeded is False
     assert pytest.approx(config.clock_time, rel=1e-6) == 12.5
     assert config.base_path == str(config_path.parent)
+    assert config.archive_path == os.path.abspath(config_path.parent / "archive")
     assert config.battle_log_file == os.path.abspath(config_path.with_name("logs.csv"))
     assert config.final_era_only is False
     assert config.nothing_list == [1, 2]
@@ -112,6 +113,45 @@ def test_load_configuration_parses_types(tmp_path, write_config):
     assert config.benchmark_root is None
     assert config.benchmark_final_tournament is False
     assert config.benchmark_sets == {}
+
+
+def test_load_configuration_accepts_custom_archive_path(tmp_path, write_config):
+    shared_root = tmp_path / "shared"
+    shared_root.mkdir()
+
+    config_path = write_config(
+        """
+        BATTLE_ENGINE = internal
+        LAST_ARENA = 0
+        CORESIZE_LIST = 80
+        SANITIZE_LIST = 80
+        CYCLES_LIST = 800
+        PROCESSES_LIST = 8
+        WARLEN_LIST = 5
+        WARDISTANCE_LIST = 5
+        NUMWARRIORS = 2
+        ALREADYSEEDED = false
+        CLOCK_TIME = 1
+        BATTLEROUNDS_LIST = 1
+        NOTHING_LIST = 1
+        RANDOM_LIST = 0
+        NAB_LIST = 0
+        MINI_MUT_LIST = 0
+        MICRO_MUT_LIST = 0
+        LIBRARY_LIST = 0
+        MAGIC_NUMBER_LIST = 0
+        ARCHIVE_LIST = 0
+        UNARCHIVE_LIST = 0
+        CROSSOVERRATE_LIST = 1
+        TRANSPOSITIONRATE_LIST = 1
+        PREFER_WINNER_LIST = false
+        ARCHIVE_PATH = shared/archive
+        """
+    )
+
+    config = evolverstage.load_configuration(str(config_path))
+    expected_path = os.path.abspath(config_path.parent / "shared" / "archive")
+    assert config.archive_path == expected_path
 
 
 def test_load_configuration_with_benchmarks(tmp_path, write_config):
@@ -799,7 +839,7 @@ def test_count_archive_warriors_counts_only_red_files(tmp_path):
     (archive_dir / "subdir").mkdir()
     (archive_dir / "subdir" / "nested.red").write_text("", encoding="utf-8")
 
-    assert evolverstage._count_archive_warriors(str(base_path)) == 2
+    assert evolverstage._count_archive_warriors(str(archive_dir)) == 2
 
 
 def test_count_instruction_library_entries_ignores_comments(tmp_path):
@@ -1013,6 +1053,7 @@ def test_run_internal_battle_integration(tmp_path, monkeypatch):
 
     config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
     config.base_path = str(tmp_path)
+    config.archive_path = os.path.join(config.base_path, "archive")
     evolverstage.set_active_config(config)
     evolverstage.set_arena_storage(evolverstage.create_arena_storage(config))
 
@@ -1053,6 +1094,7 @@ def test_execute_battle_uses_reproducible_seed(tmp_path, monkeypatch):
 
     config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
     config.base_path = str(tmp_path)
+    config.archive_path = os.path.join(config.base_path, "archive")
     evolverstage.set_active_config(config)
     evolverstage.set_arena_storage(evolverstage.create_arena_storage(config))
 
@@ -1228,6 +1270,7 @@ def test_run_internal_battle_requires_worker(tmp_path, monkeypatch):
 
     config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
     config.base_path = str(tmp_path)
+    config.archive_path = os.path.join(config.base_path, "archive")
     try:
         previous_config = evolverstage.get_active_config()
     except RuntimeError:
@@ -1279,6 +1322,7 @@ def test_final_tournament_uses_single_round(monkeypatch, tmp_path, capsys):
         numwarriors=3,
         alreadyseeded=True,
     )
+    config.archive_path = os.path.join(config.base_path, "archive")
     config.battlerounds_list = [5]
 
     arena_dir = tmp_path / "arena0"
@@ -1342,6 +1386,7 @@ def test_final_tournament_uses_in_memory_storage(monkeypatch, tmp_path, capsys):
         numwarriors=3,
         battlerounds_list=[_DEFAULT_CONFIG.battlerounds_list[0]],
     )
+    config.archive_path = os.path.join(config.base_path, "archive")
 
     previous_config = evolverstage.get_active_config()
     evolverstage.set_active_config(config)
@@ -1387,6 +1432,7 @@ def test_run_internal_battle_rejects_invalid_wardistance(monkeypatch, tmp_path, 
     config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
     capsys.readouterr()
     config.base_path = str(tmp_path)
+    config.archive_path = os.path.join(config.base_path, "archive")
     evolverstage.set_active_config(config)
 
     arena_dir = tmp_path / "arena0"
@@ -1444,6 +1490,7 @@ def test_execute_battle_in_memory_internal_avoids_disk_writes(monkeypatch, tmp_p
         wardistance_list=[_DEFAULT_CONFIG.wardistance_list[0]],
         battlerounds_list=[_DEFAULT_CONFIG.battlerounds_list[0]],
     )
+    config.archive_path = os.path.join(config.base_path, "archive")
 
     previous_config = evolverstage.get_active_config()
     evolverstage.set_active_config(config)
