@@ -797,9 +797,9 @@ def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
     write_events.clear()
     assert storage.flush_all() is False
 
-    assert not evolverstage._should_persist_to_disk(config)
+    assert evolverstage._should_flush_on_exit(config)
     external_config = replace(config, battle_engine="pmars")
-    assert evolverstage._should_persist_to_disk(external_config)
+    assert evolverstage._should_flush_on_exit(external_config)
 
     storage._write_warrior = original_write  # type: ignore[attr-defined]
     evolverstage.set_active_config(_DEFAULT_CONFIG)
@@ -1426,7 +1426,9 @@ def test_final_tournament_uses_in_memory_storage(monkeypatch, tmp_path, capsys):
     evolverstage.set_arena_storage(evolverstage.create_arena_storage(previous_config))
 
 
-def test_run_internal_battle_rejects_invalid_wardistance(monkeypatch, tmp_path, capsys):
+def test_run_internal_battle_passes_configuration_to_worker(
+    monkeypatch, tmp_path, capsys
+):
     import evolverstage
 
     config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
@@ -1450,25 +1452,29 @@ def test_run_internal_battle_rejects_invalid_wardistance(monkeypatch, tmp_path, 
 
     fake_worker = FakeWorker()
     monkeypatch.setattr(evolverstage, "CPP_WORKER_LIB", fake_worker)
-    with pytest.raises(ValueError, match="WARDISTANCE must be between"):
-        evolverstage.run_internal_battle(
-            arena=0,
-            cont1=1,
-            cont2=2,
-            coresize=8000,
-            cycles=200,
-            processes=8000,
-            readlimit=8000,
-            writelimit=8000,
-            warlen=20,
-            wardistance=5000,
-            battlerounds=10,
-            seed=123,
-        )
+    result = evolverstage.run_internal_battle(
+        arena=0,
+        cont1=1,
+        cont2=2,
+        coresize=8000,
+        cycles=200,
+        processes=8000,
+        readlimit=8000,
+        writelimit=8000,
+        warlen=20,
+        wardistance=5000,
+        battlerounds=10,
+        seed=123,
+    )
 
     captured = capsys.readouterr()
+    assert fake_worker.args is not None
+    assert fake_worker.args[9] == 5000
+    assert fake_worker.args[10] == 20
+    assert fake_worker.args[11] == 10
+    assert fake_worker.args[12] == 123
+    assert result == "1 0 0 0 0\n2 0 0 0 0\n"
 
-    assert fake_worker.args is None
     assert "Clamping" not in captured.out
 
 

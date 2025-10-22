@@ -1354,18 +1354,17 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     if not active_config.alreadyseeded:
         console_log("Seeding", minimum_level=VerbosityLevel.TERSE)
         archive_dir = active_config.archive_path
-        create_directory_if_not_exists(archive_dir)
+        os.makedirs(archive_dir, exist_ok=True)
         for arena in range(0, active_config.last_arena + 1):
             arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
-            create_directory_if_not_exists(arena_dir)
+            os.makedirs(arena_dir, exist_ok=True)
             for warrior_id in range(1, active_config.numwarriors + 1):
                 new_lines = [
                     instruction_to_line(generate_random_instruction(arena), arena)
                     for _ in range(1, active_config.warlen_list[arena] + 1)
                 ]
                 storage.set_warrior_lines(arena, warrior_id, new_lines)
-        if _should_persist_to_disk(active_config):
-            storage.flush_all()
+        storage.flush_all()
 
     start_time = time.time()
     era = -1
@@ -1423,8 +1422,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                         f"************** Advancing from era {previous_era + 1} to {era + 1} *******************",
                         minimum_level=VerbosityLevel.DEFAULT,
                     )
-                    if _should_persist_to_disk(active_config):
-                        get_arena_storage().flush_all()
+                    get_arena_storage().flush_all()
                 bag = _build_marble_bag(era, active_config)
 
             arena_index = random.randint(0, active_config.last_arena)
@@ -1455,7 +1453,6 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             if (
                 active_config.arena_checkpoint_interval
                 and total_battles % active_config.arena_checkpoint_interval == 0
-                and _should_persist_to_disk(active_config)
             ):
                 get_arena_storage().flush_all()
             winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
