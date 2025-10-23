@@ -20,7 +20,7 @@ For all of these, modify the constants in settings.ini.
 8. Run `python evolverstage.py` (add `--verbosity {terse,default,verbose,pseudo-graphical}` to control console output).
     * Use `--seed <number>` when you want to replay the same evolution history. The evolver seeds Python's RNG with the provided value before selecting arenas, mutation strategies, or battle pairings, so every probabilistic decision—from "bag of marbles" draws to arena selection—follows the same sequence. This is invaluable when you are tuning settings and need to compare like-for-like behaviour.
 9. When the program starts it prints a concise run summary based on `settings.ini`. You will see which battle engine is active, how many arenas will be maintained, whether battles are logged, how warriors are stored, and if the final tournament (including CSV export) is enabled. This makes it easy to confirm that the configuration on disk matches your expectations before a long training session.
-10. When done, out of the warriors in each arena, you will need to pick which is actually the best:
+10. When done, out of the warriors in each arena, you will need to pick which is actually the best. Either:
   a. Set `RUN_FINAL_TOURNAMENT=True` to run a Round Robin.
   b. Set up known benchmark warriors in a folder designated by `BENCHMARK_ROOT` and set `BENCHMARK_FINAL_TOURNAMENT=True`.
      * The evolver expects a directory structure of `BENCHMARK_ROOT/arenaX/` for each configured arena, filled with assembled `.red` warriors. When the flag is enabled every evolved warrior in arena `X` will fight each benchmark warrior from `arenaX`, reusing the stable seeding that round-robin tournaments rely on so that repeated runs are comparable.

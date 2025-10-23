@@ -39,7 +39,7 @@ Not supported:
 -ORG pseudo-opcode: All of the warriors being evolved start at the first instruction to be easier to combine.
 -END pseudo-opcode: Not required.
 -No special error handling is needed for ORG/END. The standard unknown opcode error should be raised and the run halted.
--LDP/STP opcodes: Listed in the extended draft, but it doesn't work well with evolution, so not supported. If one is encountered in the Python module (ie. from the archive or instruction library: it can be replaced with a placeholder, or reselected as desired). If one is encountered in the C++ module, the standard unknown opcode error should be raised and the run halted.
+-LDP/STP opcodes: Listed in the extended draft, but it doesn't work well with evolution, so not supported. If one is encountered in the Python module (ie. from the archive or instruction library): it can be replaced with a placeholder, or reselected as desired. If one is encountered in the C++ module, the standard unknown opcode error should be raised and the run halted.
 
 Supported:
 -Read/Write limits: enforced in both the Python and C++ implementations.
