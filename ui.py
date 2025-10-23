@@ -419,7 +419,16 @@ def set_console_verbosity(level: VerbosityLevel) -> VerbosityLevel:
 
     if level == VerbosityLevel.PSEUDO_GRAPHICAL:
         try:
+            import curses  # noqa: F401
+
             _console_manager = PseudoGraphicalConsole()
+        except ImportError:
+            warnings.warn(
+                "Pseudo-graphical console failed to load; falling back to default.",
+                RuntimeWarning,
+            )
+            level = VerbosityLevel.DEFAULT
+            _console_manager = SimpleConsole(level)
         except Exception as exc:
             warnings.warn(
                 f"Unable to start pseudo-graphical console: {exc}. "
