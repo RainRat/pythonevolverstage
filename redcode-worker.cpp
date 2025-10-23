@@ -15,13 +15,6 @@
 
 constexpr int WARRIOR_COUNT = 2;
 
-// --- Configuration ---
-const int DEFAULT_CORE_SIZE = 8000;
-const int DEFAULT_MAX_CYCLES = 80000;
-const int DEFAULT_MAX_PROCESSES = 8000;
-const int DEFAULT_MAX_WARRIOR_LENGTH = 100;
-const int DEFAULT_MIN_DISTANCE = 100;
-
 // pMARS allows extremely large arenas (core size up to ~1 billion cells, an
 // effectively unbounded process count, and millions of rounds). Those limits
 // are impractical for the in-process worker because it is designed to run many
@@ -981,17 +974,4 @@ extern "C" {
         return response.c_str();
     }
 
-    int worker_normalize(int address, int core_size) {
-        if (core_size <= 0) {
-            throw std::runtime_error("Core size must be positive for normalization");
-        }
-        return normalize(address, core_size);
-    }
-
-    int worker_fold(int offset, int limit) {
-        if (limit <= 0) {
-            throw std::runtime_error("Fold limit must be positive");
-        }
-        return fold(offset, limit);
-    }
 }

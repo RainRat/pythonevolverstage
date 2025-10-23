@@ -52,8 +52,9 @@ def ensure_pmars_compiled() -> pathlib.Path:
 
 @lru_cache(maxsize=1)
 def load_worker():
-    compile_worker()
     lib_path = PROJECT_ROOT / f"redcode_worker{_shared_library_extension()}"
+    if not lib_path.exists():
+        compile_worker()
     lib = ctypes.CDLL(str(lib_path))
     lib.run_battle.argtypes = [
         ctypes.c_char_p,
