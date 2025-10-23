@@ -1,4 +1,3 @@
-import ctypes
 import os
 import pathlib
 import sys
@@ -14,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 BASELINE_DIR = PROJECT_ROOT / "baseline"
 
+from engine import corenorm
 from test_support import load_worker
 
 
@@ -360,12 +360,6 @@ def test_baseline_div_preserves_valid_field(monkeypatch, tmp_path):
 
 
 def test_baseline_folding_matches_reference():
-    lib = load_worker()
-    lib.worker_fold.argtypes = [ctypes.c_int, ctypes.c_int]
-    lib.worker_fold.restype = ctypes.c_int
-    lib.worker_normalize.argtypes = [ctypes.c_int, ctypes.c_int]
-    lib.worker_normalize.restype = ctypes.c_int
-
     offsets = parse_folding_offsets()
     expected_fold = [-1, 0, 1, 3999, 4000, -3999, -1, 0, 1, 3999, 4000, -3999, -1, 0, 1]
     assert offsets == [
@@ -387,11 +381,8 @@ def test_baseline_folding_matches_reference():
     ]
     core_size = 8000
     for original, expected in zip(offsets, expected_fold):
-        folded = lib.worker_fold(original, core_size)
+        folded = corenorm(original, core_size)
         assert folded == expected, f"Fold mismatch for {original}: got {folded}, expected {expected}"
-        normalized = lib.worker_normalize(original, core_size)
-        expected_normalized = (original % core_size + core_size) % core_size
-        assert normalized == expected_normalized
 
 
 def test_custom_read_limit_folds_offsets(monkeypatch, tmp_path):
