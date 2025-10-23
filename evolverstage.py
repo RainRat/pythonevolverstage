@@ -9,7 +9,7 @@ import sys
 import time
 import warnings
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union, cast
+from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union, cast, TextIO
 
 from engine import *
 from ui import (
@@ -656,14 +656,38 @@ class DataLogger:
     def __init__(self, filename: Optional[str]):
         self.filename = filename
         self.fieldnames = ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with']
+        self.file_handle: Optional[TextIO] = None
+        self.writer: Optional[csv.DictWriter] = None
+
+    def open(self) -> None:
+        if not self.filename or self.file_handle is not None:
+            return
+
+        file_handle = open(self.filename, 'a', newline='')
+        writer = csv.DictWriter(file_handle, fieldnames=self.fieldnames)
+        if file_handle.tell() == 0:
+            writer.writeheader()
+
+        self.file_handle = file_handle
+        self.writer = writer
+
+    def close(self) -> None:
+        if self.file_handle is not None:
+            self.file_handle.close()
+            self.file_handle = None
+            self.writer = None
 
     def log_data(self, **kwargs):
-        if self.filename:
-            with open(self.filename, 'a', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=self.fieldnames)
-                if file.tell() == 0:
-                    writer.writeheader()
-                writer.writerow(kwargs)
+        if not self.filename:
+            return
+
+        if self.writer is None:
+            self.open()
+
+        if self.writer is not None:
+            self.writer.writerow(kwargs)
+            if self.file_handle is not None:
+                self.file_handle.flush()
 
 def _count_instruction_library_entries(library_path: Optional[str]) -> int:
     if not library_path:
@@ -1360,6 +1384,8 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
 
     _sync_champion_display()
 
+    data_logger.open()
+
     try:
         while True:
             previous_era = era
@@ -1520,6 +1546,9 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             minimum_level=VerbosityLevel.TERSE,
         )
         interrupted = True
+
+    finally:
+        data_logger.close()
 
     end_time = time.time()
 
