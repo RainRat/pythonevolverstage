@@ -23,7 +23,6 @@ from typing import (
     TYPE_CHECKING,
     Callable,
     Iterable,
-    List,
     Literal,
     Optional,
     Sequence,
@@ -219,46 +218,37 @@ class RedcodeInstruction:
 
 
 _INT_LITERAL_RE = re.compile(r"^[+-]?\d+$")
-def _tokenize_instruction(line: str) -> list[str]:
-    tokens = []
-    current: List[str] = []
-    for ch in line:
-        if ch.isspace():
-            if current:
-                tokens.append("".join(current))
-                current = []
-        elif ch == ",":
-            if current:
-                tokens.append("".join(current))
-                current = []
-            tokens.append(",")
-        elif ch in ADDRESSING_MODES and current and (
-            current[-1].isalnum() or current[-1] in "._:"
-        ):
-            tokens.append("".join(current))
-            current = [ch]
-        else:
-            current.append(ch)
-    if current:
-        tokens.append("".join(current))
-    return tokens
 
+_REDCODE_PREFIX_RE = re.compile(
+    r"""
+    ^\s*
+    (?:(?P<label>[A-Za-z_.$][\w.$]*)(?::)?\s+)?
+    (?P<opcode>[A-Za-z]+)
+    (?P<modifier_part>(?:\s*\.\s*[A-Za-z]+)?)
+    """,
+    re.VERBOSE,
+)
 
-def _split_opcode_token(token: str) -> Tuple[str, Optional[str]]:
-    parts = token.split(".", 1)
-    if len(parts) == 2:
-        return parts[0], parts[1]
-    return token, None
+_REDCODE_INSTRUCTION_RE = re.compile(
+    r"""
+    ^\s*
+    (?:(?P<label>[A-Za-z_.$][\w.$]*)(?::)?\s+)?
+    (?P<opcode>[A-Za-z]+)
+    \s*\.\s*
+    (?P<modifier>[A-Za-z]+)
+    \s*
+    (?P<a_operand>[^,]+?)
+    \s*,\s*
+    (?P<b_operand>[^,]+?)
+    \s*$
+    """,
+    re.VERBOSE,
+)
 
-
-def _is_opcode_token(token: str) -> bool:
-    opcode, _ = _split_opcode_token(token)
-    opcode = opcode.upper()
-    canonical_opcode = canonicalize_opcode(opcode)
-    return (
-        canonical_opcode in CANONICAL_SUPPORTED_OPCODES
-        or canonical_opcode in UNSUPPORTED_OPCODES
-    )
+_PMARS_SCORE_RE = re.compile(
+    r"^\s*(?:(?P<slot>\d+)\s*:\s*)?.*?\bscores\s+(?P<score>-?\d+)\b",
+    re.IGNORECASE,
+)
 
 
 def _safe_int(value: str) -> int:
@@ -305,60 +295,30 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     code_part = line.split(";", 1)[0].strip()
     if not code_part:
         return None
-    tokens = _tokenize_instruction(code_part)
-    if not tokens:
-        return None
 
-    label: Optional[str] = None
-    if len(tokens) >= 2 and not _is_opcode_token(tokens[0]) and _is_opcode_token(tokens[1]):
-        label = tokens[0]
-        tokens = tokens[1:]
-
-    if not tokens:
-        return None
-
-    opcode_token = tokens[0]
-    rest_start = 1
-    modifier: Optional[str]
-
-    if len(tokens) >= 3 and tokens[1] == ".":
-        modifier = tokens[2]
-        rest_start = 3
-        opcode_part = opcode_token
-    else:
-        opcode_part, modifier = _split_opcode_token(opcode_token)
-
-    if not modifier:
+    prefix_match = _REDCODE_PREFIX_RE.match(code_part)
+    if not prefix_match:
+        raise ValueError(f"Invalid instruction format: '{code_part}'")
+    if not prefix_match.group("modifier_part"):
         raise ValueError("Instruction is missing a modifier")
 
-    opcode = opcode_part.upper()
+    match = _REDCODE_INSTRUCTION_RE.match(code_part)
+    if not match:
+        raise ValueError(f"Invalid instruction format: '{code_part}'")
+
+    label = match.group("label")
+    opcode = match.group("opcode").upper()
+    modifier = match.group("modifier").upper()
     canonical_opcode = canonicalize_opcode(opcode)
     if canonical_opcode in UNSUPPORTED_OPCODES:
-        raise ValueError(f"Opcode '{opcode}' is not supported")
+        return default_instruction()
     if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
         raise ValueError(f"Unknown opcode '{opcode}'")
 
-    rest = tokens[rest_start:]
-    operands: list[str] = []
-    current_operand: list[str] = []
-    for token in rest:
-        if token == ",":
-            if not current_operand:
-                raise ValueError("Unexpected comma in operand list")
-            operands.append("".join(current_operand))
-            current_operand = []
-        else:
-            current_operand.append(token)
-    if current_operand:
-        operands.append("".join(current_operand))
-
-    if len(operands) != 2:
-        raise ValueError(
-            f"Instruction '{code_part}' must contain exactly two operands separated by a comma"
-        )
-
-    a_mode, a_field = _parse_operand(operands[0], "A")
-    b_mode, b_field = _parse_operand(operands[1], "B")
+    a_operand = match.group("a_operand")
+    b_operand = match.group("b_operand")
+    a_mode, a_field = _parse_operand(a_operand, "A")
+    b_mode, b_field = _parse_operand(b_operand, "B")
 
     return RedcodeInstruction(
         opcode=canonical_opcode,
@@ -959,6 +919,8 @@ def _parse_battle_output(
 
     is_pmars = engine_name == "pmars"
     score_lines_found = 0
+    pmars_slots: list[int] = []
+    pmars_scores: dict[int, int] = {}
     for line in output_lines:
         numline += 1
         if "scores" in line:
@@ -966,12 +928,31 @@ def _parse_battle_output(
             if verbose:
                 console_log(line.strip(), minimum_level=VerbosityLevel.VERBOSE)
             if is_pmars:
-                match = re.search(r"scores\s+(-?\d+)", line)
+                match = _PMARS_SCORE_RE.search(line)
                 if not match:
                     raise RuntimeError(
                         f"Unexpected pMARS score line format: {line.strip()}"
                     )
-                scores.append(int(match.group(1)))
+                slot_text = match.group("slot")
+                if slot_text is not None:
+                    slot = int(slot_text)
+                else:
+                    slot = next(
+                        (
+                            candidate
+                            for candidate in range(1, len(expected_warriors) + 1)
+                            if candidate not in pmars_scores
+                        ),
+                        None,
+                    )
+                    if slot is None:
+                        raise RuntimeError(
+                            "pMARS reported more score lines than expected warriors."
+                        )
+                score_value = int(match.group("score"))
+                if slot not in pmars_scores:
+                    pmars_slots.append(slot)
+                pmars_scores[slot] = score_value
             else:
                 splittedline = line.split()
                 if len(splittedline) < 5:
@@ -980,12 +961,24 @@ def _parse_battle_output(
                     )
                 scores.append(int(splittedline[4]))
                 warriors.append(int(splittedline[0]))
-    if not is_pmars and score_lines_found == 0:
+    if is_pmars:
+        if not pmars_slots:
+            raise RuntimeError(
+                "pMARS output did not include any lines containing 'scores'."
+            )
+        for slot in pmars_slots:
+            warrior_index = slot - 1
+            if warrior_index < 0 or warrior_index >= len(expected_warriors):
+                raise RuntimeError(
+                    "pMARS returned an unexpected warrior slot "
+                    f"identifier: {slot}"
+                )
+            warriors.append(int(expected_warriors[warrior_index]))
+            scores.append(pmars_scores[slot])
+    elif score_lines_found == 0:
         raise RuntimeError("nMars output did not include any lines containing 'scores'.")
     if len(scores) < 2:
         raise RuntimeError("Battle engine output did not include scores for both warriors")
-    if is_pmars:
-        warriors = [int(expected_warriors[0]), int(expected_warriors[1])]
     expected_set = {int(warrior) for warrior in expected_warriors}
     returned_warriors = set(warriors)
     if returned_warriors != expected_set:
