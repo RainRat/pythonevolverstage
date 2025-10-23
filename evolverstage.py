@@ -665,30 +665,6 @@ class DataLogger:
                     writer.writeheader()
                 writer.writerow(kwargs)
 
-
-def _count_archive_warriors(archive_dir: str) -> int:
-    archive_dir = os.path.abspath(archive_dir)
-    try:
-        entries = os.listdir(archive_dir)
-    except FileNotFoundError:
-        return 0
-    except OSError as exc:
-        warnings.warn(
-            f"Unable to inspect archive directory '{archive_dir}': {exc}",
-            RuntimeWarning,
-        )
-        return 0
-
-    total = 0
-    for entry in entries:
-        if not entry.lower().endswith(".red"):
-            continue
-        full_path = os.path.join(archive_dir, entry)
-        if os.path.isfile(full_path):
-            total += 1
-    return total
-
-
 def _count_instruction_library_entries(library_path: Optional[str]) -> int:
     if not library_path:
         return 0
@@ -713,7 +689,7 @@ def _count_instruction_library_entries(library_path: Optional[str]) -> int:
 def _print_run_configuration_summary(active_config: EvolverConfig) -> None:
     log_display = active_config.battle_log_file if active_config.battle_log_file else "Disabled"
     arena_count = active_config.last_arena + 1 if active_config.last_arena is not None else 0
-    archive_count = _count_archive_warriors(active_config.archive_path)
+    archive_count = get_archive_storage().count()
     library_entries = _count_instruction_library_entries(active_config.library_path)
     if active_config.library_path:
         library_display = f"{library_entries} entries from {active_config.library_path}"
@@ -1332,6 +1308,10 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
 
     set_active_config(active_config)
 
+    archive_storage = DiskArchiveStorage(archive_path=active_config.archive_path)
+    set_archive_storage(archive_storage)
+    archive_storage.initialize()
+
     _print_run_configuration_summary(active_config)
 
     seed_enabled = args.seed is not None
@@ -1344,8 +1324,6 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
 
     if not active_config.alreadyseeded:
         console_log("Seeding", minimum_level=VerbosityLevel.TERSE)
-        archive_dir = active_config.archive_path
-        os.makedirs(archive_dir, exist_ok=True)
         for arena in range(0, active_config.last_arena + 1):
             arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
             os.makedirs(arena_dir, exist_ok=True)
@@ -1569,6 +1547,13 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         run_final_tournament(active_config)
 
     return 0
+
+
+def _count_archive_warriors(archive_dir: str) -> int:
+    """Legacy helper retained for tests; delegates to :class:`DiskArchiveStorage`."""
+
+    storage = DiskArchiveStorage(archive_path=archive_dir)
+    return storage.count()
 
 
 def main(argv: Optional[List[str]] = None) -> int:

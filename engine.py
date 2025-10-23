@@ -14,6 +14,7 @@ import tempfile
 import time
 import sys
 import uuid
+import warnings
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1315,6 +1316,142 @@ def create_arena_storage(config: "EvolverConfig") -> ArenaStorage:
     return DiskArenaStorage()
 
 
+class ArchiveStorage:
+    """Abstract storage backend for warrior archives."""
+
+    def initialize(self) -> None:
+        """Prepare the archive backend for use."""
+        raise NotImplementedError
+
+    def archive_warrior(
+        self,
+        warrior_id: int,
+        lines: Sequence[str],
+        config: "EvolverConfig",
+        get_random_int: Callable[[int, int], int],
+    ) -> Optional[str]:
+        """Persist a warrior in the archive and return its filename if successful."""
+        raise NotImplementedError
+
+    def unarchive_warrior(
+        self,
+        config: "EvolverConfig",
+        get_random_choice: Callable[[Sequence[T]], T],
+    ) -> Optional[Tuple[str, list[str]]]:
+        """Retrieve a random warrior from the archive, returning its filename and lines."""
+        raise NotImplementedError
+
+    def count(self) -> int:
+        """Return the number of warriors currently stored in the archive."""
+        raise NotImplementedError
+
+
+class DiskArchiveStorage(ArchiveStorage):
+    """Archive storage implementation that reads and writes warriors on disk."""
+
+    def __init__(self, archive_path: str) -> None:
+        self._archive_path = os.path.abspath(archive_path)
+
+    @property
+    def archive_path(self) -> str:
+        return self._archive_path
+
+    def initialize(self) -> None:
+        os.makedirs(self._archive_path, exist_ok=True)
+
+    def archive_warrior(
+        self,
+        warrior_id: int,
+        lines: Sequence[str],
+        _config: "EvolverConfig",
+        get_random_int: Callable[[int, int], int],
+    ) -> Optional[str]:
+        archive_filename: Optional[str] = None
+        os.makedirs(self._archive_path, exist_ok=True)
+        for _ in range(10):
+            candidate = f"{get_random_int(1, MAX_WARRIOR_FILENAME_ID)}.red"
+            candidate_path = os.path.join(self._archive_path, candidate)
+            try:
+                fd = os.open(
+                    candidate_path,
+                    os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+                    0o644,
+                )
+            except FileExistsError:
+                continue
+            else:
+                with os.fdopen(fd, "w") as handle:
+                    handle.writelines(lines)
+                archive_filename = candidate
+                break
+
+        if archive_filename is None:
+            archive_filename = f"{uuid.uuid4().hex}.red"
+            fallback_path = os.path.join(self._archive_path, archive_filename)
+            with open(fallback_path, "w") as handle:
+                handle.writelines(lines)
+
+        return archive_filename
+
+    def unarchive_warrior(
+        self,
+        _config: "EvolverConfig",
+        get_random_choice: Callable[[Sequence[T]], T],
+    ) -> Optional[Tuple[str, list[str]]]:
+        if not os.path.isdir(self._archive_path):
+            return None
+        archive_files = os.listdir(self._archive_path)
+        if not archive_files:
+            return None
+        archive_choice = get_random_choice(archive_files)
+        archive_path = os.path.join(self._archive_path, archive_choice)
+        try:
+            with open(archive_path, "r") as handle:
+                sourcelines = handle.readlines()
+        except OSError:
+            return None
+        return archive_choice, sourcelines
+
+    def count(self) -> int:
+        archive_dir = self._archive_path
+        try:
+            entries = os.listdir(archive_dir)
+        except FileNotFoundError:
+            return 0
+        except OSError as exc:
+            warnings.warn(
+                f"Unable to inspect archive directory '{archive_dir}': {exc}",
+                RuntimeWarning,
+            )
+            return 0
+
+        total = 0
+        for entry in entries:
+            if not entry.lower().endswith(".red"):
+                continue
+            full_path = os.path.join(archive_dir, entry)
+            if os.path.isfile(full_path):
+                total += 1
+        return total
+
+
+_ARCHIVE_STORAGE: Union[ArchiveStorage, _ArenaStorageNotLoaded] = _ArenaStorageNotLoaded()
+
+
+def set_archive_storage(storage: ArchiveStorage) -> None:
+    global _ARCHIVE_STORAGE
+    _ARCHIVE_STORAGE = storage
+
+
+def get_archive_storage() -> ArchiveStorage:
+    storage = _ARCHIVE_STORAGE
+    if isinstance(storage, _ArenaStorageNotLoaded):
+        raise RuntimeError(
+            "Archive storage has not been initialized. Call set_archive_storage() before use."
+        )
+    return storage
+
+
 def _should_flush_on_exit(current_config: "EvolverConfig") -> bool:
     return True
 
@@ -1460,33 +1597,18 @@ class ArchivingResult:
 def handle_archiving(
     winner: int, loser: int, arena: int, era: int, config: "EvolverConfig"
 ) -> ArchivingResult:
-    archive_dir = config.archive_path
     events: list[ArchivingEvent] = []
     storage = get_arena_storage()
+    archive_storage = get_archive_storage()
 
     if config.archive_list[era] != 0 and _rng_int(1, config.archive_list[era]) == 1:
         winlines = storage.get_warrior_lines(arena, winner)
-        os.makedirs(archive_dir, exist_ok=True)
-        archive_filename: Optional[str] = None
-        for _ in range(10):
-            candidate = f"{_rng_int(1, MAX_WARRIOR_FILENAME_ID)}.red"
-            candidate_path = os.path.join(archive_dir, candidate)
-            try:
-                fd = os.open(candidate_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
-            except FileExistsError:
-                continue
-            else:
-                with os.fdopen(fd, "w") as handle:
-                    handle.writelines(winlines)
-                archive_filename = candidate
-                break
-
-        if archive_filename is None:
-            archive_filename = f"{uuid.uuid4().hex}.red"
-            fallback_path = os.path.join(archive_dir, archive_filename)
-            with open(fallback_path, "w") as handle:
-                handle.writelines(winlines)
-
+        archive_filename = archive_storage.archive_warrior(
+            warrior_id=winner,
+            lines=winlines,
+            config=config,
+            get_random_int=_rng_int,
+        )
         events.append(
             ArchivingEvent(
                 action="archived",
@@ -1496,14 +1618,10 @@ def handle_archiving(
         )
 
     if config.unarchive_list[era] != 0 and _rng_int(1, config.unarchive_list[era]) == 1:
-        if not os.path.isdir(archive_dir):
+        unarchive_result = archive_storage.unarchive_warrior(config, _rng_choice)
+        if not unarchive_result:
             return ArchivingResult(events=events)
-        archive_files = os.listdir(archive_dir)
-        if not archive_files:
-            return ArchivingResult(events=events)
-        archive_choice = _rng_choice(archive_files)
-        with open(os.path.join(archive_dir, archive_choice)) as handle:
-            sourcelines = handle.readlines()
+        archive_choice, sourcelines = unarchive_result
 
         instructions_written = 0
         new_lines: list[str] = []
@@ -1704,6 +1822,10 @@ __all__ = [
     "set_arena_storage",
     "get_arena_storage",
     "create_arena_storage",
+    "ArchiveStorage",
+    "DiskArchiveStorage",
+    "set_archive_storage",
+    "get_archive_storage",
     "_should_flush_on_exit",
     "Marble",
     "MutationHandler",
