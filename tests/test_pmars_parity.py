@@ -143,6 +143,7 @@ def _run_internal_engine(lib, warrior: str, opponent: str, seed: int) -> str:
         MAX_LENGTH,
         ROUNDS,
         seed,
+        0,
     ).decode()
 
 
