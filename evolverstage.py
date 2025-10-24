@@ -8,6 +8,7 @@ import statistics
 import sys
 import time
 import warnings
+from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union, cast, TextIO
 
@@ -35,6 +36,13 @@ class BenchmarkWarrior:
     name: str
     code: str
     path: str
+
+
+@dataclass
+class BenchmarkBattleResult:
+    warriors: list[int]
+    scores: list[int]
+    detail: str
 
 
 @dataclass
@@ -79,6 +87,7 @@ class EvolverConfig:
     final_tournament_csv: Optional[str]
     benchmark_root: Optional[str]
     benchmark_final_tournament: bool
+    benchmark_battle_frequency: int
     benchmark_sets: dict[int, list[BenchmarkWarrior]] = field(default_factory=dict)
 
 
@@ -552,6 +561,79 @@ def _load_benchmark_sets(active_config: EvolverConfig) -> dict[int, list[Benchma
     return benchmark_sets
 
 
+def _run_benchmark_battle(
+    arena_index: int,
+    cont1: int,
+    cont2: int,
+    era: int,
+    active_config: EvolverConfig,
+) -> Optional[BenchmarkBattleResult]:
+    benchmark_warriors = active_config.benchmark_sets.get(arena_index)
+    if not benchmark_warriors or era < 0:
+        return None
+
+    storage = get_arena_storage()
+    cont1_lines = storage.get_warrior_lines(arena_index, cont1)
+    cont2_lines = storage.get_warrior_lines(arena_index, cont2)
+    if not cont1_lines or not cont2_lines:
+        return None
+
+    cont1_code = "".join(cont1_lines)
+    cont2_code = "".join(cont2_lines)
+    if not cont1_code.strip() or not cont2_code.strip():
+        return None
+
+    totals: defaultdict[int, int] = defaultdict(int)
+    benchmarks_played = 0
+
+    for bench_index, benchmark in enumerate(benchmark_warriors):
+        bench_identifier = max(
+            1, _BENCHMARK_WARRIOR_ID_BASE - (arena_index * 1000 + bench_index)
+        )
+        round_scores: dict[int, int] = {}
+        for warrior_id, warrior_code in ((cont1, cont1_code), (cont2, cont2_code)):
+            match_seed = _stable_internal_battle_seed(
+                arena_index, warrior_id, bench_identifier, era
+            )
+            warriors, scores = execute_battle_with_sources(
+                arena_index,
+                warrior_id,
+                warrior_code,
+                bench_identifier,
+                benchmark.code,
+                era,
+                verbose=False,
+                seed=match_seed,
+            )
+            try:
+                warrior_pos = warriors.index(warrior_id)
+            except ValueError:
+                return None
+            round_scores[warrior_id] = scores[warrior_pos]
+
+        if len(round_scores) < 2:
+            return None
+
+        for warrior_id, score in round_scores.items():
+            totals[warrior_id] += score
+        benchmarks_played += 1
+
+    if benchmarks_played == 0:
+        return None
+
+    cont1_total = totals.get(cont1, 0)
+    cont2_total = totals.get(cont2, 0)
+    detail = (
+        f"Scores vs benchmarks: {cont1}={cont1_total}, {cont2}={cont2_total} "
+        f"(benchmarks: {benchmarks_played})"
+    )
+    return BenchmarkBattleResult(
+        warriors=[cont1, cont2],
+        scores=[cont1_total, cont2_total],
+        detail=detail,
+    )
+
+
 def load_configuration(path: str) -> EvolverConfig:
     parser = configparser.ConfigParser()
     read_files = parser.read(path)
@@ -640,6 +722,10 @@ def load_configuration(path: str) -> EvolverConfig:
         final_tournament_csv=final_tournament_csv,
         benchmark_root=benchmark_root,
         benchmark_final_tournament=_read_config('BENCHMARK_FINAL_TOURNAMENT', data_type='bool', default=False) or False,
+        benchmark_battle_frequency=_read_config(
+            'BENCHMARK_BATTLE_FREQUENCY', data_type='int', default=0
+        )
+        or 0,
     )
     if not active_config.readlimit_list:
         active_config.readlimit_list = list(active_config.coresize_list)
@@ -1425,23 +1511,52 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 active_config.numwarriors, champions.get(arena_index)
             )
             display_era = era + 1
+            use_benchmark_battle = (
+                active_config.benchmark_battle_frequency > 0
+                and bool(active_config.benchmark_sets.get(arena_index))
+                and random.randint(1, active_config.benchmark_battle_frequency) == 1
+            )
+            benchmark_result: Optional[BenchmarkBattleResult] = None
+            battle_label = "Benchmark battle" if use_benchmark_battle else "Battle"
             progress_line, _ = _get_progress_status(
                 start_time, active_config.clock_time, era
             )
             pending_battle_line = (
-                "Battle: "
+                f"{battle_label}: "
                 f"Era {display_era}, Arena {arena_index} | {cont1} vs {cont2} | Running..."
             )
             console_update_status(progress_line, pending_battle_line)
-            battle_seed = _generate_internal_battle_seed()
-            warriors, scores = execute_battle(
-                arena_index,
-                cont1,
-                cont2,
-                era,
-                verbose=verbosity == VerbosityLevel.VERBOSE,
-                seed=battle_seed,
-            )
+
+            if use_benchmark_battle:
+                benchmark_result = _run_benchmark_battle(
+                    arena_index, cont1, cont2, era, active_config
+                )
+                if benchmark_result is None:
+                    use_benchmark_battle = False
+                    battle_label = "Battle"
+                    progress_line, _ = _get_progress_status(
+                        start_time, active_config.clock_time, era
+                    )
+                    pending_battle_line = (
+                        f"{battle_label}: "
+                        f"Era {display_era}, Arena {arena_index} | {cont1} vs {cont2} | Running..."
+                    )
+                    console_update_status(progress_line, pending_battle_line)
+
+            if use_benchmark_battle and benchmark_result is not None:
+                warriors = benchmark_result.warriors
+                scores = benchmark_result.scores
+            else:
+                battle_seed = _generate_internal_battle_seed()
+                warriors, scores = execute_battle(
+                    arena_index,
+                    cont1,
+                    cont2,
+                    era,
+                    verbose=verbosity == VerbosityLevel.VERBOSE,
+                    seed=battle_seed,
+                )
+                benchmark_result = None
             if 0 <= era < len(battles_per_era):
                 battles_per_era[era] += 1
             total_battles += 1
@@ -1467,12 +1582,30 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 )
             else:
                 matchup = " vs ".join(str(warrior) for warrior in warriors)
-            if was_draw:
-                battle_result_description = (
-                    f"Result: Draw | Winner (selected): {winner} | Loser: {loser}"
-                )
+            if use_benchmark_battle and benchmark_result is not None:
+                if was_draw:
+                    result_segments = [
+                        "Benchmark comparison",
+                        "Result: Draw",
+                        f"Winner (selected): {winner}",
+                        f"Loser: {loser}",
+                        benchmark_result.detail,
+                    ]
+                else:
+                    result_segments = [
+                        "Benchmark comparison",
+                        f"Winner: {winner}",
+                        f"Loser: {loser}",
+                        benchmark_result.detail,
+                    ]
+                battle_result_description = " | ".join(result_segments)
             else:
-                battle_result_description = f"Winner: {winner} | Loser: {loser}"
+                if was_draw:
+                    battle_result_description = (
+                        f"Result: Draw | Winner (selected): {winner} | Loser: {loser}"
+                    )
+                else:
+                    battle_result_description = f"Winner: {winner} | Loser: {loser}"
 
             archiving_result = handle_archiving(
                 winner, loser, arena_index, era, active_config
@@ -1500,7 +1633,9 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                                 f"Unarchived Warrior {event.warrior_id}"
                             )
 
-                    header_line = f"Battle: Era {display_era}, Arena {arena_index}"
+                    header_line = (
+                        f"{battle_label}: Era {display_era}, Arena {arena_index}"
+                    )
                     matchup_line = f"    {matchup}"
                     result_lines = [
                         f"    {segment}" for segment in battle_result_description.split(" | ")
@@ -1530,7 +1665,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             )
 
             battle_line = (
-                "Battle: "
+                f"{battle_label}: "
                 f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
                 f"| Partner: {partner_id}"
             )

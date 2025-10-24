@@ -72,6 +72,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
         INSTR_SET = MOV, ADD
         INSTR_MODES = #, $
         INSTR_MODIF = A, B
+        BENCHMARK_BATTLE_FREQUENCY = 7
         """
     )
 
@@ -112,6 +113,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
     assert config.instr_modif == ["A", "B"]
     assert config.benchmark_root is None
     assert config.benchmark_final_tournament is False
+    assert config.benchmark_battle_frequency == 7
     assert config.benchmark_sets == {}
 
 
@@ -198,12 +200,105 @@ def test_load_configuration_with_benchmarks(tmp_path, write_config):
     expected_root = str((tmp_path / "benchmarks").resolve())
     assert config.benchmark_root == expected_root
     assert config.benchmark_final_tournament is True
+    assert config.benchmark_battle_frequency == 0
     assert 0 in config.benchmark_sets
     assert len(config.benchmark_sets[0]) == 1
     benchmark = config.benchmark_sets[0][0]
     assert benchmark.name == "alpha"
     assert benchmark.code.strip() == "MOV 0, 0"
     assert benchmark.path == str((benchmark_root / "alpha.red").resolve())
+
+
+def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_config):
+    benchmark_root = tmp_path / "benchmarks" / "arena0"
+    benchmark_root.mkdir(parents=True)
+    (benchmark_root / "alpha.red").write_text("MOV 0, 0\n", encoding="utf-8")
+
+    config_path = write_config(
+        """
+        BATTLE_ENGINE = internal
+        LAST_ARENA = 0
+        NUMWARRIORS = 2
+        ALREADYSEEDED = true
+        CLOCK_TIME = 1
+        CORESIZE_LIST = 80
+        SANITIZE_LIST = 80
+        CYCLES_LIST = 800
+        PROCESSES_LIST = 8
+        READLIMIT_LIST = 80
+        WRITELIMIT_LIST = 80
+        WARLEN_LIST = 5
+        WARDISTANCE_LIST = 5
+        BATTLEROUNDS_LIST = 1
+        NOTHING_LIST = 1
+        RANDOM_LIST = 0
+        NAB_LIST = 0
+        MINI_MUT_LIST = 0
+        MICRO_MUT_LIST = 0
+        LIBRARY_LIST = 0
+        MAGIC_NUMBER_LIST = 0
+        ARCHIVE_LIST = 0
+        UNARCHIVE_LIST = 0
+        CROSSOVERRATE_LIST = 1
+        TRANSPOSITIONRATE_LIST = 1
+        PREFER_WINNER_LIST = false
+        INSTR_SET = MOV
+        INSTR_MODES = $
+        INSTR_MODIF = F
+        BENCHMARK_ROOT = benchmarks
+        BENCHMARK_BATTLE_FREQUENCY = 1
+        """
+    )
+
+    config = evolverstage.load_configuration(str(config_path))
+    arena_dir = pathlib.Path(config.base_path) / "arena0"
+    arena_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        previous_config = evolverstage.get_active_config()
+    except RuntimeError:
+        previous_config = None
+    try:
+        previous_storage = evolverstage.get_arena_storage()
+    except RuntimeError:
+        previous_storage = None
+
+    storage = evolverstage.create_arena_storage(config)
+    evolverstage.set_active_config(config)
+    evolverstage.set_arena_storage(storage)
+    storage.load_existing()
+    storage.set_warrior_lines(0, 1, ["MOV 0, 0\n"])
+    storage.set_warrior_lines(0, 2, ["DAT 0, 0\n"])
+
+    def fake_execute_battle_with_sources(
+        arena,
+        cont1,
+        cont1_code,
+        cont2,
+        cont2_code,
+        era,
+        verbose=False,
+        battlerounds_override=None,
+        seed=None,
+    ):
+        warrior_score = 10 if cont1 == 1 else 4
+        return [cont1, cont2], [warrior_score, 0]
+
+    monkeypatch.setattr(
+        evolverstage, "execute_battle_with_sources", fake_execute_battle_with_sources
+    )
+
+    try:
+        result = evolverstage._run_benchmark_battle(0, 1, 2, 0, config)
+        assert result is not None
+        assert result.warriors == [1, 2]
+        assert result.scores == [10, 4]
+        assert "benchmarks: 1" in result.detail
+    finally:
+        if previous_config is not None:
+            evolverstage.set_active_config(previous_config)
+        if previous_storage is not None:
+            evolverstage.set_arena_storage(previous_storage)
 
 
 def test_final_tournament_with_benchmarks(monkeypatch, tmp_path, write_config):
