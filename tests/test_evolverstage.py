@@ -1778,6 +1778,7 @@ def test_generate_warrior_lines_until_non_dat_with_dat_only_pool(monkeypatch):
         evolverstage.generate_warrior_lines_until_non_dat(
             lambda: ["DAT.F $0, $0\n"],
             context="Test context",
+            arena=0,
         )
 
 
@@ -1796,6 +1797,7 @@ def test_generate_warrior_lines_until_non_dat_retries_until_success(monkeypatch)
     lines = evolverstage.generate_warrior_lines_until_non_dat(
         generator,
         context="Test context",
+        arena=0,
     )
 
     assert lines == ["MOV.I $0, $0\n"]
@@ -1877,3 +1879,56 @@ def test_sanitize_instruction_rejects_invalid_modes(a_mode, b_mode, expected_mes
 
     with pytest.raises(ValueError, match=re.escape(expected_message)):
         sanitize_instruction(instr, arena=0)
+
+
+def test_sanitize_instruction_replaces_1994_features_in_1988_arena():
+    previous_config = evolverstage.get_active_config()
+    try:
+        spec_list = list(previous_config.arena_spec_list)
+        spec_list[0] = evolverstage.SPEC_1988
+        updated_config = replace(previous_config, arena_spec_list=spec_list)
+        evolverstage.set_active_config(updated_config)
+
+        mul_instruction = evolverstage.RedcodeInstruction(
+            opcode="MUL",
+            modifier="F",
+            a_mode="$",
+            a_field=0,
+            b_mode="$",
+            b_field=0,
+        )
+        sanitized_mul = evolverstage.sanitize_instruction(mul_instruction, arena=0)
+        assert sanitized_mul.opcode == "DAT"
+
+        mode_instruction = evolverstage.RedcodeInstruction(
+            opcode="MOV",
+            modifier="F",
+            a_mode="{",
+            a_field=1,
+            b_mode="$",
+            b_field=2,
+        )
+        sanitized_mode = evolverstage.sanitize_instruction(mode_instruction, arena=0)
+        assert sanitized_mode.opcode == "DAT"
+    finally:
+        evolverstage.set_active_config(previous_config)
+
+
+def test_choose_random_mode_filters_to_1988_defaults():
+    previous_config = evolverstage.get_active_config()
+    try:
+        spec_list = list(previous_config.arena_spec_list)
+        spec_list[0] = evolverstage.SPEC_1988
+        updated_config = replace(
+            previous_config,
+            arena_spec_list=spec_list,
+            instr_modes=["{", "}", "#"],
+        )
+        evolverstage.set_active_config(updated_config)
+        evolverstage.set_rng_sequence([0])
+        mode = evolverstage.choose_random_mode(0)
+        assert mode in {"#", "$", "@", "<", ">"}
+        assert mode != "{"
+    finally:
+        evolverstage.set_rng_sequence([])
+        evolverstage.set_active_config(previous_config)

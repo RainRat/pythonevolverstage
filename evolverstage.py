@@ -59,6 +59,7 @@ class EvolverConfig:
     writelimit_list: list[int]
     warlen_list: list[int]
     wardistance_list: list[int]
+    arena_spec_list: list[str]
     numwarriors: int
     alreadyseeded: bool
     use_in_memory_arenas: bool
@@ -314,6 +315,7 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
         "WRITELIMIT_LIST": active_config.writelimit_list,
         "WARLEN_LIST": active_config.warlen_list,
         "WARDISTANCE_LIST": active_config.wardistance_list,
+        "SPEC_LIST": active_config.arena_spec_list,
     }
 
     extra_length_lists: list[str] = []
@@ -642,6 +644,17 @@ def load_configuration(path: str) -> EvolverConfig:
 
     base_path = os.path.dirname(os.path.abspath(path)) or os.getcwd()
 
+    def _normalize_spec(value: str, index: int) -> str:
+        normalized = value.strip().lower()
+        if normalized in {"1994", "94"}:
+            return SPEC_1994
+        if normalized in {"1988", "88"}:
+            return SPEC_1988
+        raise ValueError(
+            "SPEC_LIST entries must be '1994' or '1988'. "
+            f"Invalid value '{value}' at position {index + 1}."
+        )
+
     def _read_config(key: str, data_type: str = 'int', default=None):
         value = parser['DEFAULT'].get(key, fallback=default)
         if value in (None, ''):
@@ -652,6 +665,19 @@ def load_configuration(path: str) -> EvolverConfig:
         if parser_fn is None:
             raise ValueError(f"Unsupported data type: {data_type}")
         return parser_fn(value, key=key, parser=parser)
+
+    last_arena_value = _read_config('LAST_ARENA', data_type='int')
+    if last_arena_value is None:
+        raise ValueError("LAST_ARENA must be specified in the configuration.")
+
+    spec_entries = _read_config('SPEC_LIST', data_type='string_list') or []
+    arena_count = last_arena_value + 1
+    normalized_specs: list[str] = []
+    for idx in range(arena_count):
+        if idx < len(spec_entries):
+            normalized_specs.append(_normalize_spec(spec_entries[idx], idx))
+        else:
+            normalized_specs.append(SPEC_1994)
 
     battle_log_file = _read_config('BATTLE_LOG_FILE', data_type='str')
     if battle_log_file:
@@ -683,7 +709,7 @@ def load_configuration(path: str) -> EvolverConfig:
 
     active_config = EvolverConfig(
         battle_engine=_read_config('BATTLE_ENGINE', data_type='str', default='internal') or 'internal',
-        last_arena=_read_config('LAST_ARENA', data_type='int'),
+        last_arena=last_arena_value,
         base_path=base_path,
         archive_path=archive_path,
         coresize_list=_read_config('CORESIZE_LIST', data_type='int_list') or [],
@@ -694,6 +720,7 @@ def load_configuration(path: str) -> EvolverConfig:
         writelimit_list=_read_config('WRITELIMIT_LIST', data_type='int_list') or [],
         warlen_list=_read_config('WARLEN_LIST', data_type='int_list') or [],
         wardistance_list=_read_config('WARDISTANCE_LIST', data_type='int_list') or [],
+        arena_spec_list=normalized_specs,
         numwarriors=_read_config('NUMWARRIORS', data_type='int'),
         alreadyseeded=_read_config('ALREADYSEEDED', data_type='bool', default=False) or False,
         use_in_memory_arenas=_read_config('IN_MEMORY_ARENAS', data_type='bool', default=False) or False,
