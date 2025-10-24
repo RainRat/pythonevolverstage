@@ -122,6 +122,62 @@ OPCODE_ALIASES = {
 SUPPORTED_OPCODES = CANONICAL_SUPPORTED_OPCODES | set(OPCODE_ALIASES)
 UNSUPPORTED_OPCODES = {"LDP", "STP"}
 
+SPEC_1994 = "1994"
+SPEC_1988 = "1988"
+
+SPEC_ALLOWED_OPCODES = {
+    SPEC_1994: CANONICAL_SUPPORTED_OPCODES,
+    SPEC_1988: {
+        "DAT",
+        "MOV",
+        "ADD",
+        "SUB",
+        "JMP",
+        "JMZ",
+        "JMN",
+        "DJN",
+        "CMP",
+        "SLT",
+        "SPL",
+    },
+}
+
+SPEC_ALLOWED_MODIFIERS = {
+    SPEC_1994: {"A", "B", "AB", "BA", "F", "X", "I"},
+    SPEC_1988: {"A", "B", "AB", "BA", "F"},
+}
+
+SPEC_ALLOWED_ADDRESSING_MODES = {
+    SPEC_1994: {
+        "#",
+        "$",
+        "@",
+        "<",
+        ">",
+        "*",
+        "{",
+        "}",
+    },
+    SPEC_1988: {"#", "$", "@", "<", ">"},
+}
+
+DEFAULT_1988_GENERATION_POOL = [
+    "MOV",
+    "ADD",
+    "SUB",
+    "JMP",
+    "JMZ",
+    "JMN",
+    "DJN",
+    "CMP",
+    "SLT",
+    "SPL",
+    "DAT",
+]
+
+DEFAULT_1988_MODIFIERS = ["A", "B", "AB", "BA", "F"]
+DEFAULT_1988_MODES = ["#", "$", "@", "<", ">"]
+
 
 def canonicalize_opcode(opcode: str) -> str:
     return OPCODE_ALIASES.get(opcode, opcode)
@@ -129,10 +185,12 @@ def canonicalize_opcode(opcode: str) -> str:
 
 GENERATION_OPCODE_POOL: list[str] = []
 _sync_export("GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL)
+GENERATION_OPCODE_POOL_1988: list[str] = []
+_sync_export("GENERATION_OPCODE_POOL_1988", GENERATION_OPCODE_POOL_1988)
 
 
 def rebuild_instruction_tables(active_config: "EvolverConfig") -> None:
-    global ADDRESSING_MODES, GENERATION_OPCODE_POOL
+    global ADDRESSING_MODES, GENERATION_OPCODE_POOL, GENERATION_OPCODE_POOL_1988
 
     ADDRESSING_MODES = set(BASE_ADDRESSING_MODES)
     if active_config.instr_modes:
@@ -144,14 +202,16 @@ def rebuild_instruction_tables(active_config: "EvolverConfig") -> None:
     invalid_generation_opcodes = set()
     GENERATION_OPCODE_POOL = []
     invalid_reasons: list[str] = []
-    for instr in active_config.instr_set or []:
+    allowed_1994 = SPEC_ALLOWED_OPCODES[SPEC_1994]
+    instr_set = active_config.instr_set or []
+    for instr in instr_set:
         normalized = instr.strip().upper()
         if not normalized:
             continue
         canonical_opcode = OPCODE_ALIASES.get(normalized, normalized)
         if (
             canonical_opcode in UNSUPPORTED_OPCODES
-            or canonical_opcode not in CANONICAL_SUPPORTED_OPCODES
+            or canonical_opcode not in allowed_1994
         ):
             invalid_generation_opcodes.add(normalized)
             continue
@@ -174,6 +234,55 @@ def rebuild_instruction_tables(active_config: "EvolverConfig") -> None:
         )
 
     _sync_export("GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL)
+
+    allowed_1988 = SPEC_ALLOWED_OPCODES[SPEC_1988]
+    filtered_1988: list[str] = []
+    for instr in instr_set:
+        normalized = instr.strip().upper()
+        if not normalized:
+            continue
+        canonical_opcode = OPCODE_ALIASES.get(normalized, normalized)
+        if canonical_opcode in allowed_1988 and canonical_opcode not in UNSUPPORTED_OPCODES:
+            filtered_1988.append(canonical_opcode)
+
+    if not filtered_1988:
+        GENERATION_OPCODE_POOL_1988 = list(DEFAULT_1988_GENERATION_POOL)
+    else:
+        GENERATION_OPCODE_POOL_1988 = filtered_1988
+        if not any(opcode != "DAT" for opcode in GENERATION_OPCODE_POOL_1988):
+            non_dat_defaults = [
+                opcode for opcode in DEFAULT_1988_GENERATION_POOL if opcode != "DAT"
+            ]
+            GENERATION_OPCODE_POOL_1988.extend(non_dat_defaults)
+
+    _sync_export("GENERATION_OPCODE_POOL_1988", GENERATION_OPCODE_POOL_1988)
+
+
+def get_arena_spec(arena: int) -> str:
+    config = _require_config()
+    if (
+        getattr(config, "arena_spec_list", None)
+        and arena < len(config.arena_spec_list)
+        and config.arena_spec_list[arena]
+    ):
+        return config.arena_spec_list[arena]
+    return SPEC_1994
+
+
+def _is_allowed_for_spec(value: str, spec: str, allowed_map: dict[str, set[str]]) -> bool:
+    allowed = allowed_map.get(spec)
+    if not allowed:
+        return True
+    return value in allowed
+
+
+def _get_opcode_pool_for_arena(arena: int) -> list[str]:
+    spec = get_arena_spec(arena)
+    if spec == SPEC_1988:
+        return _get_evolverstage_override(
+            "GENERATION_OPCODE_POOL_1988", GENERATION_OPCODE_POOL_1988
+        )
+    return _get_evolverstage_override("GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL)
 
 
 def weighted_random_number(size: int, length: int) -> int:
@@ -348,13 +457,22 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
     original_opcode = (sanitized.opcode or "").upper()
     canonical_opcode = canonicalize_opcode(original_opcode)
     sanitized.opcode = canonical_opcode
-    if not sanitized.modifier:
-        raise ValueError("Missing modifier for instruction")
-    sanitized.modifier = sanitized.modifier.upper()
     if canonical_opcode in UNSUPPORTED_OPCODES:
         raise ValueError(f"Opcode '{original_opcode}' is not supported")
     if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
         raise ValueError(f"Unknown opcode '{original_opcode}'")
+    spec = get_arena_spec(arena)
+    if not _is_allowed_for_spec(
+        canonical_opcode, spec, SPEC_ALLOWED_OPCODES
+    ):
+        return default_instruction()
+    if not sanitized.modifier:
+        raise ValueError("Missing modifier for instruction")
+    sanitized.modifier = sanitized.modifier.upper()
+    if not _is_allowed_for_spec(
+        sanitized.modifier, spec, SPEC_ALLOWED_MODIFIERS
+    ):
+        return default_instruction()
     if sanitized.a_mode not in ADDRESSING_MODES:
         raise ValueError(
             f"Invalid addressing mode '{sanitized.a_mode}' for A-field operand"
@@ -363,6 +481,14 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
         raise ValueError(
             f"Invalid addressing mode '{sanitized.b_mode}' for B-field operand"
         )
+    if not _is_allowed_for_spec(
+        sanitized.a_mode, spec, SPEC_ALLOWED_ADDRESSING_MODES
+    ):
+        return default_instruction()
+    if not _is_allowed_for_spec(
+        sanitized.b_mode, spec, SPEC_ALLOWED_ADDRESSING_MODES
+    ):
+        return default_instruction()
     sanitized.a_field = corenorm(
         coremod(_ensure_int(sanitized.a_field), config.sanitize_list[arena]),
         config.coresize_list[arena],
@@ -392,26 +518,47 @@ def parse_instruction_or_default(line: str) -> RedcodeInstruction:
     return parsed if parsed else default_instruction()
 
 
-def choose_random_opcode() -> str:
-    opcode_pool = _get_evolverstage_override(
-        "GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL
-    )
+def choose_random_opcode(arena: int) -> str:
+    opcode_pool = _get_opcode_pool_for_arena(arena)
     if opcode_pool:
         return _rng_choice(opcode_pool)
     return "DAT"
 
 
-def choose_random_modifier() -> str:
+def choose_random_modifier(arena: int) -> str:
     config = _require_config()
-    if config.instr_modif:
-        return _rng_choice(config.instr_modif).upper()
+    spec = get_arena_spec(arena)
+    modifier_pool = [
+        item.strip().upper()
+        for item in (config.instr_modif or [])
+        if item.strip()
+    ]
+    if spec == SPEC_1988:
+        modifier_pool = [
+            modifier
+            for modifier in modifier_pool
+            if _is_allowed_for_spec(
+                modifier, spec, SPEC_ALLOWED_MODIFIERS
+            )
+        ]
+        if not modifier_pool:
+            modifier_pool = list(DEFAULT_1988_MODIFIERS)
+    if modifier_pool:
+        return _rng_choice(modifier_pool)
     return DEFAULT_MODIFIER
 
 
-def choose_random_mode() -> str:
+def choose_random_mode(arena: int) -> str:
     config = _require_config()
-    if config.instr_modes:
-        return _rng_choice(config.instr_modes)
+    spec = get_arena_spec(arena)
+    mode_pool = [mode.strip() for mode in (config.instr_modes or []) if mode.strip()]
+    if spec == SPEC_1988:
+        allowed_modes = SPEC_ALLOWED_ADDRESSING_MODES[spec]
+        mode_pool = [mode for mode in mode_pool if mode in allowed_modes]
+        if not mode_pool:
+            mode_pool = list(DEFAULT_1988_MODES)
+    if mode_pool:
+        return _rng_choice(mode_pool)
     return DEFAULT_MODE
 
 
@@ -419,30 +566,29 @@ def generate_random_instruction(arena: int) -> RedcodeInstruction:
     config = _require_config()
     num1 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
     num2 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
-    opcode = choose_random_opcode()
+    opcode = choose_random_opcode(arena)
     canonical_opcode = canonicalize_opcode(opcode)
     return RedcodeInstruction(
         opcode=canonical_opcode,
-        modifier=choose_random_modifier(),
-        a_mode=choose_random_mode(),
+        modifier=choose_random_modifier(arena),
+        a_mode=choose_random_mode(arena),
         a_field=num1,
-        b_mode=choose_random_mode(),
+        b_mode=choose_random_mode(arena),
         b_field=num2,
     )
 
 
-def _can_generate_non_dat_opcode() -> bool:
-    opcode_pool = _get_evolverstage_override(
-        "GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL
-    )
+def _can_generate_non_dat_opcode(arena: int) -> bool:
+    opcode_pool = _get_opcode_pool_for_arena(arena)
     return any(opcode != "DAT" for opcode in opcode_pool)
 
 
 def generate_warrior_lines_until_non_dat(
     generator: Callable[[], list[str]],
     context: str,
+    arena: int,
 ) -> list[str]:
-    if not _can_generate_non_dat_opcode():
+    if not _can_generate_non_dat_opcode(arena):
         raise RuntimeError(
             f"{context}: configuration cannot generate non-DAT opcodes. "
             "Check the INSTR_SET configuration to include at least one opcode other than DAT."
@@ -616,6 +762,7 @@ def _load_cpp_worker_library() -> None:
                 ctypes.c_char_p,
                 ctypes.c_int,
                 ctypes.c_char_p,
+                ctypes.c_int,
                 ctypes.c_int,
                 ctypes.c_int,
                 ctypes.c_int,
@@ -872,6 +1019,7 @@ def run_internal_battle(
             with open(w2_path, "r") as handle:
                 w2_code = handle.read()
 
+        use_1988_rules = 1 if get_arena_spec(arena) == SPEC_1988 else 0
         result_ptr = worker_lib.run_battle(
             w1_code.encode("utf-8"),
             cont1,
@@ -886,6 +1034,7 @@ def run_internal_battle(
             warlen,
             battlerounds,
             seed,
+            use_1988_rules,
         )
 
         if not result_ptr:
@@ -1500,17 +1649,17 @@ def apply_minor_mutation(
 ) -> RedcodeInstruction:
     r = _rng_int(1, 6)
     if r == 1:
-        instruction.opcode = choose_random_opcode()
+        instruction.opcode = choose_random_opcode(arena)
     elif r == 2:
-        instruction.modifier = choose_random_modifier()
+        instruction.modifier = choose_random_modifier(arena)
     elif r == 3:
-        instruction.a_mode = choose_random_mode()
+        instruction.a_mode = choose_random_mode(arena)
     elif r == 4:
         instruction.a_field = weighted_random_number(
             config.coresize_list[arena], config.warlen_list[arena]
         )
     elif r == 5:
-        instruction.b_mode = choose_random_mode()
+        instruction.b_mode = choose_random_mode(arena)
     elif r == 6:
         instruction.b_field = weighted_random_number(
             config.coresize_list[arena], config.warlen_list[arena]
@@ -1710,6 +1859,7 @@ def breed_offspring(
     new_lines = generate_warrior_lines_until_non_dat(
         _breed_offspring_once,
         context=f"Breeding offspring for arena {arena}, warrior {loser}",
+        arena=arena,
     )
 
     storage.set_warrior_lines(arena, loser, new_lines)
@@ -1767,6 +1917,8 @@ __all__ = [
     "set_engine_config",
     "configure_rng",
     "rebuild_instruction_tables",
+    "SPEC_1994",
+    "SPEC_1988",
     "DEFAULT_MODE",
     "DEFAULT_MODIFIER",
     "BASE_ADDRESSING_MODES",
@@ -1775,6 +1927,8 @@ __all__ = [
     "SUPPORTED_OPCODES",
     "UNSUPPORTED_OPCODES",
     "canonicalize_opcode",
+    "GENERATION_OPCODE_POOL_1988",
+    "get_arena_spec",
     "weighted_random_number",
     "coremod",
     "corenorm",

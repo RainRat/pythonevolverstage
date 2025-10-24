@@ -107,6 +107,51 @@ const char* MODE_PREFIXES[] = {
     "#", "$", "@", "<", ">", "*", "{", "}"
 };
 
+bool opcode_allowed_in_1988(Opcode opcode) {
+    switch (opcode) {
+        case DAT:
+        case MOV:
+        case ADD:
+        case SUB:
+        case JMP:
+        case JMZ:
+        case JMN:
+        case DJN:
+        case CMP:
+        case SLT:
+        case SPL:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool modifier_allowed_in_1988(Modifier modifier) {
+    switch (modifier) {
+        case A:
+        case B:
+        case AB:
+        case BA:
+        case F:
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool addressing_mode_allowed_in_1988(AddressMode mode) {
+    switch (mode) {
+        case IMMEDIATE:
+        case DIRECT:
+        case B_INDIRECT:
+        case B_PREDEC:
+        case B_POSTINC:
+            return true;
+        default:
+            return false;
+    }
+}
+
 // --- Core Normalization & Folding ---
 int normalize(int address, int core_size) {
     address %= core_size;
@@ -182,7 +227,7 @@ int parse_numeric_field(const std::string& value, const std::string& context) {
     return parsed_value;
 }
 
-Instruction parse_line(const std::string& line) {
+Instruction parse_line(const std::string& line, bool use_1988_rules) {
     Instruction instr;
     std::string original_line = trim(line);
     std::string working = original_line;
@@ -215,6 +260,11 @@ Instruction parse_line(const std::string& line) {
         throw std::runtime_error("Unknown opcode '" + opcode_token + "' in line: " + original_line);
     }
     instr.opcode = op_it->second;
+    if (use_1988_rules && !opcode_allowed_in_1988(instr.opcode)) {
+        throw std::runtime_error(
+            "Opcode '" + opcode_str + "' is not supported in 1988 arenas in line: " + original_line
+        );
+    }
 
     if (dot_pos == std::string::npos) {
         throw std::runtime_error("Missing modifier for opcode '" + opcode_token + "' in line: " + original_line);
@@ -228,6 +278,11 @@ Instruction parse_line(const std::string& line) {
         throw std::runtime_error("Unknown modifier '" + modifier_display + "' in line: " + original_line);
     }
     instr.modifier = mod_it->second;
+    if (use_1988_rules && !modifier_allowed_in_1988(instr.modifier)) {
+        throw std::runtime_error(
+            "Modifier '" + modifier_lookup + "' is not supported in 1988 arenas in line: " + original_line
+        );
+    }
 
     std::string operands_str;
     std::getline(ss, operands_str);
@@ -271,6 +326,13 @@ Instruction parse_line(const std::string& line) {
         }
 
         mode_target = get_mode(operand[0]);
+        if (use_1988_rules && !addressing_mode_allowed_in_1988(mode_target)) {
+            std::string mode_str(1, operand[0]);
+            throw std::runtime_error(
+                "Addressing mode '" + mode_str + "' is not supported in 1988 arenas for " +
+                operand_name + "-field operand in line: " + original_line
+            );
+        }
         if (operand.length() < 2) {
             throw std::runtime_error("Missing value for " + std::string(operand_name) +
                                      "-field operand in line: " + original_line);
@@ -285,7 +347,7 @@ Instruction parse_line(const std::string& line) {
     return instr;
 }
 
-std::vector<Instruction> parse_warrior(const std::string& code) {
+std::vector<Instruction> parse_warrior(const std::string& code, bool use_1988_rules) {
     std::vector<Instruction> warrior_code;
     std::stringstream ss(code);
     std::string line;
@@ -306,7 +368,7 @@ std::vector<Instruction> parse_warrior(const std::string& code) {
         }
 
         try {
-            warrior_code.push_back(parse_line(trimmed));
+            warrior_code.push_back(parse_line(trimmed, use_1988_rules));
             if (warrior_code.size() > static_cast<size_t>(MAX_WARRIOR_LENGTH)) {
                 throw std::runtime_error(
                     "Warrior exceeds maximum length of " + std::to_string(MAX_WARRIOR_LENGTH) + " instructions"
@@ -780,13 +842,16 @@ extern "C" {
         int core_size, int max_cycles, int max_processes,
         int read_limit, int write_limit,
         int min_distance, int max_warrior_length, int rounds,
-        int seed
+        int seed,
+        int use_1988_rules
     ) {
         thread_local std::string response;
         try {
             if (!warrior1_code || !warrior2_code) {
                 throw std::runtime_error("Null warrior source provided");
             }
+
+            bool use_1988 = use_1988_rules != 0;
 
             validate_battle_parameters(
                 core_size,
@@ -799,8 +864,8 @@ extern "C" {
                 rounds
             );
 
-            auto w1_instrs = parse_warrior(warrior1_code);
-            auto w2_instrs = parse_warrior(warrior2_code);
+            auto w1_instrs = parse_warrior(warrior1_code, use_1988);
+            auto w2_instrs = parse_warrior(warrior2_code, use_1988);
 
             if (w1_instrs.empty()) {
                 throw std::runtime_error("Warrior 1 contains no executable instructions");

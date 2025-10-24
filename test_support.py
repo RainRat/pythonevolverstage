@@ -70,6 +70,7 @@ def load_worker():
         ctypes.c_int,
         ctypes.c_int,
         ctypes.c_int,
+        ctypes.c_int,
     ]
     lib.run_battle.restype = ctypes.c_char_p
     return lib
