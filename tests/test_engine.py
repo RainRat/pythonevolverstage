@@ -154,3 +154,85 @@ def test_select_opponents_without_champion_draws_distinct_contestants():
 def test_determine_winner_and_loser_requires_two_scores():
     with pytest.raises(ValueError, match="Expected scores for two warriors"):
         engine.determine_winner_and_loser([1], [10])
+
+
+def test_handle_archiving_uses_disk_storage(tmp_path):
+    config = evolverstage.EvolverConfig(
+        battle_engine="internal",
+        last_arena=0,
+        base_path=str(tmp_path),
+        archive_path=str(tmp_path / "archive"),
+        coresize_list=[8000],
+        sanitize_list=[0],
+        cycles_list=[80000],
+        processes_list=[8000],
+        readlimit_list=[8000],
+        writelimit_list=[8000],
+        warlen_list=[3],
+        wardistance_list=[0],
+        arena_spec_list=[engine.SPEC_1994],
+        numwarriors=2,
+        alreadyseeded=False,
+        use_in_memory_arenas=True,
+        arena_checkpoint_interval=10000,
+        clock_time=0.0,
+        battle_log_file=None,
+        final_era_only=False,
+        nothing_list=[0],
+        random_list=[0],
+        nab_list=[0],
+        mini_mut_list=[0],
+        micro_mut_list=[0],
+        library_list=[0],
+        magic_number_list=[0],
+        archive_list=[1],
+        unarchive_list=[0],
+        library_path=None,
+        crossoverrate_list=[1],
+        transpositionrate_list=[1],
+        battlerounds_list=[1],
+        prefer_winner_list=[False],
+        instr_set=["MOV"],
+        instr_modes=[],
+        instr_modif=[],
+        run_final_tournament=False,
+        final_tournament_csv=None,
+        benchmark_root=None,
+        benchmark_final_tournament=False,
+        benchmark_battle_frequency_list=[0],
+    )
+
+    previous_config = getattr(engine, "_active_config")
+    previous_arena_storage = engine._ARENA_STORAGE
+    previous_archive_storage = engine._ARCHIVE_STORAGE
+
+    try:
+        engine.set_engine_config(config)
+        arena_storage = engine.InMemoryArenaStorage()
+        engine.set_arena_storage(arena_storage)
+        arena_storage.set_warrior_lines(0, 1, ["MOV 0, 0\n"])
+
+        archive_storage = engine.DiskArchiveStorage(config.archive_path)
+        archive_storage.initialize()
+        engine.set_archive_storage(archive_storage)
+
+        engine.configure_rng(lambda a, _b: a, lambda seq: seq[0])
+
+        result = engine.handle_archiving(
+            winner=1,
+            loser=2,
+            arena=0,
+            era=0,
+            config=config,
+        )
+
+        assert result.events and result.events[0].archive_filename is not None
+        archived_file = tmp_path / "archive" / result.events[0].archive_filename
+        assert archived_file.exists()
+    finally:
+        if previous_config is None:
+            engine._active_config = None
+        else:
+            engine.set_engine_config(previous_config)
+        engine._ARENA_STORAGE = previous_arena_storage
+        engine._ARCHIVE_STORAGE = previous_archive_storage
