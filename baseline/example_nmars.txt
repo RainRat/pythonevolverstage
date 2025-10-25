@@ -18,3 +18,53 @@ START  DAT.F  #     0, $     0
 456 by Anonymous scores 0
 123 by Anonymous scores 30
 Results: 0 10 0
+
+=== nMars help ===
+>nmars -h
+nMars.exe 0.9.5.0 - http://sourceforge.net/projects/nmars
+
+
+Usage: nMars.exe [options] file1 [files ..]
+
+General:
+  -@  file  load options from text file (pMars compatible)
+  -@l file  load project from xml file
+  -@s file  save project to xml file, (use .nmproj extension)
+  -nP name  Change parser component
+  -nE name  Change engine component
+  -v        Component versions
+
+Mode:
+  -mm       Match mode [default]
+  -mt       Tournament without self fight mode
+  -ms       Tournament with self fight mode
+  -mf       First versus all other mode
+
+Rules:
+  -r #      Rounds to play [1]
+  -s #      Size of core [8000]
+  -c #      Cycle until tie [80000]
+  -p #      Max. processes [8000]
+  -l #      Max. warrior length [100]
+  -d #      Min. warriors distance
+  -S #      Size of P-space [500]
+  -f #      Fixed position series
+  -xp       Disable P-space
+
+Dumps:
+  -b        Brief/silent parser mode
+  -bh       No header
+  -bl       No logo
+  -bs       No status
+  -br       No match results
+  -k        Output in KotH format
+  -ue .ext  Dump warriors to files with extension
+  -um       Dump format with metainfo [off]
+  -uo       Dump format with offset [off]
+  -ul       Dump format with labels [off]
+  -up       Dump format with expressions [off]
+  -uc       Dump format with comments [off]
+  -ux       Dump format xml
+
+Debugger:
+  -e        Interactive debugger mode
