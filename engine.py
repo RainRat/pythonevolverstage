@@ -616,6 +616,7 @@ class Marble(Enum):
 
 
 CPP_WORKER_LIB = None
+_sync_export("CPP_WORKER_LIB", CPP_WORKER_LIB)
 
 CPP_WORKER_MIN_DISTANCE = 0
 CPP_WORKER_MIN_CORE_SIZE = 2
@@ -805,9 +806,6 @@ def _load_cpp_worker_library() -> None:
         _sync_export("CPP_WORKER_LIB", CPP_WORKER_LIB)
 
 
-_load_cpp_worker_library()
-
-
 def _find_mars_executable(base_name: str, env_var: str) -> list[str]:
     exe_name = f"{base_name}.exe" if os.name == "nt" else base_name
     candidates = _find_command_candidates(
@@ -917,6 +915,8 @@ def _run_external_battle(
             "-p": config.processes_list[arena_index],
             "-c": config.cycles_list[arena_index],
             "-s": config.coresize_list[arena_index],
+            "-l": config.warlen_list[arena_index],
+            "-d": config.wardistance_list[arena_index],
         }
         if seed is not None:
             flag_args["-S"] = seed
