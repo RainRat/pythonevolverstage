@@ -1,3 +1,4 @@
+import configparser
 import importlib
 import io
 import os
@@ -208,6 +209,14 @@ def test_load_configuration_with_benchmarks(tmp_path, write_config):
     assert benchmark.name == "alpha"
     assert benchmark.code.strip() == "MOV 0, 0"
     assert benchmark.path == str((benchmark_root / "alpha.red").resolve())
+
+
+def test_boolean_parser_respects_explicit_values():
+    parser = configparser.ConfigParser()
+    parser.read_dict({"DEFAULT": {"ALREADYSEEDED": "True"}})
+
+    bool_parser = evolverstage._CONFIG_PARSERS["bool"]
+    assert bool_parser("False", key="ALREADYSEEDED", parser=parser) is False
 
 
 def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_config):
