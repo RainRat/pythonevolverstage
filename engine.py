@@ -930,8 +930,8 @@ def _run_external_battle(
             "-p": config.processes_list[arena_index],
             "-c": config.cycles_list[arena_index],
             "-s": config.coresize_list[arena_index],
-            "-l": config.readlimit_list[arena_index],
-            "-w": config.writelimit_list[arena_index],
+            "-l": config.warlen_list[arena_index],
+            "-d": config.wardistance_list[arena_index],
         }
 
     executable = resolve_command(engine_label, candidate_fn())
