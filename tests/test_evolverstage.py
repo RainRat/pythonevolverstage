@@ -1030,7 +1030,7 @@ def test_run_external_battle_pmars_uses_fixed_position_seed(monkeypatch):
         temp_config.wardistance_list[0],
     )
     assert captured["flag_args"].get("-F") == fixed
-    assert captured["flag_args"].get("-f") is None
+    assert "-f" not in captured["flag_args"]
     assert "-S" not in captured["flag_args"]
 
 
