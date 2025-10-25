@@ -1039,6 +1039,43 @@ def test_run_external_battle_pmars_forwards_seed_and_wardistance(monkeypatch):
     assert "-S" not in captured["flag_args"]
 
 
+def test_run_external_battle_pmars_normalizes_seed(monkeypatch):
+    temp_config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
+    captured: dict[str, dict[str, object]] = {}
+
+    def fake_run(executable, warrior_files, flag_args):
+        captured["flag_args"] = dict(flag_args)
+        return "Alpha by Example scores 10\nBeta by Example scores 20\n"
+
+    monkeypatch.setattr(evolverstage, "_run_external_command", fake_run)
+    monkeypatch.setattr(
+        evolverstage, "_candidate_pmars_paths", lambda: ["fake-pmars"]
+    )
+    monkeypatch.setattr(
+        evolverstage,
+        "_resolve_external_command",
+        lambda engine_name, candidates: candidates[0],
+    )
+
+    previous_config = evolverstage.get_active_config()
+    try:
+        evolverstage.set_active_config(temp_config)
+        engine._run_external_battle(
+            "pmars",
+            arena_index=0,
+            era_index=0,
+            battlerounds=1,
+            seed=2_147_483_647,
+            warrior1_path="warrior1.red",
+            warrior2_path="warrior2.red",
+        )
+    finally:
+        evolverstage.set_active_config(previous_config)
+
+    assert "flag_args" in captured
+    assert captured["flag_args"].get("-F") == 1_073_741_822
+
+
 def test_execute_battle_parses_nmars_output(monkeypatch):
     temp_config = replace(_DEFAULT_CONFIG, battle_engine="nmars")
     sample_output = (
