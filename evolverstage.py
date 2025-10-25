@@ -60,6 +60,7 @@ class EvolverConfig:
     warlen_list: list[int]
     wardistance_list: list[int]
     arena_spec_list: list[str]
+    arena_weight_list: list[int]
     numwarriors: int
     alreadyseeded: bool
     use_in_memory_arenas: bool
@@ -150,6 +151,39 @@ def _get_random_choice(sequence: Sequence[T]) -> T:
 
 
 configure_rng(get_random_int, _get_random_choice)
+
+
+def _select_arena_index(active_config: EvolverConfig) -> int:
+    """Choose an arena index, honouring optional per-arena weights."""
+
+    arena_count = active_config.last_arena + 1
+    if arena_count <= 0:
+        raise ValueError("No arenas configured to select from.")
+
+    weights = active_config.arena_weight_list
+    if not weights:
+        return get_random_int(0, active_config.last_arena)
+
+    limited_weights = [max(0, weight) for weight in weights[:arena_count]]
+    weighted_indices = [
+        (index, weight)
+        for index, weight in enumerate(limited_weights)
+        if weight > 0
+    ]
+
+    if not weighted_indices:
+        return get_random_int(0, active_config.last_arena)
+
+    total_weight = sum(weight for _, weight in weighted_indices)
+    roll = get_random_int(1, total_weight)
+    cumulative = 0
+    for index, weight in weighted_indices:
+        cumulative += weight
+        if roll <= cumulative:
+            return index
+
+    # Fallback; should not occur but protects against rounding mistakes.
+    return weighted_indices[-1][0]
 
 
 def _parse_int(value: str, *, key: str, parser: configparser.ConfigParser) -> int:
@@ -347,6 +381,33 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
             + f". Only the first {arena_count} entries will be used.",
             stacklevel=2,
         )
+
+    if active_config.arena_weight_list:
+        weight_count = len(active_config.arena_weight_list)
+        if weight_count < arena_count:
+            raise ValueError(
+                "ARENA_WEIGHT_LIST must contain at least one entry per arena "
+                f"({arena_count} required, got {weight_count})."
+            )
+        if weight_count > arena_count:
+            warnings.warn(
+                "LAST_ARENA limits the run to "
+                f"{arena_count} arena(s), but ARENA_WEIGHT_LIST provides {weight_count} entries. "
+                f"Only the first {arena_count} entries will be used.",
+                stacklevel=2,
+            )
+
+        limited_weights = active_config.arena_weight_list[:arena_count]
+        for idx, weight in enumerate(limited_weights, start=1):
+            if weight < 0:
+                raise ValueError(
+                    "ARENA_WEIGHT_LIST values must be non-negative integers "
+                    f"(got {weight} at position {idx})."
+                )
+        if not any(weight > 0 for weight in limited_weights):
+            raise ValueError(
+                "ARENA_WEIGHT_LIST must include at least one positive value to select arenas."
+            )
 
     for idx in range(arena_count):
         _validate_arena_parameters(idx, active_config)
@@ -795,6 +856,7 @@ def load_configuration(path: str) -> EvolverConfig:
         benchmark_root=benchmark_root,
         benchmark_final_tournament=_read_config('BENCHMARK_FINAL_TOURNAMENT', data_type='bool', default=False) or False,
         benchmark_battle_frequency_list=benchmark_frequency_list,
+        arena_weight_list=_read_config('ARENA_WEIGHT_LIST', data_type='int_list') or [],
     )
     if not active_config.readlimit_list:
         active_config.readlimit_list = list(active_config.coresize_list)
@@ -1575,7 +1637,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                     get_arena_storage().flush_all()
                 bag = _build_marble_bag(era, active_config)
 
-            arena_index = random.randint(0, active_config.last_arena)
+            arena_index = _select_arena_index(active_config)
             cont1, cont2 = select_opponents(
                 active_config.numwarriors, champions.get(arena_index)
             )
