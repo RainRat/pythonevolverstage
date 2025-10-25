@@ -72,7 +72,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
         INSTR_SET = MOV, ADD
         INSTR_MODES = #, $
         INSTR_MODIF = A, B
-        BENCHMARK_BATTLE_FREQUENCY = 7
+        BENCHMARK_BATTLE_FREQUENCY_LIST = 7, 11
         """
     )
 
@@ -113,7 +113,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
     assert config.instr_modif == ["A", "B"]
     assert config.benchmark_root is None
     assert config.benchmark_final_tournament is False
-    assert config.benchmark_battle_frequency == 7
+    assert config.benchmark_battle_frequency_list == [7, 11]
     assert config.benchmark_sets == {}
 
 
@@ -200,7 +200,7 @@ def test_load_configuration_with_benchmarks(tmp_path, write_config):
     expected_root = str((tmp_path / "benchmarks").resolve())
     assert config.benchmark_root == expected_root
     assert config.benchmark_final_tournament is True
-    assert config.benchmark_battle_frequency == 0
+    assert config.benchmark_battle_frequency_list == [0]
     assert 0 in config.benchmark_sets
     assert len(config.benchmark_sets[0]) == 1
     benchmark = config.benchmark_sets[0][0]
@@ -246,7 +246,7 @@ def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_con
         INSTR_MODES = $
         INSTR_MODIF = F
         BENCHMARK_ROOT = benchmarks
-        BENCHMARK_BATTLE_FREQUENCY = 1
+        BENCHMARK_BATTLE_FREQUENCY_LIST = 1
         """
     )
 
