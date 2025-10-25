@@ -990,7 +990,7 @@ def test_execute_battle_parses_pmars_output(monkeypatch):
     assert scores == [10, 20]
 
 
-def test_run_external_battle_pmars_uses_fixed_position_seed(monkeypatch):
+def test_run_external_battle_pmars_forwards_seed_and_wardistance(monkeypatch):
     temp_config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
     captured: dict[str, dict[str, object]] = {}
 
@@ -1024,31 +1024,10 @@ def test_run_external_battle_pmars_uses_fixed_position_seed(monkeypatch):
         evolverstage.set_active_config(previous_config)
 
     assert "flag_args" in captured
-    fixed = engine._compute_pmars_fixed_position(
-        123456,
-        temp_config.coresize_list[0],
-        temp_config.wardistance_list[0],
-    )
-    assert captured["flag_args"].get("-F") == fixed
+    assert captured["flag_args"].get("-F") == 123456
+    assert captured["flag_args"].get("-d") == temp_config.wardistance_list[0]
     assert "-f" not in captured["flag_args"]
     assert "-S" not in captured["flag_args"]
-
-
-@pytest.mark.parametrize(
-    "seed, coresize, wardistance, expected",
-    [
-        (7895, 8000, 100, 7895),
-        (7995, 8000, 100, 7900),
-        (1234, 1000, 0, 234),
-        (9999, 8000, 5000, 4000),
-    ],
-)
-def test_compute_pmars_fixed_position_respects_wraparound(
-    seed, coresize, wardistance, expected
-):
-    assert (
-        engine._compute_pmars_fixed_position(seed, coresize, wardistance) == expected
-    )
 
 
 def test_execute_battle_parses_nmars_output(monkeypatch):
