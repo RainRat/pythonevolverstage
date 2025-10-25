@@ -1034,6 +1034,23 @@ def test_run_external_battle_pmars_uses_fixed_position_seed(monkeypatch):
     assert "-S" not in captured["flag_args"]
 
 
+@pytest.mark.parametrize(
+    "seed, coresize, wardistance, expected",
+    [
+        (7895, 8000, 100, 7895),
+        (7995, 8000, 100, 7900),
+        (1234, 1000, 0, 234),
+        (9999, 8000, 5000, 4000),
+    ],
+)
+def test_compute_pmars_fixed_position_respects_wraparound(
+    seed, coresize, wardistance, expected
+):
+    assert (
+        engine._compute_pmars_fixed_position(seed, coresize, wardistance) == expected
+    )
+
+
 def test_execute_battle_parses_nmars_output(monkeypatch):
     temp_config = replace(_DEFAULT_CONFIG, battle_engine="nmars")
     sample_output = (

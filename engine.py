@@ -956,24 +956,31 @@ def _compute_pmars_fixed_position(seed: int, coresize: int, wardistance: int) ->
         raise ValueError("coresize must be positive to compute a fixed position")
 
     safe_distance = max(0, wardistance)
-    available_span = coresize - safe_distance
-    if available_span <= 0:
-        # Degenerate configuration where the minimum distance is at least the
-        # coresize. Fall back to positioning the warrior at the wardistance
-        # modulo the core size to keep the offset within bounds.
-        return safe_distance % coresize
+    if safe_distance == 0:
+        return seed % coresize
 
-    offset = seed % available_span
-    position = safe_distance + offset
-    if position >= coresize:
-        position -= coresize
-        if position < safe_distance:
-            position = safe_distance % coresize
+    # When the requested separation cannot be satisfied due to the circular
+    # topology of the core, clamp to the largest attainable distance.
+    max_circular_distance = coresize // 2
+    effective_distance = min(safe_distance, max_circular_distance)
 
-    if safe_distance > 0 and position < safe_distance:
-        position = safe_distance
+    normalized = seed % coresize
+    if effective_distance == 0:
+        return normalized
 
-    return position
+    valid_min = effective_distance
+    valid_max = coresize - effective_distance
+
+    if valid_min > valid_max:
+        # ``coresize`` can only be smaller than twice the distance when it is 1,
+        # in which case the only legal offset is 0.
+        return 0
+
+    if normalized < valid_min:
+        return valid_min
+    if normalized > valid_max:
+        return valid_max
+    return normalized
 
 
 def _normalize_internal_seed(seed: int) -> int:
