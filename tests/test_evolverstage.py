@@ -19,6 +19,7 @@ os.environ.setdefault("PYTHONEVOLVER_SKIP_MAIN", "1")
 
 from test_support import compile_worker
 
+import engine
 import evolverstage
 
 DEFAULT_SETTINGS_PATH = PROJECT_ROOT / "settings.ini"
@@ -987,6 +988,50 @@ def test_execute_battle_parses_pmars_output(monkeypatch):
 
     assert warriors == [101, 202]
     assert scores == [10, 20]
+
+
+def test_run_external_battle_pmars_uses_fixed_position_seed(monkeypatch):
+    temp_config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
+    captured: dict[str, dict[str, object]] = {}
+
+    def fake_run(executable, warrior_files, flag_args):
+        captured["flag_args"] = dict(flag_args)
+        return "Alpha by Example scores 10\nBeta by Example scores 20\n"
+
+    monkeypatch.setattr(evolverstage, "_run_external_command", fake_run)
+    monkeypatch.setattr(
+        evolverstage, "_candidate_pmars_paths", lambda: ["fake-pmars"]
+    )
+    monkeypatch.setattr(
+        evolverstage,
+        "_resolve_external_command",
+        lambda engine_name, candidates: candidates[0],
+    )
+
+    previous_config = evolverstage.get_active_config()
+    try:
+        evolverstage.set_active_config(temp_config)
+        engine._run_external_battle(
+            "pmars",
+            arena_index=0,
+            era_index=0,
+            battlerounds=1,
+            seed=123456,
+            warrior1_path="warrior1.red",
+            warrior2_path="warrior2.red",
+        )
+    finally:
+        evolverstage.set_active_config(previous_config)
+
+    assert "flag_args" in captured
+    fixed = engine._compute_pmars_fixed_position(
+        123456,
+        temp_config.coresize_list[0],
+        temp_config.wardistance_list[0],
+    )
+    assert captured["flag_args"].get("-F") == fixed
+    assert captured["flag_args"].get("-f") is None
+    assert "-S" not in captured["flag_args"]
 
 
 def test_execute_battle_parses_nmars_output(monkeypatch):

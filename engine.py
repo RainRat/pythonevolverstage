@@ -919,7 +919,11 @@ def _run_external_battle(
             "-d": config.wardistance_list[arena_index],
         }
         if seed is not None:
-            flag_args["-S"] = seed
+            coresize = config.coresize_list[arena_index]
+            wardistance = config.wardistance_list[arena_index]
+            fixed_position = _compute_pmars_fixed_position(seed, coresize, wardistance)
+            flag_args["-f"] = None
+            flag_args["-F"] = fixed_position
     else:
         candidate_fn = _get_evolverstage_override(
             "_candidate_nmars_paths", _candidate_nmars_paths
@@ -936,6 +940,40 @@ def _run_external_battle(
 
     executable = resolve_command(engine_label, candidate_fn())
     return run_command(executable, warrior_files, flag_args)
+
+
+def _compute_pmars_fixed_position(seed: int, coresize: int, wardistance: int) -> int:
+    """Compute a deterministic starting offset for warrior #2 in pMARS battles.
+
+    pMARS expects the ``-F`` flag to be between ``0`` and ``coresize - 1``. We map
+    the provided seed into that range while respecting the configured minimum
+    warrior separation. When the wardistance is zero, the offset can span the
+    entire core. Otherwise, the warrior is placed at least ``wardistance`` cells
+    from the origin.
+    """
+
+    if coresize <= 0:
+        raise ValueError("coresize must be positive to compute a fixed position")
+
+    safe_distance = max(0, wardistance)
+    available_span = coresize - safe_distance
+    if available_span <= 0:
+        # Degenerate configuration where the minimum distance is at least the
+        # coresize. Fall back to positioning the warrior at the wardistance
+        # modulo the core size to keep the offset within bounds.
+        return safe_distance % coresize
+
+    offset = seed % available_span
+    position = safe_distance + offset
+    if position >= coresize:
+        position -= coresize
+        if position < safe_distance:
+            position = safe_distance % coresize
+
+    if safe_distance > 0 and position < safe_distance:
+        position = safe_distance
+
+    return position
 
 
 def _normalize_internal_seed(seed: int) -> int:
