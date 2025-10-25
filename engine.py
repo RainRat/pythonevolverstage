@@ -1549,14 +1549,19 @@ class DiskArchiveStorage(ArchiveStorage):
         self,
         warrior_id: int,
         lines: Sequence[str],
-        _config: "EvolverConfig",
+        config: "EvolverConfig",
         get_random_int: Callable[[int, int], int],
     ) -> Optional[str]:
+        archive_dir = self._archive_path
+        configured_archive_path = os.path.abspath(config.archive_path)
+        if configured_archive_path == archive_dir:
+            archive_dir = configured_archive_path
+
         archive_filename: Optional[str] = None
-        os.makedirs(self._archive_path, exist_ok=True)
+        os.makedirs(archive_dir, exist_ok=True)
         for _ in range(10):
             candidate = f"{get_random_int(1, MAX_WARRIOR_FILENAME_ID)}.red"
-            candidate_path = os.path.join(self._archive_path, candidate)
+            candidate_path = os.path.join(archive_dir, candidate)
             try:
                 fd = os.open(
                     candidate_path,
@@ -1573,7 +1578,7 @@ class DiskArchiveStorage(ArchiveStorage):
 
         if archive_filename is None:
             archive_filename = f"{uuid.uuid4().hex}.red"
-            fallback_path = os.path.join(self._archive_path, archive_filename)
+            fallback_path = os.path.join(archive_dir, archive_filename)
             with open(fallback_path, "w") as handle:
                 handle.writelines(lines)
 
