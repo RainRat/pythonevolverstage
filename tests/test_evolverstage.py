@@ -52,6 +52,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
         PROCESSES_LIST = 8, 16
         WARLEN_LIST = 20, 40
         WARDISTANCE_LIST = 20, 40
+        ARENA_WEIGHT_LIST = 1, 3
         NUMWARRIORS = 50
         ALREADYSEEDED = false
         CLOCK_TIME = 12.5
@@ -89,6 +90,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
     assert config.processes_list == [8, 16]
     assert config.warlen_list == [20, 40]
     assert config.wardistance_list == [20, 40]
+    assert config.arena_weight_list == [1, 3]
     assert config.numwarriors == 50
     assert config.alreadyseeded is False
     assert pytest.approx(config.clock_time, rel=1e-6) == 12.5
@@ -716,6 +718,24 @@ def test_validate_config_rejects_nonpositive_checkpoint_interval():
         evolverstage.validate_config(config)
 
 
+def test_validate_config_rejects_negative_arena_weights():
+    invalid_weights = list(_DEFAULT_CONFIG.arena_weight_list)
+    invalid_weights[0] = -1
+    config = replace(_DEFAULT_CONFIG, arena_weight_list=invalid_weights)
+
+    with pytest.raises(ValueError, match="ARENA_WEIGHT_LIST"):
+        evolverstage.validate_config(config)
+
+
+def test_validate_config_rejects_all_zero_arena_weights():
+    arena_count = _DEFAULT_CONFIG.last_arena + 1
+    zero_weights = [0] * arena_count
+    config = replace(_DEFAULT_CONFIG, arena_weight_list=zero_weights)
+
+    with pytest.raises(ValueError, match="ARENA_WEIGHT_LIST"):
+        evolverstage.validate_config(config)
+
+
 def test_rebuild_instruction_tables_requires_non_dat_opcodes():
     config = replace(_DEFAULT_CONFIG, instr_set=["DAT"])
     try:
@@ -815,10 +835,40 @@ def test_validate_config_warns_when_lists_longer_than_last_arena():
         writelimit_list=list(_DEFAULT_CONFIG.writelimit_list[:2]),
         warlen_list=list(_DEFAULT_CONFIG.warlen_list[:2]),
         wardistance_list=list(_DEFAULT_CONFIG.wardistance_list[:2]),
+        arena_weight_list=list(_DEFAULT_CONFIG.arena_weight_list[:2]),
     )
 
     with pytest.warns(UserWarning, match="LAST_ARENA limits"):
         evolverstage.validate_config(config)
+
+
+def test_select_arena_index_honours_weights():
+    config = replace(
+        _DEFAULT_CONFIG,
+        last_arena=1,
+        coresize_list=list(_DEFAULT_CONFIG.coresize_list[:2]),
+        sanitize_list=list(_DEFAULT_CONFIG.sanitize_list[:2]),
+        cycles_list=list(_DEFAULT_CONFIG.cycles_list[:2]),
+        processes_list=list(_DEFAULT_CONFIG.processes_list[:2]),
+        readlimit_list=list(_DEFAULT_CONFIG.readlimit_list[:2]),
+        writelimit_list=list(_DEFAULT_CONFIG.writelimit_list[:2]),
+        warlen_list=list(_DEFAULT_CONFIG.warlen_list[:2]),
+        wardistance_list=list(_DEFAULT_CONFIG.wardistance_list[:2]),
+        arena_weight_list=[0, 5],
+    )
+
+    evolverstage.set_rng_sequence([1])
+    try:
+        assert evolverstage._select_arena_index(config) == 1
+    finally:
+        evolverstage.set_rng_sequence([])
+
+    config_no_weights = replace(config, arena_weight_list=[])
+    evolverstage.set_rng_sequence([0])
+    try:
+        assert evolverstage._select_arena_index(config_no_weights) == 0
+    finally:
+        evolverstage.set_rng_sequence([])
 
 
 def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
