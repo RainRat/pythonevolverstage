@@ -88,7 +88,7 @@ class EvolverConfig:
     final_tournament_csv: Optional[str]
     benchmark_root: Optional[str]
     benchmark_final_tournament: bool
-    benchmark_battle_frequency: int
+    benchmark_battle_frequency_list: list[int]
     benchmark_sets: dict[int, list[BenchmarkWarrior]] = field(default_factory=dict)
 
 
@@ -364,6 +364,21 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
 
     era_count = len(active_config.battlerounds_list)
 
+    freq_list = list(active_config.benchmark_battle_frequency_list)
+    if not freq_list:
+        freq_list = [0] * era_count
+    elif len(freq_list) == 1 and era_count > 1:
+        freq_list = freq_list * era_count
+    elif len(freq_list) != era_count:
+        raise ValueError(
+            "BENCHMARK_BATTLE_FREQUENCY_LIST must contain either 1 value or one value per era.",
+        )
+    if any(value < 0 for value in freq_list):
+        raise ValueError(
+            "BENCHMARK_BATTLE_FREQUENCY_LIST entries cannot be negative."
+        )
+    active_config.benchmark_battle_frequency_list = freq_list
+
     era_lists = {
         "NOTHING_LIST": active_config.nothing_list,
         "RANDOM_LIST": active_config.random_list,
@@ -377,6 +392,7 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
         "CROSSOVERRATE_LIST": active_config.crossoverrate_list,
         "TRANSPOSITIONRATE_LIST": active_config.transpositionrate_list,
         "PREFER_WINNER_LIST": active_config.prefer_winner_list,
+        "BENCHMARK_BATTLE_FREQUENCY_LIST": active_config.benchmark_battle_frequency_list,
     }
 
     for name, values in era_lists.items():
@@ -707,6 +723,24 @@ def load_configuration(path: str) -> EvolverConfig:
     else:
         archive_path = os.path.abspath(os.path.join(base_path, "archive"))
 
+    battlerounds_list = _read_config('BATTLEROUNDS_LIST', data_type='int_list') or []
+    prefer_winner_list = _read_config('PREFER_WINNER_LIST', data_type='bool_list') or []
+
+    benchmark_frequency_list = _read_config(
+        'BENCHMARK_BATTLE_FREQUENCY_LIST', data_type='int_list'
+    )
+    if benchmark_frequency_list:
+        benchmark_frequency_list = list(benchmark_frequency_list)
+    else:
+        fallback_frequency = _read_config(
+            'BENCHMARK_BATTLE_FREQUENCY', data_type='int', default=0
+        )
+        if fallback_frequency is None:
+            fallback_frequency = 0
+        benchmark_frequency_list = [fallback_frequency]
+        if battlerounds_list:
+            benchmark_frequency_list = benchmark_frequency_list * len(battlerounds_list)
+
     active_config = EvolverConfig(
         battle_engine=_read_config('BATTLE_ENGINE', data_type='str', default='internal') or 'internal',
         last_arena=last_arena_value,
@@ -740,8 +774,8 @@ def load_configuration(path: str) -> EvolverConfig:
         library_path=library_path,
         crossoverrate_list=_read_config('CROSSOVERRATE_LIST', data_type='int_list') or [],
         transpositionrate_list=_read_config('TRANSPOSITIONRATE_LIST', data_type='int_list') or [],
-        battlerounds_list=_read_config('BATTLEROUNDS_LIST', data_type='int_list') or [],
-        prefer_winner_list=_read_config('PREFER_WINNER_LIST', data_type='bool_list') or [],
+        battlerounds_list=battlerounds_list,
+        prefer_winner_list=prefer_winner_list,
         instr_set=_read_config('INSTR_SET', data_type='string_list') or [],
         instr_modes=_read_config('INSTR_MODES', data_type='string_list') or [],
         instr_modif=_read_config('INSTR_MODIF', data_type='string_list') or [],
@@ -749,10 +783,7 @@ def load_configuration(path: str) -> EvolverConfig:
         final_tournament_csv=final_tournament_csv,
         benchmark_root=benchmark_root,
         benchmark_final_tournament=_read_config('BENCHMARK_FINAL_TOURNAMENT', data_type='bool', default=False) or False,
-        benchmark_battle_frequency=_read_config(
-            'BENCHMARK_BATTLE_FREQUENCY', data_type='int', default=0
-        )
-        or 0,
+        benchmark_battle_frequency_list=benchmark_frequency_list,
     )
     if not active_config.readlimit_list:
         active_config.readlimit_list = list(active_config.coresize_list)
@@ -1538,10 +1569,13 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 active_config.numwarriors, champions.get(arena_index)
             )
             display_era = era + 1
+            benchmark_frequency = 0
+            if active_config.benchmark_battle_frequency_list:
+                benchmark_frequency = active_config.benchmark_battle_frequency_list[era]
             use_benchmark_battle = (
-                active_config.benchmark_battle_frequency > 0
+                benchmark_frequency > 0
                 and bool(active_config.benchmark_sets.get(arena_index))
-                and random.randint(1, active_config.benchmark_battle_frequency) == 1
+                and random.randint(1, benchmark_frequency) == 1
             )
             benchmark_result: Optional[BenchmarkBattleResult] = None
             battle_label = "Benchmark battle" if use_benchmark_battle else "Battle"
