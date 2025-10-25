@@ -919,7 +919,7 @@ def _run_external_battle(
             "-d": config.wardistance_list[arena_index],
         }
         if seed is not None:
-            flag_args["-F"] = seed
+            flag_args["-F"] = _normalize_pmars_seed(seed)
     else:
         candidate_fn = _get_evolverstage_override(
             "_candidate_nmars_paths", _candidate_nmars_paths
@@ -936,6 +936,16 @@ def _run_external_battle(
 
     executable = resolve_command(engine_label, candidate_fn())
     return run_command(executable, warrior_files, flag_args)
+
+
+def _normalize_pmars_seed(seed: int) -> int:
+    modulus = _PMARS_MAX_SEED + 1
+    normalized = seed % modulus
+    if normalized < 0:
+        normalized += modulus
+    return normalized
+
+
 def _normalize_internal_seed(seed: int) -> int:
     modulus = _INTERNAL_ENGINE_MAX_SEED
     normalized = seed % modulus
@@ -945,6 +955,7 @@ def _normalize_internal_seed(seed: int) -> int:
 
 
 _INTERNAL_ENGINE_MAX_SEED = 2_147_483_646
+_PMARS_MAX_SEED = 1_073_741_824
 
 
 def _generate_internal_battle_seed() -> int:
