@@ -919,10 +919,7 @@ def _run_external_battle(
             "-d": config.wardistance_list[arena_index],
         }
         if seed is not None:
-            coresize = config.coresize_list[arena_index]
-            wardistance = config.wardistance_list[arena_index]
-            fixed_position = _compute_pmars_fixed_position(seed, coresize, wardistance)
-            flag_args["-F"] = fixed_position
+            flag_args["-F"] = seed
     else:
         candidate_fn = _get_evolverstage_override(
             "_candidate_nmars_paths", _candidate_nmars_paths
@@ -939,49 +936,6 @@ def _run_external_battle(
 
     executable = resolve_command(engine_label, candidate_fn())
     return run_command(executable, warrior_files, flag_args)
-
-
-def _compute_pmars_fixed_position(seed: int, coresize: int, wardistance: int) -> int:
-    """Compute a deterministic starting offset for warrior #2 in pMARS battles.
-
-    pMARS expects the ``-F`` flag to be between ``0`` and ``coresize - 1``. We map
-    the provided seed into that range while respecting the configured minimum
-    warrior separation. When the wardistance is zero, the offset can span the
-    entire core. Otherwise, the warrior is placed at least ``wardistance`` cells
-    from the origin.
-    """
-
-    if coresize <= 0:
-        raise ValueError("coresize must be positive to compute a fixed position")
-
-    safe_distance = max(0, wardistance)
-    if safe_distance == 0:
-        return seed % coresize
-
-    # When the requested separation cannot be satisfied due to the circular
-    # topology of the core, clamp to the largest attainable distance.
-    max_circular_distance = coresize // 2
-    effective_distance = min(safe_distance, max_circular_distance)
-
-    normalized = seed % coresize
-    if effective_distance == 0:
-        return normalized
-
-    valid_min = effective_distance
-    valid_max = coresize - effective_distance
-
-    if valid_min > valid_max:
-        # ``coresize`` can only be smaller than twice the distance when it is 1,
-        # in which case the only legal offset is 0.
-        return 0
-
-    if normalized < valid_min:
-        return valid_min
-    if normalized > valid_max:
-        return valid_max
-    return normalized
-
-
 def _normalize_internal_seed(seed: int) -> int:
     modulus = _INTERNAL_ENGINE_MAX_SEED
     normalized = seed % modulus
