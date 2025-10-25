@@ -922,7 +922,6 @@ def _run_external_battle(
             coresize = config.coresize_list[arena_index]
             wardistance = config.wardistance_list[arena_index]
             fixed_position = _compute_pmars_fixed_position(seed, coresize, wardistance)
-            flag_args["-f"] = None
             flag_args["-F"] = fixed_position
     else:
         candidate_fn = _get_evolverstage_override(
