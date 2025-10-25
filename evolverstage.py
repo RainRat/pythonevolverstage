@@ -161,7 +161,18 @@ def _parse_float(value: str, *, key: str, parser: configparser.ConfigParser) -> 
 
 
 def _parse_bool(value: str, *, key: str, parser: configparser.ConfigParser) -> bool:
-    return parser['DEFAULT'].getboolean(key)
+    if isinstance(value, bool):
+        return value
+
+    normalized = value.strip().lower()
+    if not normalized:
+        raise ValueError(f"Boolean value for '{key}' cannot be empty")
+
+    boolean_states = getattr(parser, "BOOLEAN_STATES", configparser.ConfigParser.BOOLEAN_STATES)
+    if normalized in boolean_states:
+        return boolean_states[normalized]
+
+    raise ValueError(f"Invalid boolean value '{value}' for '{key}'")
 
 
 def _parse_int_list(value: str, *, key: str, parser: configparser.ConfigParser) -> list[int]:
