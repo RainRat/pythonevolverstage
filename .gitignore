@@ -18,3 +18,4 @@ tiny.txt
 # Build artifacts
 build/
 *.so
+__pycache__/
