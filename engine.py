@@ -731,6 +731,12 @@ def _candidate_worker_paths() -> list[Path]:
         f"redcode_worker{extension}",
     ]
 
+    system_dirs = [
+        Path("/usr/local/lib"),
+        Path("/usr/lib"),
+        Path("/lib"),
+    ]
+
     for lib_name in library_names:
         project_candidates = [
             module_dir / lib_name,
@@ -739,7 +745,9 @@ def _candidate_worker_paths() -> list[Path]:
             project_root / "build" / "Debug" / lib_name,
             project_root / "build" / "Release" / lib_name,
         ]
+        system_candidates = [directory / lib_name for directory in system_dirs]
         candidates.extend(project_candidates)
+        candidates.extend(system_candidates)
 
     return _deduplicate_paths(candidates)
 
