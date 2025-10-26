@@ -115,11 +115,48 @@ def test_determine_winner_and_loser_prefers_higher_score():
     assert loser == 1
 
 
-def test_select_opponents_prefers_champion_when_rng_allows():
+def test_choose_battle_type_respects_weights():
+    calls: list[tuple[int, int]] = []
+    sequence = [7]
+
+    def fake_randint(a: int, b: int) -> int:
+        calls.append((a, b))
+        return sequence.pop(0)
+
+    engine.configure_rng(fake_randint, lambda seq: seq[0])
+
+    result = engine.choose_battle_type(random_pair_weight=3, champion_weight=4, benchmark_weight=2)
+
+    assert result is engine.BattleType.CHAMPION
+    assert calls == [(1, 9)]
+
+
+def test_choose_battle_type_ignores_zero_weights():
+    calls: list[tuple[int, int]] = []
+    sequence = [2]
+
+    def fake_randint(a: int, b: int) -> int:
+        calls.append((a, b))
+        return sequence.pop(0)
+
+    engine.configure_rng(fake_randint, lambda seq: seq[0])
+
+    result = engine.choose_battle_type(random_pair_weight=0, champion_weight=0, benchmark_weight=5)
+
+    assert result is engine.BattleType.BENCHMARK
+    assert calls == [(1, 5)]
+
+
+def test_choose_battle_type_requires_positive_weight():
+    engine.configure_rng(random.randint, random.choice)
+    with pytest.raises(ValueError, match="At least one battle weight must be positive"):
+        engine.choose_battle_type(0, 0, 0)
+
+
+def test_select_opponents_returns_champion_battle_when_requested():
     champion = 2
     calls: list[tuple[int, int]] = []
-
-    sequence = [25, champion, champion + 1]
+    sequence = [champion, champion + 1]
 
     def fake_randint(a: int, b: int) -> int:
         calls.append((a, b))
@@ -128,17 +165,16 @@ def test_select_opponents_prefers_champion_when_rng_allows():
     engine.configure_rng(fake_randint, lambda seq: seq[0])
 
     result = engine.select_opponents(
-        num_warriors=5, champion=champion, champion_battle_chance=50
+        num_warriors=5, champion=champion, battle_type=engine.BattleType.CHAMPION
     )
 
     assert result == (champion, champion + 1)
-    assert calls == [(1, 100), (1, 5), (1, 5)]
+    assert calls == [(1, 5), (1, 5)]
 
 
-def test_select_opponents_without_champion_draws_distinct_contestants():
-    champion = 2
+def test_select_opponents_draws_distinct_random_pair():
     calls: list[tuple[int, int]] = []
-    sequence = [90, 3, 3, 1]
+    sequence = [3, 3, 1]
 
     def fake_randint(a: int, b: int) -> int:
         calls.append((a, b))
@@ -146,19 +182,16 @@ def test_select_opponents_without_champion_draws_distinct_contestants():
 
     engine.configure_rng(fake_randint, lambda seq: seq[0])
 
-    result = engine.select_opponents(
-        num_warriors=4, champion=champion, champion_battle_chance=50
-    )
+    result = engine.select_opponents(num_warriors=4, battle_type=engine.BattleType.RANDOM_PAIR)
 
     assert result == (3, 1)
-    assert champion not in result
-    assert calls == [(1, 100), (1, 4), (1, 4), (1, 4)]
+    assert calls == [(1, 4), (1, 4), (1, 4)]
+    engine.configure_rng(random.randint, random.choice)
 
 
-def test_select_opponents_respects_zero_percent_champion_chance():
-    champion = 3
+def test_select_opponents_benchmark_battle_behaves_like_random_pair():
     calls: list[tuple[int, int]] = []
-    sequence = [1, 2]
+    sequence = [1, 1, 4]
 
     def fake_randint(a: int, b: int) -> int:
         calls.append((a, b))
@@ -166,32 +199,10 @@ def test_select_opponents_respects_zero_percent_champion_chance():
 
     engine.configure_rng(fake_randint, lambda seq: seq[0])
 
-    result = engine.select_opponents(
-        num_warriors=5, champion=champion, champion_battle_chance=0
-    )
+    result = engine.select_opponents(num_warriors=5, battle_type=engine.BattleType.BENCHMARK)
 
-    assert result == (1, 2)
-    assert calls == [(1, 5), (1, 5)]
-    assert champion not in result
-
-
-def test_select_opponents_uses_champion_when_chance_is_certain():
-    champion = 4
-    calls: list[tuple[int, int]] = []
-    sequence = [42, champion, champion + 2]
-
-    def fake_randint(a: int, b: int) -> int:
-        calls.append((a, b))
-        return sequence.pop(0)
-
-    engine.configure_rng(fake_randint, lambda seq: seq[0])
-
-    result = engine.select_opponents(
-        num_warriors=6, champion=champion, champion_battle_chance=100
-    )
-
-    assert result == (champion, champion + 2)
-    assert calls == [(1, 100), (1, 6), (1, 6)]
+    assert result == (1, 4)
+    assert calls == [(1, 5), (1, 5), (1, 5)]
 
 
 
@@ -237,7 +248,8 @@ def test_handle_archiving_uses_disk_storage(tmp_path):
         transpositionrate_list=[1],
         battlerounds_list=[1],
         prefer_winner_list=[False],
-        champion_battle_chance_list=[50],
+        champion_battle_frequency_list=[1],
+        random_pair_battle_frequency_list=[1],
         instr_set=["MOV"],
         instr_modes=[],
         instr_modif=[],
