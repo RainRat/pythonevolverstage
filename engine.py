@@ -1606,12 +1606,6 @@ def get_archive_storage() -> ArchiveStorage:
             "Archive storage has not been initialized. Call set_archive_storage() before use."
         )
     return storage
-
-
-def _should_flush_on_exit(current_config: "EvolverConfig") -> bool:
-    return True
-
-
 MutationHandler = Callable[[RedcodeInstruction, int, "EvolverConfig", int], RedcodeInstruction]
 
 
@@ -1987,7 +1981,6 @@ __all__ = [
     "DiskArchiveStorage",
     "set_archive_storage",
     "get_archive_storage",
-    "_should_flush_on_exit",
     "Marble",
     "MutationHandler",
     "apply_major_mutation",

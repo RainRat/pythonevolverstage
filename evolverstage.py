@@ -1844,7 +1844,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         active_config.use_in_memory_arenas
         and active_config.battle_engine == "internal"
     )
-    if _should_flush_on_exit(active_config) and not flush_in_main_cleanup:
+    if not flush_in_main_cleanup:
         get_arena_storage().flush_all()
 
     if active_config.run_final_tournament:
@@ -1874,7 +1874,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             storage = None
         if storage is not None:
             try:
-                should_flush = active_config is None or _should_flush_on_exit(active_config)
+                should_flush = True
                 if should_flush:
                     wrote_any = storage.flush_all()
                     if (

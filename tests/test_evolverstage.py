@@ -980,10 +980,6 @@ def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
     write_events.clear()
     assert storage.flush_all() is False
 
-    assert evolverstage._should_flush_on_exit(config)
-    external_config = replace(config, battle_engine="pmars")
-    assert evolverstage._should_flush_on_exit(external_config)
-
     storage._write_warrior = original_write  # type: ignore[attr-defined]
     evolverstage.set_active_config(_DEFAULT_CONFIG)
 
