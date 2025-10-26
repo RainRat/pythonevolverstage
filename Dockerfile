@@ -18,6 +18,7 @@ RUN mkdir -p build \
     && cmake .. \
     && cmake --build . \
     && cp ../redcode_worker.so /usr/local/lib/ \
+    && cd .. \
     && make -C pMars/src \
     && cp pMars/src/pmars /usr/local/bin/pmars
 
