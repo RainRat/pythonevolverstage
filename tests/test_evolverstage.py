@@ -54,7 +54,6 @@ def test_load_configuration_parses_types(tmp_path, write_config):
         WARDISTANCE_LIST = 20, 40
         ARENA_WEIGHT_LIST = 1, 3
         NUMWARRIORS = 50
-        ALREADYSEEDED = false
         CLOCK_TIME = 12.5
         BATTLE_LOG_FILE = logs.csv
         FINAL_ERA_ONLY = false
@@ -136,7 +135,6 @@ def test_load_configuration_accepts_custom_archive_path(tmp_path, write_config):
         WARLEN_LIST = 5
         WARDISTANCE_LIST = 5
         NUMWARRIORS = 2
-        ALREADYSEEDED = false
         CLOCK_TIME = 1
         BATTLEROUNDS_LIST = 1
         NOTHING_LIST = 1
@@ -176,7 +174,6 @@ def test_load_configuration_with_benchmarks(tmp_path, write_config):
         WARLEN_LIST = 100
         WARDISTANCE_LIST = 100
         NUMWARRIORS = 10
-        ALREADYSEEDED = false
         CLOCK_TIME = 1.0
         NOTHING_LIST = 1
         RANDOM_LIST = 1
@@ -215,10 +212,10 @@ def test_load_configuration_with_benchmarks(tmp_path, write_config):
 
 def test_boolean_parser_respects_explicit_values():
     parser = configparser.ConfigParser()
-    parser.read_dict({"DEFAULT": {"ALREADYSEEDED": "True"}})
+    parser.read_dict({"DEFAULT": {"FINAL_ERA_ONLY": "True"}})
 
     bool_parser = evolverstage._CONFIG_PARSERS["bool"]
-    assert bool_parser("False", key="ALREADYSEEDED", parser=parser) is False
+    assert bool_parser("False", key="FINAL_ERA_ONLY", parser=parser) is False
 
 
 def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_config):
@@ -231,7 +228,6 @@ def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_con
         BATTLE_ENGINE = internal
         LAST_ARENA = 0
         NUMWARRIORS = 2
-        ALREADYSEEDED = true
         CLOCK_TIME = 1
         CORESIZE_LIST = 80
         SANITIZE_LIST = 80
@@ -337,7 +333,6 @@ def test_final_tournament_with_benchmarks(monkeypatch, tmp_path, write_config):
         WARLEN_LIST = 100
         WARDISTANCE_LIST = 100
         NUMWARRIORS = 2
-        ALREADYSEEDED = true
         IN_MEMORY_ARENAS = false
         ARENA_CHECKPOINT_INTERVAL = 1000
         CLOCK_TIME = 1.0
@@ -573,7 +568,6 @@ def test_load_configuration_reads_in_memory_settings(tmp_path, write_config):
         WARLEN_LIST = 5
         WARDISTANCE_LIST = 5
         NUMWARRIORS = 2
-        ALREADYSEEDED = true
         CLOCK_TIME = 1
         BATTLEROUNDS_LIST = 1
         NOTHING_LIST = 1
@@ -604,20 +598,23 @@ def test_load_configuration_reads_in_memory_settings(tmp_path, write_config):
 
 
 @pytest.mark.parametrize(
-    "existing_dirs, expected_seeded, expected_message, expect_archive",
+    "seed_existing, expected_seeded, expected_message",
     [
-        ([], False, "ALREADYSEEDED was True", None),
-        (["arena0"], True, None, True),
+        (
+            False,
+            False,
+            "Arenas will be freshly seeded because required warriors are missing.",
+        ),
+        (True, True, None),
     ],
 )
 def test_load_configuration_handles_missing_directories(
     tmp_path,
     capsys,
     write_config,
-    existing_dirs,
+    seed_existing,
     expected_seeded,
     expected_message,
-    expect_archive,
 ):
     config_path = write_config(
         """
@@ -630,7 +627,6 @@ def test_load_configuration_handles_missing_directories(
         WARLEN_LIST = 5
         WARDISTANCE_LIST = 5
         NUMWARRIORS = 10
-        ALREADYSEEDED = true
         CLOCK_TIME = 1
         BATTLEROUNDS_LIST = 1
         NOTHING_LIST = 1
@@ -648,8 +644,12 @@ def test_load_configuration_handles_missing_directories(
         """
     )
 
-    for directory in existing_dirs:
-        (tmp_path / directory).mkdir()
+    if seed_existing:
+        arena_dir = tmp_path / "arena0"
+        arena_dir.mkdir()
+        for warrior_id in range(1, 11):
+            (arena_dir / f"{warrior_id}.red").write_text("DAT.F #0, #0\n", encoding="utf-8")
+        (tmp_path / "archive").mkdir()
 
     config = evolverstage.load_configuration(str(config_path))
     captured = capsys.readouterr()
@@ -658,10 +658,7 @@ def test_load_configuration_handles_missing_directories(
     if expected_message:
         assert expected_message in captured.out
     else:
-        assert "ALREADYSEEDED was True" not in captured.out
-
-    if expect_archive is not None:
-        assert (tmp_path / "archive").is_dir() is expect_archive
+        assert "Arenas will be freshly seeded" not in captured.out
 
 
 def test_validate_config_accepts_pmars_engine():
@@ -766,7 +763,6 @@ def test_validate_config_rejects_invalid_instr_modes():
             WARLEN_LIST = 20, 20
             WARDISTANCE_LIST = 20, 20
             NUMWARRIORS = 10
-            ALREADYSEEDED = false
             CLOCK_TIME = 1
             BATTLEROUNDS_LIST = 1, 1
             NOTHING_LIST = 1, 1
@@ -794,7 +790,6 @@ def test_validate_config_rejects_invalid_instr_modes():
             WARLEN_LIST = 20
             WARDISTANCE_LIST = 20
             NUMWARRIORS = 10
-            ALREADYSEEDED = false
             CLOCK_TIME = 1
             BATTLEROUNDS_LIST = 5
             NOTHING_LIST = 1
@@ -888,7 +883,6 @@ def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
             WARLEN_LIST = 5
             WARDISTANCE_LIST = 5
             NUMWARRIORS = 2
-            ALREADYSEEDED = true
             CLOCK_TIME = 1
             BATTLEROUNDS_LIST = 1
             NOTHING_LIST = 1
@@ -1277,7 +1271,6 @@ def test_load_configuration_checks_seeded_directories(tmp_path, capsys):
             WARLEN_LIST = 20, 20
             WARDISTANCE_LIST = 20, 20
             NUMWARRIORS = 10
-            ALREADYSEEDED = true
             CLOCK_TIME = 1
             BATTLEROUNDS_LIST = 5, 5
             NOTHING_LIST = 1,1
@@ -1306,7 +1299,10 @@ def test_load_configuration_checks_seeded_directories(tmp_path, capsys):
     captured = capsys.readouterr()
 
     assert config.alreadyseeded is False
-    assert "ALREADYSEEDED was True" in captured.out
+    assert (
+        "Arenas will be freshly seeded because required warriors are missing."
+        in captured.out
+    )
 
 
 def test_data_logger_writes_header_once(tmp_path):
@@ -1445,7 +1441,6 @@ def test_end_to_end_evolution_run(tmp_path, capsys):
             BATTLE_ENGINE = internal
             LAST_ARENA = 1
             NUMWARRIORS = 3
-            ALREADYSEEDED = true
             CLOCK_TIME = 0.001
             BATTLE_LOG_FILE = battle_log.csv
             RUN_FINAL_TOURNAMENT = true

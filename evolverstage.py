@@ -316,6 +316,27 @@ def _validate_arena_parameters(idx: int, active_config: EvolverConfig) -> None:
         )
 
 
+def _detect_existing_seed(active_config: EvolverConfig) -> tuple[bool, list[str]]:
+    """Return whether all arenas contain seeded warriors and any missing entries."""
+
+    missing_entries: list[str] = []
+    arena_count = active_config.last_arena + 1
+    base_path = active_config.base_path
+
+    for arena in range(arena_count):
+        arena_dir = os.path.join(base_path, f"arena{arena}")
+        if not os.path.isdir(arena_dir):
+            missing_entries.append(arena_dir)
+            continue
+
+        for warrior_id in range(1, active_config.numwarriors + 1):
+            warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
+            if not os.path.isfile(warrior_path):
+                missing_entries.append(warrior_path)
+
+    return not missing_entries, missing_entries
+
+
 def validate_config(active_config: EvolverConfig, config_path: Optional[str] = None) -> None:
     if active_config.last_arena is None:
         raise ValueError("LAST_ARENA must be specified in the configuration.")
@@ -520,9 +541,10 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
         if config_directory:
             base_path = config_directory
 
+    active_config.base_path = base_path
+
     required_directories = [os.path.join(base_path, f"arena{i}") for i in range(arena_count)]
-    archive_dir = active_config.archive_path
-    required_directories.append(archive_dir)
+    required_directories.append(active_config.archive_path)
 
     if active_config.benchmark_root:
         benchmark_root = active_config.benchmark_root
@@ -539,33 +561,6 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
             f"Configuration directory '{base_path}' does not exist or is not a directory."
         )
 
-    missing_required_directories = [
-        directory for directory in required_directories if not os.path.isdir(directory)
-    ]
-
-    if missing_required_directories and active_config.alreadyseeded:
-        missing_arenas = [
-            directory
-            for directory in missing_required_directories
-            if directory != archive_dir
-        ]
-        if missing_arenas:
-            console_log(
-                "ALREADYSEEDED was True but required arenas/archive are missing. "
-                "Automatically switching to fresh seeding so the evolver can "
-                "initialise new warriors.",
-                minimum_level=VerbosityLevel.TERSE,
-            )
-            active_config.alreadyseeded = False
-
-        if active_config.alreadyseeded and archive_dir in missing_required_directories:
-            try:
-                os.makedirs(archive_dir, exist_ok=True)
-            except OSError as exc:
-                raise OSError(
-                    f"Failed to create archive directory '{archive_dir}': {exc}"
-                ) from exc
-
     for directory in required_directories:
         if os.path.isdir(directory):
             if not os.access(directory, os.W_OK):
@@ -578,10 +573,14 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
                 raise PermissionError(
                     f"Missing permissions to create directory '{directory}'."
                 )
-            if active_config.alreadyseeded:
-                raise FileNotFoundError(
-                    f"Required directory '{directory}' does not exist but ALREADYSEEDED is true."
-                )
+
+    seeded, missing_entries = _detect_existing_seed(active_config)
+    active_config.alreadyseeded = seeded
+    if not seeded and missing_entries:
+        console_log(
+            "Arenas will be freshly seeded because required warriors are missing.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
 
     if active_config.clock_time is None or active_config.clock_time <= 0:
         raise ValueError("CLOCK_TIME must be a positive number of hours.")
@@ -828,7 +827,7 @@ def load_configuration(path: str) -> EvolverConfig:
         wardistance_list=_read_config('WARDISTANCE_LIST', data_type='int_list') or [],
         arena_spec_list=normalized_specs,
         numwarriors=_read_config('NUMWARRIORS', data_type='int'),
-        alreadyseeded=_read_config('ALREADYSEEDED', data_type='bool', default=False) or False,
+        alreadyseeded=False,
         use_in_memory_arenas=_read_config('IN_MEMORY_ARENAS', data_type='bool', default=False) or False,
         arena_checkpoint_interval=_read_config('ARENA_CHECKPOINT_INTERVAL', data_type='int', default=10000) or 10000,
         clock_time=_read_config('CLOCK_TIME', data_type='float'),
