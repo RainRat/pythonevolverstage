@@ -615,6 +615,12 @@ class Marble(Enum):
     MAGIC_NUMBER_MUTATION = 6
 
 
+class BattleType(Enum):
+    RANDOM_PAIR = "random_pair"
+    CHAMPION = "champion"
+    BENCHMARK = "benchmark"
+
+
 CPP_WORKER_LIB = None
 _sync_export("CPP_WORKER_LIB", CPP_WORKER_LIB)
 
@@ -1913,14 +1919,39 @@ def determine_winner_and_loser(
     return warriors[0], warriors[1], False
 
 
+def choose_battle_type(
+    random_pair_weight: int,
+    champion_weight: int,
+    benchmark_weight: int,
+) -> BattleType:
+    weighted_types = [
+        (BattleType.RANDOM_PAIR, max(0, random_pair_weight)),
+        (BattleType.CHAMPION, max(0, champion_weight)),
+        (BattleType.BENCHMARK, max(0, benchmark_weight)),
+    ]
+    positive = [(battle_type, weight) for battle_type, weight in weighted_types if weight > 0]
+
+    if not positive:
+        raise ValueError("At least one battle weight must be positive.")
+
+    total_weight = sum(weight for _, weight in positive)
+    roll = _rng_int(1, total_weight)
+    cumulative = 0
+    for battle_type, weight in positive:
+        cumulative += weight
+        if roll <= cumulative:
+            return battle_type
+
+    # Fallback; should be unreachable but protects against rounding mistakes.
+    return positive[-1][0]
+
+
 def select_opponents(
     num_warriors: int,
     champion: Optional[int] = None,
-    champion_battle_chance: Optional[int] = None,
+    battle_type: BattleType = BattleType.RANDOM_PAIR,
 ) -> tuple[int, int]:
-    chance = 50 if champion_battle_chance is None else champion_battle_chance
-
-    if champion is not None and chance > 0 and _rng_int(1, 100) <= chance:
+    if battle_type == BattleType.CHAMPION and champion is not None:
         challenger = champion
         while challenger == champion:
             challenger = _rng_int(1, num_warriors)
@@ -1994,6 +2025,8 @@ __all__ = [
     "set_archive_storage",
     "get_archive_storage",
     "Marble",
+    "BattleType",
+    "choose_battle_type",
     "MutationHandler",
     "apply_major_mutation",
     "apply_nab_instruction",
