@@ -1914,9 +1914,13 @@ def determine_winner_and_loser(
 
 
 def select_opponents(
-    num_warriors: int, champion: Optional[int] = None
+    num_warriors: int,
+    champion: Optional[int] = None,
+    champion_battle_chance: Optional[int] = None,
 ) -> tuple[int, int]:
-    if champion is not None and _rng_int(0, 1) == 0:
+    chance = 50 if champion_battle_chance is None else champion_battle_chance
+
+    if champion is not None and chance > 0 and _rng_int(1, 100) <= chance:
         challenger = champion
         while challenger == champion:
             challenger = _rng_int(1, num_warriors)

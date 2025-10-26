@@ -82,6 +82,7 @@ class EvolverConfig:
     transpositionrate_list: list[int]
     battlerounds_list: list[int]
     prefer_winner_list: list[bool]
+    champion_battle_chance_list: list[int]
     instr_set: list[str]
     instr_modes: list[str]
     instr_modif: list[str]
@@ -472,6 +473,25 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
         )
     active_config.benchmark_battle_frequency_list = freq_list
 
+    champion_chance_list = list(active_config.champion_battle_chance_list)
+    if not champion_chance_list:
+        champion_chance_list = [50] * era_count
+    elif len(champion_chance_list) == 1 and era_count > 1:
+        champion_chance_list = champion_chance_list * era_count
+    elif len(champion_chance_list) != era_count:
+        raise ValueError(
+            "CHAMPION_BATTLE_CHANCE_LIST must contain either 1 value or one value per era."
+        )
+
+    for idx, value in enumerate(champion_chance_list, start=1):
+        if value < 0 or value > 100:
+            raise ValueError(
+                "CHAMPION_BATTLE_CHANCE_LIST entries must be between 0 and 100 "
+                f"(got {value} at position {idx})."
+            )
+
+    active_config.champion_battle_chance_list = champion_chance_list
+
     era_lists = {
         "NOTHING_LIST": active_config.nothing_list,
         "RANDOM_LIST": active_config.random_list,
@@ -486,6 +506,7 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
         "TRANSPOSITIONRATE_LIST": active_config.transpositionrate_list,
         "PREFER_WINNER_LIST": active_config.prefer_winner_list,
         "BENCHMARK_BATTLE_FREQUENCY_LIST": active_config.benchmark_battle_frequency_list,
+        "CHAMPION_BATTLE_CHANCE_LIST": active_config.champion_battle_chance_list,
     }
 
     for name, values in era_lists.items():
@@ -796,6 +817,9 @@ def load_configuration(path: str) -> EvolverConfig:
 
     battlerounds_list = _read_config('BATTLEROUNDS_LIST', data_type='int_list') or []
     prefer_winner_list = _read_config('PREFER_WINNER_LIST', data_type='bool_list') or []
+    champion_battle_chance_list = (
+        _read_config('CHAMPION_BATTLE_CHANCE_LIST', data_type='int_list') or []
+    )
 
     archive_list = _read_config('ARCHIVE_LIST', data_type='int_list') or []
     unarchive_list = _read_config('UNARCHIVE_LIST', data_type='int_list') or []
@@ -854,6 +878,7 @@ def load_configuration(path: str) -> EvolverConfig:
         transpositionrate_list=_read_config('TRANSPOSITIONRATE_LIST', data_type='int_list') or [],
         battlerounds_list=battlerounds_list,
         prefer_winner_list=prefer_winner_list,
+        champion_battle_chance_list=champion_battle_chance_list,
         instr_set=_read_config('INSTR_SET', data_type='string_list') or [],
         instr_modes=_read_config('INSTR_MODES', data_type='string_list') or [],
         instr_modif=_read_config('INSTR_MODIF', data_type='string_list') or [],
@@ -1644,8 +1669,11 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 bag = _build_marble_bag(era, active_config)
 
             arena_index = _select_arena_index(active_config)
+            champion_chance = active_config.champion_battle_chance_list[era]
             cont1, cont2 = select_opponents(
-                active_config.numwarriors, champions.get(arena_index)
+                active_config.numwarriors,
+                champions.get(arena_index),
+                champion_chance,
             )
             display_era = era + 1
             benchmark_frequency = 0

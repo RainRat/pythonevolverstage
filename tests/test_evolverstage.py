@@ -71,6 +71,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
         TRANSPOSITIONRATE_LIST = 22,23
         BATTLEROUNDS_LIST = 24, 48
         PREFER_WINNER_LIST = true, false
+        CHAMPION_BATTLE_CHANCE_LIST = 55, 45
         INSTR_SET = MOV, ADD
         INSTR_MODES = #, $
         INSTR_MODIF = A, B
@@ -111,6 +112,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
     assert config.transpositionrate_list == [22, 23]
     assert config.battlerounds_list == [24, 48]
     assert config.prefer_winner_list == [True, False]
+    assert config.champion_battle_chance_list == [55, 45]
     assert config.instr_set == ["MOV", "ADD"]
     assert config.instr_modes == ["#", "$"]
     assert config.instr_modif == ["A", "B"]

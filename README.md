@@ -104,7 +104,7 @@ Evolver output will now rewrite numbers either negative or positive, whichever i
 Results of battles saved so you can analyse your progress. Current fields are 'era', 'arena', 'winner', 'loser', 'score1', 'score2', and 'bred_with'. Edit BATTLE_LOG_FILE setting to choose a file name; comment out or leave blank for no log.
 
 12. Champion-aware matchmaking
-        Each arena tracks its current "champion"—the most recent warrior to win a non-draw battle there. When selecting contestants, there is roughly a 50% chance that the champion will be slotted into the next match. This gentle bias lets you repeatedly pressure successful warriors without turning every round into a deterministic ladder climb, and it encourages newcomers to prove themselves against the reigning specialist in that arena.
+        Each arena tracks its current "champion"—the most recent warrior to win a non-draw battle there. By default there is a 50% chance that the champion will be slotted into the next match, but you can now tune this bias per era via `CHAMPION_BATTLE_CHANCE_LIST` in `settings.ini` (values from 0 to 100). This gentle bias lets you repeatedly pressure successful warriors without turning every round into a deterministic ladder climb, and it encourages newcomers to prove themselves against the reigning specialist in that arena.
 
 13. Tournament and evolution reporting
         The evolver now reports on itself so that long sessions leave an audit trail:
