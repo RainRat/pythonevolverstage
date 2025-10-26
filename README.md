@@ -12,7 +12,7 @@ For all of these, modify the constants in settings.ini.
 
 1. Edit the **per-arena lists** (like `CORESIZE_LIST`, `CYCLES_LIST`, etc.) to contain the parameters of the competitions you want to compete in. If you just want to compete in one arena, you have lists of length 1.
 2. (Optional. Defaults are good for most.) Set the **per-era lists** (like `BATTLEROUNDS_LIST`, `NOTHING_LIST`, `RANDOM_LIST`, etc.) to control the evolution process over time. The number of eras is defined by the number of entries in `BATTLEROUNDS_LIST`.
-3. Set ALREADYSEEDED to False. If you interrupt it and want to resume, set it to True.
+3. The evolver automatically detects whether arenas need to be seeded. Delete existing `arena*` directories if you want to start from scratch.
 4. Choose how much actual wall clock time (in hours) you plan to run the project for and modify CLOCK_TIME
 5. Select the battle engine by setting `BATTLE_ENGINE` to `nmars`, `internal`, or `pmars` in `settings.ini`. Use `nmars` to call the external nMars executable, `internal` to use the bundled C++ worker, or `pmars` to shell out to a local pMARS binary.
 6. (Optional) Enable `IN_MEMORY_ARENAS` to cache warriors in RAM and reduce disk writes; adjust `ARENA_CHECKPOINT_INTERVAL` to control how often arenas are saved when running in this mode.
@@ -50,7 +50,6 @@ For all of these, modify the constants in settings.ini.
 6. Finished the cycle you originally planned and want to optimize some more? Set:
 ```
 FINAL_ERA_ONLY=True
-ALREADYSEEDED=True #Make sure to set this True as well.
 ```
 
 7. Two new evolution strategies.
@@ -88,7 +87,7 @@ DJN.F $-1,{6
 Evolver output will now rewrite numbers either negative or positive, whichever is closer to 0.
 
 10. Archive and unarchive
-	Create "archive" folder. After a battle, there is a chance of archiving the winner, or replacing the loser with something from the archive.
+        The evolver creates the `archive` folder automatically. After a battle, there is a chance of archiving the winner, or replacing the loser with something from the archive.
 	- Keep clues as to how things evolved
 	- Combat hyper-specialization
 	- Transfer whole warriors between arenas
