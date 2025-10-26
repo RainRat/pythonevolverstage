@@ -158,6 +158,40 @@ def test_load_configuration_accepts_custom_archive_path(tmp_path, write_config):
     assert config.archive_path == expected_path
 
 
+def test_load_configuration_defaults_archive_lists(tmp_path, write_config):
+    config_path = write_config(
+        """
+        BATTLE_ENGINE = internal
+        LAST_ARENA = 1
+        CORESIZE_LIST = 8000, 8192
+        SANITIZE_LIST = 80, 81
+        CYCLES_LIST = 1000, 2000
+        PROCESSES_LIST = 8, 16
+        WARLEN_LIST = 20, 40
+        WARDISTANCE_LIST = 25, 45
+        ARENA_WEIGHT_LIST = 1, 1
+        NUMWARRIORS = 4
+        CLOCK_TIME = 1
+        NOTHING_LIST = 1,2
+        RANDOM_LIST = 3,4
+        NAB_LIST = 5,6
+        MINI_MUT_LIST = 7,8
+        MICRO_MUT_LIST = 9,10
+        LIBRARY_LIST = 11,12
+        MAGIC_NUMBER_LIST = 13,14
+        CROSSOVERRATE_LIST = 15,16
+        TRANSPOSITIONRATE_LIST = 17,18
+        BATTLEROUNDS_LIST = 19, 20
+        PREFER_WINNER_LIST = true, false
+        BENCHMARK_BATTLE_FREQUENCY = 0
+        """
+    )
+
+    config = evolverstage.load_configuration(str(config_path))
+    assert config.archive_list == [0, 0]
+    assert config.unarchive_list == [0, 0]
+
+
 def test_load_configuration_with_benchmarks(tmp_path, write_config):
     benchmark_root = tmp_path / "benchmarks" / "arena0"
     benchmark_root.mkdir(parents=True)

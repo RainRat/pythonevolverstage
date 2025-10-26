@@ -797,6 +797,13 @@ def load_configuration(path: str) -> EvolverConfig:
     battlerounds_list = _read_config('BATTLEROUNDS_LIST', data_type='int_list') or []
     prefer_winner_list = _read_config('PREFER_WINNER_LIST', data_type='bool_list') or []
 
+    archive_list = _read_config('ARCHIVE_LIST', data_type='int_list') or []
+    unarchive_list = _read_config('UNARCHIVE_LIST', data_type='int_list') or []
+    if 'ARCHIVE_LIST' not in parser['DEFAULT'] and battlerounds_list:
+        archive_list = [0] * len(battlerounds_list)
+    if 'UNARCHIVE_LIST' not in parser['DEFAULT'] and battlerounds_list:
+        unarchive_list = [0] * len(battlerounds_list)
+
     benchmark_frequency_list = _read_config(
         'BENCHMARK_BATTLE_FREQUENCY_LIST', data_type='int_list'
     )
@@ -840,8 +847,8 @@ def load_configuration(path: str) -> EvolverConfig:
         micro_mut_list=_read_config('MICRO_MUT_LIST', data_type='int_list') or [],
         library_list=_read_config('LIBRARY_LIST', data_type='int_list') or [],
         magic_number_list=_read_config('MAGIC_NUMBER_LIST', data_type='int_list') or [],
-        archive_list=_read_config('ARCHIVE_LIST', data_type='int_list') or [],
-        unarchive_list=_read_config('UNARCHIVE_LIST', data_type='int_list') or [],
+        archive_list=archive_list,
+        unarchive_list=unarchive_list,
         library_path=library_path,
         crossoverrate_list=_read_config('CROSSOVERRATE_LIST', data_type='int_list') or [],
         transpositionrate_list=_read_config('TRANSPOSITIONRATE_LIST', data_type='int_list') or [],
