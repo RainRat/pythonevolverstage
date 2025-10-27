@@ -597,15 +597,21 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
     required_directories = [os.path.join(base_path, f"arena{i}") for i in range(arena_count)]
     required_directories.append(active_config.archive_path)
 
+    expect_benchmarks = active_config.benchmark_final_tournament or any(
+        value > 0 for value in active_config.benchmark_battle_frequency_list
+    )
+
     if active_config.benchmark_root:
         benchmark_root = active_config.benchmark_root
         if not os.path.isabs(benchmark_root):
             benchmark_root = os.path.abspath(benchmark_root)
             active_config.benchmark_root = benchmark_root
         if not os.path.isdir(benchmark_root):
-            raise FileNotFoundError(
-                f"Benchmark directory '{benchmark_root}' does not exist or is not a directory."
-            )
+            if expect_benchmarks:
+                raise FileNotFoundError(
+                    f"Benchmark directory '{benchmark_root}' does not exist or is not a directory."
+                )
+            active_config.benchmark_root = None
 
     if not os.path.isdir(base_path):
         raise FileNotFoundError(
@@ -658,16 +664,30 @@ def _load_benchmark_sets(active_config: EvolverConfig) -> dict[int, list[Benchma
     if not benchmark_root:
         return {}
 
+    expect_benchmarks = active_config.benchmark_final_tournament or any(
+        value > 0 for value in active_config.benchmark_battle_frequency_list
+    )
+
+    if not os.path.isdir(benchmark_root):
+        if expect_benchmarks:
+            warnings.warn(
+                f"Benchmark root '{benchmark_root}' is missing.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return {}
+
     benchmark_sets: dict[int, list[BenchmarkWarrior]] = {}
     arena_count = active_config.last_arena + 1
     for arena in range(arena_count):
         arena_dir = os.path.join(benchmark_root, f"arena{arena}")
         if not os.path.isdir(arena_dir):
-            warnings.warn(
-                f"Benchmark directory '{arena_dir}' missing for arena {arena}.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
+            if expect_benchmarks:
+                warnings.warn(
+                    f"Benchmark directory '{arena_dir}' missing for arena {arena}.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
             continue
 
         entries = sorted(
@@ -691,7 +711,7 @@ def _load_benchmark_sets(active_config: EvolverConfig) -> dict[int, list[Benchma
 
         if warriors:
             benchmark_sets[arena] = warriors
-        elif active_config.benchmark_final_tournament:
+        elif expect_benchmarks:
             warnings.warn(
                 f"No benchmark warriors found for arena {arena} in '{arena_dir}'.",
                 RuntimeWarning,
