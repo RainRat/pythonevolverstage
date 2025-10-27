@@ -112,6 +112,9 @@ _RNG_INDEX: int = 0
 
 _BENCHMARK_WARRIOR_ID_BASE = MAX_WARRIOR_FILENAME_ID - 10_000
 
+_FINAL_STANDINGS_DISPLAY_LIMIT = 20
+_PER_WARRIOR_SUMMARY_LIMIT = 20
+
 T = TypeVar("T")
 
 
@@ -1607,9 +1610,24 @@ def run_final_tournament(active_config: EvolverConfig):
                 minimum_level=VerbosityLevel.TERSE,
             )
             rankings = sorted(total_scores.items(), key=lambda item: item[1], reverse=True)
-            for position, (warrior_id, score) in enumerate(rankings, start=1):
+            standings_to_show = rankings[:_FINAL_STANDINGS_DISPLAY_LIMIT]
+            for position, (warrior_id, score) in enumerate(standings_to_show, start=1):
                 console_log(
                     f"{position}. Warrior {warrior_id}: {score} points",
+                    minimum_level=VerbosityLevel.TERSE,
+                )
+            hidden_count = max(0, len(rankings) - len(standings_to_show))
+            if hidden_count:
+                if active_config.final_tournament_csv:
+                    destination_hint = (
+                        f"Full standings exported to {active_config.final_tournament_csv}."
+                    )
+                else:
+                    destination_hint = (
+                        "Configure FINAL_TOURNAMENT_CSV to export full standings."
+                    )
+                console_log(
+                    f"  ...and {hidden_count} more warrior(s) not shown. {destination_hint}",
                     minimum_level=VerbosityLevel.TERSE,
                 )
             champion_id, champion_score = rankings[0]
@@ -1689,6 +1707,8 @@ def _report_final_tournament_statistics(
     console_log(
         "\nTournament statistics:", minimum_level=VerbosityLevel.TERSE
     )
+    aggregated_benchmarks: dict[str, dict[str, float]] = {}
+
     for summary in arena_summaries:
         arena_id = summary.get("arena")
         arena_average = float(summary.get("average", 0.0))
@@ -1698,18 +1718,35 @@ def _report_final_tournament_statistics(
         )
         benchmark_info = summary.get("benchmark")
         if benchmark_info:
-            console_log(
-                "    Benchmark reference averages (benchmark perspective):",
-                minimum_level=VerbosityLevel.TERSE,
-            )
+            total_matches = 0
             for entry in benchmark_info:
                 name = entry.get("name", "unknown")
                 average = float(entry.get("average", 0.0))
                 count = int(entry.get("matches", 0))
-                console_log(
-                    f"      {name}: {average:.2f} over {count} match(es)",
-                    minimum_level=VerbosityLevel.TERSE,
+                total_matches += count
+                aggregate = aggregated_benchmarks.setdefault(
+                    name, {"total": 0.0, "matches": 0}
                 )
+                aggregate["total"] += average * count
+                aggregate["matches"] += count
+            console_log(
+                f"    Benchmarks played: {total_matches} match(es) across {len(benchmark_info)} warrior(s)",
+                minimum_level=VerbosityLevel.TERSE,
+            )
+
+    if aggregated_benchmarks:
+        console_log(
+            "\nBenchmark performance summary (benchmark perspective):",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+        for name in sorted(aggregated_benchmarks):
+            matches = int(aggregated_benchmarks[name]["matches"])
+            total = float(aggregated_benchmarks[name]["total"])
+            average = total / matches if matches else 0.0
+            console_log(
+                f"  {name}: {average:.2f} over {matches} match(es)",
+                minimum_level=VerbosityLevel.TERSE,
+            )
 
     all_scores = [score for scores in warrior_scores_by_arena.values() for score in scores]
     if all_scores:
@@ -1742,16 +1779,18 @@ def _report_final_tournament_statistics(
         "\nPer-warrior performance summary:",
         minimum_level=VerbosityLevel.TERSE,
     )
-    for entry in sorted(
+    sorted_warriors = sorted(
         warrior_stats,
         key=lambda data: (
             -float(data["average"]),
             float(data["stdev"]),
             int(data["warrior_id"]),
         ),
-    ):
+    )
+    warriors_to_show = sorted_warriors[:_PER_WARRIOR_SUMMARY_LIMIT]
+    for entry in warriors_to_show:
         console_log(
-            "  Warrior {warrior_id}: avg {avg:.2f}, σ {stdev:.2f} across {count} arena(s)".format(
+            "  Warrior {warrior_id}: avg {avg:.2f}, σ {stdev:.2f} across {count} match(es)".format(
                 warrior_id=entry["warrior_id"],
                 avg=entry["average"],
                 stdev=entry["stdev"],
@@ -1759,10 +1798,22 @@ def _report_final_tournament_statistics(
             ),
             minimum_level=VerbosityLevel.TERSE,
         )
+    hidden_warriors = max(0, len(sorted_warriors) - len(warriors_to_show))
+    if hidden_warriors:
+        console_log(
+            f"  ...and {hidden_warriors} more warrior(s) not shown.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
 
     consistent_candidates = [
-        entry for entry in warrior_stats if int(entry["appearances"]) > 1
+        entry
+        for entry in warrior_stats
+        if int(entry["appearances"]) > 1 and float(entry["average"]) > 0.0
     ]
+    if not consistent_candidates:
+        consistent_candidates = [
+            entry for entry in warrior_stats if int(entry["appearances"]) > 1
+        ]
     if not consistent_candidates:
         consistent_candidates = list(warrior_stats)
 
@@ -1781,7 +1832,7 @@ def _report_final_tournament_statistics(
         )
         for entry in top_consistent:
             console_log(
-                "  Warrior {warrior_id}: σ {stdev:.2f} across {count} arena(s) (avg {avg:.2f})".format(
+                "  Warrior {warrior_id}: σ {stdev:.2f} across {count} match(es) (avg {avg:.2f})".format(
                     warrior_id=entry["warrior_id"],
                     stdev=entry["stdev"],
                     count=entry["appearances"],
@@ -2188,16 +2239,6 @@ def main(argv: Optional[List[str]] = None) -> int:
                 should_flush = True
                 if should_flush:
                     wrote_any = storage.flush_all()
-                    if (
-                        wrote_any
-                        and active_config is not None
-                        and active_config.use_in_memory_arenas
-                        and active_config.battle_engine == "internal"
-                    ):
-                        console_log(
-                            "Persisted in-memory arenas to disk.",
-                            minimum_level=VerbosityLevel.TERSE,
-                        )
             except RuntimeError:
                 pass
         close_console()
