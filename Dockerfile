@@ -12,6 +12,14 @@ WORKDIR /app
 # Copy project files
 COPY . .
 
+# Ensure the pMARS source is available even when the git submodule has not been
+# initialised (for example when the repository archive is downloaded without
+# running `git submodule update --init`).
+RUN if [ ! -d pMars/src ]; then \
+        rm -rf pMars \ 
+        && git clone --depth 1 https://github.com/mbarbon/pMARS.git pMars; \
+    fi
+
 # Build the optional C++ worker library using CMake and compile the pMARS emulator
 RUN mkdir -p build \
     && cd build \
