@@ -67,6 +67,8 @@ class EvolverConfig:
     arena_checkpoint_interval: int
     clock_time: float
     battle_log_file: Optional[str]
+    benchmark_log_file: Optional[str]
+    benchmark_log_generation_interval: int
     final_era_only: bool
     nothing_list: list[int]
     random_list: list[int]
@@ -373,6 +375,23 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
         raise ValueError(
             "ARENA_CHECKPOINT_INTERVAL must be a positive integer."
         )
+
+    if active_config.benchmark_log_generation_interval < 0:
+        raise ValueError(
+            "BENCHMARK_LOG_GENERATION_INTERVAL cannot be negative."
+        )
+
+    if (
+        active_config.benchmark_log_file
+        and active_config.benchmark_log_generation_interval <= 0
+    ):
+        warnings.warn(
+            "BENCHMARK_LOG_FILE is set but BENCHMARK_LOG_GENERATION_INTERVAL is not "
+            "positive; benchmark logging will be disabled.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        active_config.benchmark_log_file = None
 
     per_arena_lists = {
         "CORESIZE_LIST": active_config.coresize_list,
@@ -841,6 +860,19 @@ def load_configuration(path: str) -> EvolverConfig:
     if battle_log_file:
         battle_log_file = os.path.abspath(os.path.join(base_path, battle_log_file))
 
+    benchmark_log_file = _read_config('BENCHMARK_LOG_FILE', data_type='str')
+    if benchmark_log_file:
+        benchmark_log_file = os.path.abspath(
+            os.path.join(base_path, benchmark_log_file)
+        )
+
+    benchmark_log_generation_interval = (
+        _read_config(
+            'BENCHMARK_LOG_GENERATION_INTERVAL', data_type='int', default=0
+        )
+        or 0
+    )
+
     final_tournament_csv = _read_config('FINAL_TOURNAMENT_CSV', data_type='str')
     if final_tournament_csv:
         final_tournament_csv = os.path.abspath(
@@ -933,6 +965,8 @@ def load_configuration(path: str) -> EvolverConfig:
         arena_checkpoint_interval=_read_config('ARENA_CHECKPOINT_INTERVAL', data_type='int', default=10000) or 10000,
         clock_time=_read_config('CLOCK_TIME', data_type='float'),
         battle_log_file=battle_log_file,
+        benchmark_log_file=benchmark_log_file,
+        benchmark_log_generation_interval=benchmark_log_generation_interval,
         final_era_only=_read_config('FINAL_ERA_ONLY', data_type='bool'),
         nothing_list=_read_config('NOTHING_LIST', data_type='int_list') or [],
         random_list=_read_config('RANDOM_LIST', data_type='int_list') or [],
@@ -1008,6 +1042,154 @@ class DataLogger:
             if self.file_handle is not None:
                 self.file_handle.flush()
 
+
+class BenchmarkLogger:
+    def __init__(self, filename: Optional[str]):
+        self.filename = filename
+        self.fieldnames = [
+            "era",
+            "generation",
+            "arena",
+            "champion",
+            "benchmark",
+            "score",
+            "benchmark_path",
+        ]
+        self.file_handle: Optional[TextIO] = None
+        self.writer: Optional[csv.DictWriter] = None
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.filename)
+
+    def open(self) -> None:
+        if not self.filename or self.file_handle is not None:
+            return
+
+        file_handle = open(self.filename, "a", newline="")
+        writer = csv.DictWriter(file_handle, fieldnames=self.fieldnames)
+        if file_handle.tell() == 0:
+            writer.writeheader()
+
+        self.file_handle = file_handle
+        self.writer = writer
+
+    def close(self) -> None:
+        if self.file_handle is not None:
+            self.file_handle.close()
+            self.file_handle = None
+            self.writer = None
+
+    def log_score(
+        self,
+        *,
+        era: int,
+        generation: int,
+        arena: int,
+        champion: int,
+        benchmark: str,
+        score: int,
+        benchmark_path: Optional[str],
+    ) -> None:
+        if not self.filename:
+            return
+
+        if self.writer is None:
+            self.open()
+
+        if self.writer is not None:
+            self.writer.writerow(
+                {
+                    "era": era,
+                    "generation": generation,
+                    "arena": arena,
+                    "champion": champion,
+                    "benchmark": benchmark,
+                    "score": score,
+                    "benchmark_path": benchmark_path or "",
+                }
+            )
+            if self.file_handle is not None:
+                self.file_handle.flush()
+
+
+def _score_warrior_against_benchmarks(
+    arena_index: int,
+    warrior_id: int,
+    era: int,
+    active_config: EvolverConfig,
+) -> list[tuple[BenchmarkWarrior, int]]:
+    benchmark_warriors = active_config.benchmark_sets.get(arena_index)
+    if not benchmark_warriors or era < 0:
+        return []
+
+    storage = get_arena_storage()
+    warrior_lines = storage.get_warrior_lines(arena_index, warrior_id)
+    if not warrior_lines:
+        return []
+
+    warrior_code = "".join(warrior_lines)
+    if not warrior_code.strip():
+        return []
+
+    results: list[tuple[BenchmarkWarrior, int]] = []
+    for bench_index, benchmark in enumerate(benchmark_warriors):
+        bench_identifier = max(
+            1, _BENCHMARK_WARRIOR_ID_BASE - (arena_index * 1000 + bench_index)
+        )
+        match_seed = _stable_internal_battle_seed(
+            arena_index, warrior_id, bench_identifier, era
+        )
+        warriors, scores = execute_battle_with_sources(
+            arena_index,
+            warrior_id,
+            warrior_code,
+            bench_identifier,
+            benchmark.code,
+            era,
+            verbose=False,
+            seed=match_seed,
+        )
+        try:
+            warrior_pos = warriors.index(warrior_id)
+        except ValueError:
+            continue
+        results.append((benchmark, scores[warrior_pos]))
+
+    return results
+
+
+def _log_benchmark_scores_for_champions(
+    *,
+    era: int,
+    generation: int,
+    champions: dict[int, int],
+    active_config: EvolverConfig,
+    benchmark_logger: BenchmarkLogger,
+) -> None:
+    if era < 0 or generation <= 0 or not benchmark_logger.enabled:
+        return
+
+    for arena_index in range(active_config.last_arena + 1):
+        champion_id = champions.get(arena_index)
+        if champion_id is None:
+            continue
+
+        scores = _score_warrior_against_benchmarks(
+            arena_index, champion_id, era, active_config
+        )
+        for benchmark, score in scores:
+            benchmark_logger.log_score(
+                era=era,
+                generation=generation,
+                arena=arena_index,
+                champion=champion_id,
+                benchmark=benchmark.name,
+                score=score,
+                benchmark_path=benchmark.path,
+            )
+
+
 def _count_instruction_library_entries(library_path: Optional[str]) -> int:
     if not library_path:
         return 0
@@ -1031,6 +1213,13 @@ def _count_instruction_library_entries(library_path: Optional[str]) -> int:
 
 def _print_run_configuration_summary(active_config: EvolverConfig) -> None:
     log_display = active_config.battle_log_file if active_config.battle_log_file else "Disabled"
+    if active_config.benchmark_log_file:
+        benchmark_log_display = (
+            f"{active_config.benchmark_log_file} "
+            f"(every {active_config.benchmark_log_generation_interval} generations)"
+        )
+    else:
+        benchmark_log_display = "Disabled"
     arena_count = active_config.last_arena + 1 if active_config.last_arena is not None else 0
     archive_count = get_archive_storage().count()
     library_entries = _count_instruction_library_entries(active_config.library_path)
@@ -1042,6 +1231,10 @@ def _print_run_configuration_summary(active_config: EvolverConfig) -> None:
     console_log("Run configuration summary:", minimum_level=VerbosityLevel.TERSE)
     console_log(
         f"  Battle log: {log_display}", minimum_level=VerbosityLevel.TERSE
+    )
+    console_log(
+        f"  Benchmark log: {benchmark_log_display}",
+        minimum_level=VerbosityLevel.TERSE,
     )
     console_log(f"  Arenas: {arena_count}", minimum_level=VerbosityLevel.TERSE)
     console_log(
@@ -1681,12 +1874,16 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     start_time = time.time()
     era = -1
     data_logger = DataLogger(filename=active_config.battle_log_file)
+    benchmark_logger = BenchmarkLogger(
+        filename=active_config.benchmark_log_file
+    )
     bag: list[Marble] = []
     interrupted = False
     era_count = len(active_config.battlerounds_list)
     era_duration = active_config.clock_time / era_count
     battles_per_era = [0 for _ in range(era_count)]
     total_battles = 0
+    generation_counter = 0
     champions: dict[int, int] = {
         arena_index: 1 for arena_index in range(active_config.last_arena + 1)
     }
@@ -1704,6 +1901,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     _sync_champion_display()
 
     data_logger.open()
+    benchmark_logger.open()
 
     try:
         while True:
@@ -1917,6 +2115,21 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 warriors,
             )
 
+            generation_counter += 1
+            log_interval = active_config.benchmark_log_generation_interval
+            if (
+                log_interval > 0
+                and generation_counter % log_interval == 0
+                and benchmark_logger.enabled
+            ):
+                _log_benchmark_scores_for_champions(
+                    era=era,
+                    generation=generation_counter,
+                    champions=champions,
+                    active_config=active_config,
+                    benchmark_logger=benchmark_logger,
+                )
+
             battle_line = (
                 f"{battle_label}: "
                 f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
@@ -1937,6 +2150,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
 
     finally:
         data_logger.close()
+        benchmark_logger.close()
 
     end_time = time.time()
 
