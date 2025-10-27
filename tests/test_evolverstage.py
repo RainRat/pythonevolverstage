@@ -56,6 +56,8 @@ def test_load_configuration_parses_types(tmp_path, write_config):
         NUMWARRIORS = 50
         CLOCK_TIME = 12.5
         BATTLE_LOG_FILE = logs.csv
+        BENCHMARK_LOG_FILE = benchmark.csv
+        BENCHMARK_LOG_GENERATION_INTERVAL = 5000
         FINAL_ERA_ONLY = false
         NOTHING_LIST = 1,2
         RANDOM_LIST = 4,5
@@ -98,6 +100,10 @@ def test_load_configuration_parses_types(tmp_path, write_config):
     assert config.base_path == str(config_path.parent)
     assert config.archive_path == os.path.abspath(config_path.parent / "archive")
     assert config.battle_log_file == os.path.abspath(config_path.with_name("logs.csv"))
+    assert config.benchmark_log_file == os.path.abspath(
+        config_path.with_name("benchmark.csv")
+    )
+    assert config.benchmark_log_generation_interval == 5000
     assert config.final_era_only is False
     assert config.nothing_list == [1, 2]
     assert config.random_list == [4, 5]
@@ -240,6 +246,8 @@ def test_load_configuration_with_benchmarks(tmp_path, write_config):
     assert config.benchmark_root == expected_root
     assert config.benchmark_final_tournament is True
     assert config.benchmark_battle_frequency_list == [0]
+    assert config.benchmark_log_file is None
+    assert config.benchmark_log_generation_interval == 0
     assert 0 in config.benchmark_sets
     assert len(config.benchmark_sets[0]) == 1
     benchmark = config.benchmark_sets[0][0]
@@ -1350,6 +1358,132 @@ def test_data_logger_writes_header_once(tmp_path):
     content = log_path.read_text(encoding="utf-8").strip().splitlines()
     assert content[0] == "era,arena,winner,loser,score1,score2,bred_with"
     assert len(content) == 3
+
+
+def test_benchmark_logger_writes_header_once(tmp_path):
+    from evolverstage import BenchmarkLogger
+
+    log_path = tmp_path / "benchmark_log.csv"
+    logger = BenchmarkLogger(str(log_path))
+    logger.log_score(
+        era=1,
+        generation=5000,
+        arena=2,
+        champion=3,
+        benchmark="alpha",
+        score=42,
+        benchmark_path="alpha.red",
+    )
+    logger.log_score(
+        era=2,
+        generation=10000,
+        arena=2,
+        champion=3,
+        benchmark="beta",
+        score=-10,
+        benchmark_path=None,
+    )
+    logger.close()
+
+    content = log_path.read_text(encoding="utf-8").strip().splitlines()
+    assert content[0] == (
+        "era,generation,arena,champion,benchmark,score,benchmark_path"
+    )
+    assert len(content) == 3
+
+
+def test_log_benchmark_scores_for_champions_records_scores(
+    monkeypatch, tmp_path
+):
+    from evolverstage import (
+        BenchmarkLogger,
+        BenchmarkWarrior,
+        _log_benchmark_scores_for_champions,
+        create_arena_storage,
+        set_active_config,
+        set_arena_storage,
+    )
+
+    benchmark = BenchmarkWarrior(
+        name="alpha",
+        code="MOV 0, 0\n",
+        path=str(tmp_path / "alpha.red"),
+    )
+    config = replace(
+        _DEFAULT_CONFIG,
+        base_path=str(tmp_path),
+        archive_path=str(tmp_path / "archive"),
+        last_arena=0,
+        numwarriors=1,
+        benchmark_sets={0: [benchmark]},
+    )
+
+    (tmp_path / "archive").mkdir(exist_ok=True)
+
+    try:
+        previous_config = evolverstage.get_active_config()
+    except RuntimeError:
+        previous_config = None
+    try:
+        previous_storage = evolverstage.get_arena_storage()
+    except RuntimeError:
+        previous_storage = None
+
+    storage = create_arena_storage(config)
+    set_active_config(config)
+    set_arena_storage(storage)
+    storage.load_existing()
+    storage.set_warrior_lines(0, 1, ["MOV 0, 0\n"])
+
+    def fake_execute_battle_with_sources(
+        arena_index,
+        warrior_id,
+        warrior_code,
+        bench_identifier,
+        bench_code,
+        era,
+        verbose=False,
+        seed=None,
+    ):
+        return [warrior_id, bench_identifier], [123, -123]
+
+    monkeypatch.setattr(
+        evolverstage,
+        "execute_battle_with_sources",
+        fake_execute_battle_with_sources,
+    )
+
+    log_path = tmp_path / "benchmark_log.csv"
+    logger = BenchmarkLogger(str(log_path))
+    _log_benchmark_scores_for_champions(
+        era=0,
+        generation=5,
+        champions={0: 1},
+        active_config=config,
+        benchmark_logger=logger,
+    )
+    logger.close()
+
+    lines = [
+        line
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert lines[0] == (
+        "era,generation,arena,champion,benchmark,score,benchmark_path"
+    )
+    assert lines[1].startswith("0,5,0,1,alpha,123")
+
+    if previous_config is not None:
+        set_active_config(previous_config)
+        if previous_storage is not None:
+            set_arena_storage(previous_storage)
+        else:
+            set_arena_storage(create_arena_storage(previous_config))
+    else:
+        fallback_config = evolverstage.load_configuration(str(DEFAULT_SETTINGS_PATH))
+        set_active_config(fallback_config)
+        set_arena_storage(create_arena_storage(fallback_config))
 
 
 def test_run_internal_battle_integration(tmp_path, monkeypatch):
