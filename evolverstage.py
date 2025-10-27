@@ -42,7 +42,7 @@ class BenchmarkWarrior:
 class BenchmarkBattleResult:
     warriors: list[int]
     scores: list[int]
-    detail: str
+    benchmarks_played: int
 
 
 @dataclass
@@ -802,14 +802,10 @@ def _run_benchmark_battle(
 
     cont1_total = totals.get(cont1, 0)
     cont2_total = totals.get(cont2, 0)
-    detail = (
-        f"Scores vs benchmarks: {cont1}={cont1_total}, {cont2}={cont2_total} "
-        f"(benchmarks: {benchmarks_played})"
-    )
     return BenchmarkBattleResult(
         warriors=[cont1, cont2],
         scores=[cont1_total, cont2_total],
-        detail=detail,
+        benchmarks_played=benchmarks_played,
     )
 
 
@@ -1332,6 +1328,24 @@ def _get_progress_status(
         detail_line = "No active era"
 
     return progress_line, detail_line
+
+
+def _log_era_summary(
+    era_index: int,
+    battles_per_era: Sequence[int],
+    archived_per_era: Sequence[int],
+    unarchived_per_era: Sequence[int],
+) -> None:
+    if not (0 <= era_index < len(battles_per_era)):
+        return
+    era_number = era_index + 1
+    summary_lines = [
+        f"Era {era_number} summary:",
+        f"  Battles: {battles_per_era[era_index]}",
+        f"  Warriors archived: {archived_per_era[era_index]}",
+        f"  Warriors unarchived: {unarchived_per_era[era_index]}",
+    ]
+    console_log("\n".join(summary_lines), minimum_level=VerbosityLevel.DEFAULT)
 
 
 def _build_marble_bag(era: int, active_config: EvolverConfig) -> list[Marble]:
@@ -1882,6 +1896,8 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     era_count = len(active_config.battlerounds_list)
     era_duration = active_config.clock_time / era_count
     battles_per_era = [0 for _ in range(era_count)]
+    archived_per_era = [0 for _ in range(era_count)]
+    unarchived_per_era = [0 for _ in range(era_count)]
     total_battles = 0
     generation_counter = 0
     champions: dict[int, int] = {
@@ -1924,6 +1940,13 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
 
             if era != previous_era:
                 console_clear_status()
+                if previous_era >= 0:
+                    _log_era_summary(
+                        previous_era,
+                        battles_per_era,
+                        archived_per_era,
+                        unarchived_per_era,
+                    )
                 if previous_era < 0:
                     console_log(
                         f"========== Starting evolution in era {era + 1} of {era_count} ==========",
@@ -2034,22 +2057,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             else:
                 matchup = " vs ".join(str(warrior) for warrior in warriors)
             if use_benchmark_battle and benchmark_result is not None:
-                if was_draw:
-                    result_segments = [
-                        "Benchmark comparison",
-                        "Result: Draw",
-                        f"Winner (selected): {winner}",
-                        f"Loser: {loser}",
-                        benchmark_result.detail,
-                    ]
-                else:
-                    result_segments = [
-                        "Benchmark comparison",
-                        f"Winner: {winner}",
-                        f"Loser: {loser}",
-                        benchmark_result.detail,
-                    ]
-                battle_result_description = " | ".join(result_segments)
+                battle_result_description = None
             else:
                 if was_draw:
                     battle_result_description = (
@@ -2061,44 +2069,12 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             archiving_result = handle_archiving(
                 winner, loser, arena_index, era, active_config
             )
-            if archiving_result.events:
-                progress_line, default_detail = _get_progress_status(
-                    start_time, active_config.clock_time, era
-                )
-                last_event_line = ""
+            if archiving_result.events and 0 <= era < len(archived_per_era):
                 for event in archiving_result.events:
                     if event.action == "archived":
-                        if event.archive_filename:
-                            action_detail = (
-                                f"Archived Warrior {event.warrior_id} to {event.archive_filename}"
-                            )
-                        else:
-                            action_detail = f"Archived Warrior {event.warrior_id}"
+                        archived_per_era[era] += 1
                     else:
-                        if event.archive_filename:
-                            action_detail = (
-                                f"Unarchived Warrior {event.warrior_id} from {event.archive_filename}"
-                            )
-                        else:
-                            action_detail = (
-                                f"Unarchived Warrior {event.warrior_id}"
-                            )
-
-                    header_line = (
-                        f"{battle_label}: Era {display_era}, Arena {arena_index}"
-                    )
-                    matchup_line = f"    {matchup}"
-                    result_lines = [
-                        f"    {segment}" for segment in battle_result_description.split(" | ")
-                    ]
-                    action_line = f"    Action: {action_detail}"
-                    last_event_line = "\n".join(
-                        [header_line, matchup_line, *result_lines, action_line]
-                    )
-                    console_log(last_event_line, flush=True)
-                console_update_status(
-                    progress_line, last_event_line or default_detail
-                )
+                        unarchived_per_era[era] += 1
 
             if archiving_result.skip_breeding:
                 continue
@@ -2130,15 +2106,23 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                     benchmark_logger=benchmark_logger,
                 )
 
-            battle_line = (
-                f"{battle_label}: "
-                f"Era {display_era}, Arena {arena_index} | {matchup} | {battle_result_description} "
-                f"| Partner: {partner_id}"
-            )
+            battle_segments = [
+                f"{battle_label}: Era {display_era}, Arena {arena_index}",
+                matchup,
+            ]
+            if battle_result_description:
+                battle_segments.append(battle_result_description)
+            battle_segments.append(f"Partner: {partner_id}")
+            battle_line = " | ".join(battle_segments)
             progress_line, default_detail = _get_progress_status(
                 start_time, active_config.clock_time, era
             )
             console_update_status(progress_line, battle_line or default_detail)
+
+        if 0 <= era < len(battles_per_era):
+            _log_era_summary(
+                era, battles_per_era, archived_per_era, unarchived_per_era
+            )
 
     except KeyboardInterrupt:
         console_clear_status()
