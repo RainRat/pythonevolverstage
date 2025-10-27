@@ -1268,6 +1268,7 @@ def execute_battle_with_sources(
     if engine_name == "internal":
         worker_lib = _get_internal_worker_library()
         internal_seed = -1 if seed is None else _normalize_internal_seed(seed)
+        use_1988_rules = 1 if get_arena_spec(arena) == SPEC_1988 else 0
         result_ptr = worker_lib.run_battle(
             normalized_w1.encode("utf-8"),
             cont1,
@@ -1282,6 +1283,7 @@ def execute_battle_with_sources(
             config.warlen_list[arena],
             battlerounds,
             internal_seed,
+            use_1988_rules,
         )
         raw_output = result_ptr
     else:
