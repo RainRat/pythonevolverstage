@@ -3,17 +3,16 @@
 nmars*.*
 pmars*.*
 arena?/*
-!arena?/.gitkeep
 nunit.framework.dll
 SDL.dll
 archive/*
-!archive/.gitkeep
 instructions.txt
 *.bak
 nano.txt
 both.txt
 std.txt
 tiny.txt
+benchmarks/*
 
 # Build artifacts
 build/
