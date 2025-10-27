@@ -347,7 +347,7 @@ def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_con
         assert result is not None
         assert result.warriors == [1, 2]
         assert result.scores == [10, 4]
-        assert "benchmarks: 1" in result.detail
+        assert result.benchmarks_played == 1
     finally:
         if previous_config is not None:
             evolverstage.set_active_config(previous_config)
