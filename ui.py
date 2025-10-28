@@ -143,8 +143,10 @@ class StatusDisplay:
         now = time.monotonic()
         if self._last_update_time:
             elapsed = now - self._last_update_time
-            if elapsed < _STATUS_UPDATE_MIN_INTERVAL:
-                return
+            remaining = _STATUS_UPDATE_MIN_INTERVAL - elapsed
+            if remaining > 0:
+                time.sleep(remaining)
+                now = time.monotonic()
 
         self._last_update_time = now
 
