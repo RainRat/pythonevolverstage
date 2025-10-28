@@ -128,6 +128,7 @@ class StatusDisplay:
         self._active_lines = 0
         self._last_update_time = 0.0
         self._last_lines: Optional[Tuple[str, str]] = None
+        self._pending_lines: Optional[Tuple[str, str]] = None
 
     def _stream(self):
         return sys.stdout
@@ -137,21 +138,33 @@ class StatusDisplay:
 
     def update(self, line1: str, line2: str) -> None:
         lines_tuple = (line1, line2)
-        if self._last_lines == lines_tuple:
+        if self._last_lines == lines_tuple and self._pending_lines is None:
             return
 
         now = time.monotonic()
+        self._pending_lines = lines_tuple
         if self._last_update_time:
             elapsed = now - self._last_update_time
-            remaining = _STATUS_UPDATE_MIN_INTERVAL - elapsed
-            if remaining > 0:
-                time.sleep(remaining)
-                now = time.monotonic()
+            if elapsed < _STATUS_UPDATE_MIN_INTERVAL:
+                return
+
+        self._emit_pending(now)
+
+    def _emit_pending(self, now: Optional[float] = None) -> None:
+        if self._pending_lines is None:
+            return
+        if self._pending_lines == self._last_lines:
+            self._pending_lines = None
+            return
+
+        if now is None:
+            now = time.monotonic()
 
         self._last_update_time = now
 
         stream = self._stream()
         supports_ansi = self._supports_ansi(stream)
+        line1, line2 = self._pending_lines
         lines = [line1, line2]
 
         if supports_ansi and self._active_lines:
@@ -167,12 +180,14 @@ class StatusDisplay:
 
         stream.flush()
         self._active_lines = len(lines) if supports_ansi else 0
-        self._last_lines = lines_tuple
+        self._last_lines = self._pending_lines
+        self._pending_lines = None
 
     def clear(self) -> None:
         if not self._active_lines:
             self._last_lines = None
             self._last_update_time = 0.0
+            self._pending_lines = None
             return
 
         stream = self._stream()
@@ -181,6 +196,7 @@ class StatusDisplay:
             self._active_lines = 0
             self._last_lines = None
             self._last_update_time = 0.0
+            self._pending_lines = None
             return
 
         stream.write(f"\x1b[{self._active_lines}F")
@@ -193,6 +209,7 @@ class StatusDisplay:
         self._active_lines = 0
         self._last_lines = None
         self._last_update_time = 0.0
+        self._pending_lines = None
 
 
 class SimpleConsole(ConsoleInterface):
