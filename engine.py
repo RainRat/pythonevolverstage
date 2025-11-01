@@ -184,6 +184,33 @@ def canonicalize_opcode(opcode: str) -> str:
     return OPCODE_ALIASES.get(opcode, opcode)
 
 
+def _build_opcode_pool(
+    allowed_opcodes: set[str],
+    default_pool: Sequence[str],
+    *,
+    instr_set: Sequence[str],
+) -> tuple[list[str], set[str], bool]:
+    pool: list[str] = []
+    invalid_opcodes: set[str] = set()
+    for instr in instr_set:
+        normalized = instr.strip().upper()
+        if not normalized:
+            continue
+        canonical_opcode = OPCODE_ALIASES.get(normalized, normalized)
+        if (
+            canonical_opcode in UNSUPPORTED_OPCODES
+            or canonical_opcode not in allowed_opcodes
+        ):
+            invalid_opcodes.add(normalized)
+            continue
+        pool.append(canonical_opcode)
+
+    if not pool and default_pool:
+        return list(default_pool), invalid_opcodes, True
+
+    return pool, invalid_opcodes, False
+
+
 GENERATION_OPCODE_POOL: list[str] = []
 _sync_export("GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL)
 GENERATION_OPCODE_POOL_1988: list[str] = []
@@ -200,23 +227,19 @@ def rebuild_instruction_tables(active_config: "EvolverConfig") -> None:
         )
     _sync_export("ADDRESSING_MODES", ADDRESSING_MODES)
 
-    invalid_generation_opcodes = set()
-    GENERATION_OPCODE_POOL = []
     invalid_reasons: list[str] = []
     allowed_1994 = SPEC_ALLOWED_OPCODES[SPEC_1994]
     instr_set = active_config.instr_set or []
-    for instr in instr_set:
-        normalized = instr.strip().upper()
-        if not normalized:
-            continue
-        canonical_opcode = OPCODE_ALIASES.get(normalized, normalized)
-        if (
-            canonical_opcode in UNSUPPORTED_OPCODES
-            or canonical_opcode not in allowed_1994
-        ):
-            invalid_generation_opcodes.add(normalized)
-            continue
-        GENERATION_OPCODE_POOL.append(canonical_opcode)
+
+    (
+        GENERATION_OPCODE_POOL,
+        invalid_generation_opcodes,
+        _,
+    ) = _build_opcode_pool(
+        allowed_1994,
+        [],
+        instr_set=instr_set,
+    )
 
     if invalid_generation_opcodes:
         invalid_reasons.append(
@@ -236,25 +259,22 @@ def rebuild_instruction_tables(active_config: "EvolverConfig") -> None:
 
     _sync_export("GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL)
 
-    allowed_1988 = SPEC_ALLOWED_OPCODES[SPEC_1988]
-    filtered_1988: list[str] = []
-    for instr in instr_set:
-        normalized = instr.strip().upper()
-        if not normalized:
-            continue
-        canonical_opcode = OPCODE_ALIASES.get(normalized, normalized)
-        if canonical_opcode in allowed_1988 and canonical_opcode not in UNSUPPORTED_OPCODES:
-            filtered_1988.append(canonical_opcode)
-
-    if not filtered_1988:
-        GENERATION_OPCODE_POOL_1988 = list(DEFAULT_1988_GENERATION_POOL)
-    else:
-        GENERATION_OPCODE_POOL_1988 = filtered_1988
-        if not any(opcode != "DAT" for opcode in GENERATION_OPCODE_POOL_1988):
-            non_dat_defaults = [
-                opcode for opcode in DEFAULT_1988_GENERATION_POOL if opcode != "DAT"
-            ]
-            GENERATION_OPCODE_POOL_1988.extend(non_dat_defaults)
+    (
+        GENERATION_OPCODE_POOL_1988,
+        _,
+        used_default_1988,
+    ) = _build_opcode_pool(
+        SPEC_ALLOWED_OPCODES[SPEC_1988],
+        DEFAULT_1988_GENERATION_POOL,
+        instr_set=instr_set,
+    )
+    if not used_default_1988 and not any(
+        opcode != "DAT" for opcode in GENERATION_OPCODE_POOL_1988
+    ):
+        non_dat_defaults = [
+            opcode for opcode in DEFAULT_1988_GENERATION_POOL if opcode != "DAT"
+        ]
+        GENERATION_OPCODE_POOL_1988.extend(non_dat_defaults)
 
     _sync_export("GENERATION_OPCODE_POOL_1988", GENERATION_OPCODE_POOL_1988)
 
@@ -329,16 +349,6 @@ class RedcodeInstruction:
 
 _INT_LITERAL_RE = re.compile(r"^[+-]?\d+$")
 
-_REDCODE_PREFIX_RE = re.compile(
-    r"""
-    ^\s*
-    (?:(?P<label>[A-Za-z_.$][\w.$]*)(?::)?\s+)?
-    (?P<opcode>[A-Za-z]+)
-    (?P<modifier_part>(?:\s*\.\s*[A-Za-z]+)?)
-    """,
-    re.VERBOSE,
-)
-
 _REDCODE_INSTRUCTION_RE = re.compile(
     r"""
     ^\s*
@@ -406,14 +416,11 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     if not code_part:
         return None
 
-    prefix_match = _REDCODE_PREFIX_RE.match(code_part)
-    if not prefix_match:
-        raise ValueError(f"Invalid instruction format: '{code_part}'")
-    if not prefix_match.group("modifier_part"):
-        raise ValueError("Instruction is missing a modifier")
-
     match = _REDCODE_INSTRUCTION_RE.match(code_part)
     if not match:
+        before_comma = code_part.split(",", 1)[0]
+        if "." not in before_comma:
+            raise ValueError("Instruction is missing a modifier")
         raise ValueError(f"Invalid instruction format: '{code_part}'")
 
     label = match.group("label")
