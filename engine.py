@@ -15,6 +15,7 @@ import time
 import sys
 import uuid
 import warnings
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
@@ -603,16 +604,6 @@ def generate_warrior_lines_until_non_dat(
             parse_instruction_or_default(line).opcode != "DAT" for line in lines if line
         ):
             return lines
-
-
-class Marble(Enum):
-    DO_NOTHING = 0
-    MAJOR_MUTATION = 1
-    NAB_INSTRUCTION = 2
-    MINOR_MUTATION = 3
-    MICRO_MUTATION = 4
-    INSTRUCTION_LIBRARY = 5
-    MAGIC_NUMBER_MUTATION = 6
 
 
 class BattleType(Enum):
@@ -1622,7 +1613,21 @@ def get_archive_storage() -> ArchiveStorage:
             "Archive storage has not been initialized. Call set_archive_storage() before use."
         )
     return storage
-MutationHandler = Callable[[RedcodeInstruction, int, "EvolverConfig", int], RedcodeInstruction]
+
+
+class BaseMutationStrategy(ABC):
+    """Common interface for all mutation strategies."""
+
+    @abstractmethod
+    def apply(
+        self,
+        instruction: RedcodeInstruction,
+        arena: int,
+        config: "EvolverConfig",
+        magic_number: int,
+    ) -> RedcodeInstruction:
+        """Apply the mutation to the provided instruction."""
+        raise NotImplementedError
 
 
 def apply_major_mutation(
@@ -1736,15 +1741,81 @@ def apply_magic_number_mutation(
     return instruction
 
 
-MUTATION_HANDLERS: dict[Marble, MutationHandler] = {
-    Marble.DO_NOTHING: lambda instr, *_: instr,
-    Marble.MAJOR_MUTATION: apply_major_mutation,
-    Marble.NAB_INSTRUCTION: apply_nab_instruction,
-    Marble.MINOR_MUTATION: apply_minor_mutation,
-    Marble.MICRO_MUTATION: apply_micro_mutation,
-    Marble.INSTRUCTION_LIBRARY: apply_instruction_library,
-    Marble.MAGIC_NUMBER_MUTATION: apply_magic_number_mutation,
-}
+class DoNothingMutation(BaseMutationStrategy):
+    def apply(
+        self,
+        instruction: RedcodeInstruction,
+        _arena: int,
+        _config: "EvolverConfig",
+        _magic_number: int,
+    ) -> RedcodeInstruction:
+        return instruction
+
+
+class MajorMutation(BaseMutationStrategy):
+    def apply(
+        self,
+        instruction: RedcodeInstruction,
+        arena: int,
+        config: "EvolverConfig",
+        magic_number: int,
+    ) -> RedcodeInstruction:
+        return apply_major_mutation(instruction, arena, config, magic_number)
+
+
+class NabInstruction(BaseMutationStrategy):
+    def apply(
+        self,
+        instruction: RedcodeInstruction,
+        arena: int,
+        config: "EvolverConfig",
+        magic_number: int,
+    ) -> RedcodeInstruction:
+        return apply_nab_instruction(instruction, arena, config, magic_number)
+
+
+class MinorMutation(BaseMutationStrategy):
+    def apply(
+        self,
+        instruction: RedcodeInstruction,
+        arena: int,
+        config: "EvolverConfig",
+        magic_number: int,
+    ) -> RedcodeInstruction:
+        return apply_minor_mutation(instruction, arena, config, magic_number)
+
+
+class MicroMutation(BaseMutationStrategy):
+    def apply(
+        self,
+        instruction: RedcodeInstruction,
+        arena: int,
+        config: "EvolverConfig",
+        magic_number: int,
+    ) -> RedcodeInstruction:
+        return apply_micro_mutation(instruction, arena, config, magic_number)
+
+
+class InstructionLibraryMutation(BaseMutationStrategy):
+    def apply(
+        self,
+        instruction: RedcodeInstruction,
+        arena: int,
+        config: "EvolverConfig",
+        magic_number: int,
+    ) -> RedcodeInstruction:
+        return apply_instruction_library(instruction, arena, config, magic_number)
+
+
+class MagicNumberMutation(BaseMutationStrategy):
+    def apply(
+        self,
+        instruction: RedcodeInstruction,
+        arena: int,
+        config: "EvolverConfig",
+        magic_number: int,
+    ) -> RedcodeInstruction:
+        return apply_magic_number_mutation(instruction, arena, config, magic_number)
 
 
 @dataclass
@@ -1821,7 +1892,7 @@ def breed_offspring(
     arena: int,
     era: int,
     config: "EvolverConfig",
-    bag: list[Marble],
+    bag: list[BaseMutationStrategy],
     data_logger: "DataLogger",
     scores: list[int],
     warriors: list[int],
@@ -1870,10 +1941,10 @@ def breed_offspring(
                 source_line = ranlines[i] if i < len(ranlines) else ""
 
             instruction = parse_instruction_or_default(source_line)
-            chosen_marble = _rng_choice(bag)
-            handler = MUTATION_HANDLERS.get(chosen_marble)
-            if handler:
-                instruction = handler(instruction, arena, config, magic_number)
+            chosen_strategy = _rng_choice(bag)
+            instruction = chosen_strategy.apply(
+                instruction, arena, config, magic_number
+            )
 
             offspring_lines.append(instruction_to_line(instruction, arena))
             magic_number -= 1
@@ -2026,17 +2097,22 @@ __all__ = [
     "DiskArchiveStorage",
     "set_archive_storage",
     "get_archive_storage",
-    "Marble",
+    "BaseMutationStrategy",
+    "DoNothingMutation",
+    "MajorMutation",
+    "NabInstruction",
+    "MinorMutation",
+    "MicroMutation",
+    "InstructionLibraryMutation",
+    "MagicNumberMutation",
     "BattleType",
     "choose_battle_type",
-    "MutationHandler",
     "apply_major_mutation",
     "apply_nab_instruction",
     "apply_minor_mutation",
     "apply_micro_mutation",
     "apply_instruction_library",
     "apply_magic_number_mutation",
-    "MUTATION_HANDLERS",
     "ArchivingEvent",
     "ArchivingResult",
     "handle_archiving",
