@@ -741,11 +741,17 @@ def _candidate_worker_paths() -> list[Path]:
     ]
 
     build_dir = project_root / "build"
+    multi_config_dirs = [
+        build_dir / "Debug",
+        build_dir / "Release",
+    ]
     system_dirs = [Path("/usr/local/lib")]
 
     for lib_name in library_names:
         candidates.append(project_root / lib_name)
         candidates.append(build_dir / lib_name)
+        for multi_config_dir in multi_config_dirs:
+            candidates.append(multi_config_dir / lib_name)
         for system_dir in system_dirs:
             candidates.append(system_dir / lib_name)
 
