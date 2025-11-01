@@ -59,7 +59,7 @@ FINAL_ERA_ONLY=True
 	- Nab instruction from another arena
 	- Mini-mutation (change one thing about instruction)
 	- Micro mutation. Increment or decrement a constant by one. Most prominent in the Optimization era.
-	- Pull single instruction from instruction library. Maybe a previous evolution run, maybe one or more hand-written warriors. One text file. One instruction per line. Just assembled instructions, nothing else. If multiple warriors, just concatenated with no breaks. (Not needed and not included with distribution.)
+        - Pull single instruction from instruction library. Maybe a previous evolution run, maybe one or more hand-written warriors. Keep the library as a plain text file with one assembled instruction per line (labels removed, operands resolved). The helper script `create_instruction_library.py` can build this automatically from pMARS output. See "Building an instruction library" below for a worked example. (Not needed and not included with distribution.)
 8. Evolution strategy - Magic Number
 	Let's look at the classic warrior, MICE (it's written in the old format, but that's ok, it's just for example):
 ```
@@ -111,6 +111,29 @@ Results of battles saved so you can analyse your progress. Current fields are 'e
         - After the final tournament, the console prints arena averages, benchmark comparisons, and a per-warrior summary showing average score, standard deviation, and how many arenas each competitor appeared in. The report also highlights the most consistent performers (low variance with strong results) so that you can spot reliable generalists at a glance.
         - If you export the tournament standings (`FINAL_TOURNAMENT_CSV` in `settings.ini`), the rankings for every arena are written to disk alongside those console insights.
         - Whenever the main loop finishes—or you interrupt it with Ctrl+C—the evolver prints an evolution statistics digest listing battles per era, the total battle count, and the approximate speed in battles per hour. This makes it easy to compare throughput between different hardware setups or parameter combinations.
+
+## Building an instruction library
+
+The evolver can borrow instructions from an external library so that promising
+snippets from previous runs (or hand-written warriors) stay in circulation. To
+take advantage of the `LIBRARY_PATH` configuration option:
+
+1. Assemble the warriors you want to mine for instructions. The repo includes
+   example pMARS output under `baseline/`, such as `baseline/jmn_djn_assembled.txt`.
+   The evolver expects instructions with labels resolved and operands present—
+   the format produced by running `pmars -o`.
+2. Run the helper script to extract, deduplicate, and sort the instructions:
+
+   ```bash
+   python create_instruction_library.py baseline/jmn_djn_assembled.txt \
+       baseline/div_assembled.txt -o instructions.txt
+   ```
+
+   The resulting `instructions.txt` contains one assembled instruction per line
+   and is safe to place under version control or share with other runs.
+3. Point `LIBRARY_PATH` in `settings.ini` to the generated file. The evolver will
+   draw instructions from the library whenever the `LIBRARY_LIST` probability
+   selects that marble.
 
 ## Compiling `redcode-worker.cpp`
 
