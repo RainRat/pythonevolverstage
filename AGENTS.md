@@ -9,6 +9,8 @@ Currently evolverstage.py supports:
 
 Configuration overrides belong in `settings.ini` as the single source of truth. Command-line flags are only `--config`, `--seed`, and `--verbosity`. Do not add more command-line flags unless specifically requested.
 
+Do not write in user-facing docs that a feature is "new", or write in code comments that a method uses a "new way". Such references become obsolete. Remove them if seen.
+
 The Python program:
 -Expects to receive programs that are already assembled, with all fields present, like:
 ```
