@@ -725,6 +725,9 @@ def _format_candidate(path: Path | str) -> str:
 def _candidate_worker_paths() -> list[Path]:
     module_dir = Path(__file__).resolve().parent
     project_root = module_dir.parent
+    if not (project_root / "CMakeLists.txt").exists():
+        project_root = module_dir
+
     candidates: list[Path] = []
 
     env_override = os.environ.get("CPP_WORKER_LIB")
@@ -733,27 +736,18 @@ def _candidate_worker_paths() -> list[Path]:
 
     extension = _worker_library_extension()
     library_names = [
-        f"libredcode_worker{extension}",
         f"redcode_worker{extension}",
+        f"libredcode_worker{extension}",
     ]
 
-    system_dirs = [
-        Path("/usr/local/lib"),
-        Path("/usr/lib"),
-        Path("/lib"),
-    ]
+    build_dir = project_root / "build"
+    system_dirs = [Path("/usr/local/lib")]
 
     for lib_name in library_names:
-        project_candidates = [
-            module_dir / lib_name,
-            project_root / lib_name,
-            project_root / "build" / lib_name,
-            project_root / "build" / "Debug" / lib_name,
-            project_root / "build" / "Release" / lib_name,
-        ]
-        system_candidates = [directory / lib_name for directory in system_dirs]
-        candidates.extend(project_candidates)
-        candidates.extend(system_candidates)
+        candidates.append(project_root / lib_name)
+        candidates.append(build_dir / lib_name)
+        for system_dir in system_dirs:
+            candidates.append(system_dir / lib_name)
 
     return _deduplicate_paths(candidates)
 
