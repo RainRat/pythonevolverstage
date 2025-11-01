@@ -996,7 +996,7 @@ def test_in_memory_storage_defers_disk_writes_until_required(tmp_path):
     evolverstage.set_active_config(_DEFAULT_CONFIG)
 
 
-def test_build_marble_bag_combines_marble_counts():
+def test_build_marble_bag_combines_strategy_counts():
     config = replace(
         _DEFAULT_CONFIG,
         nothing_list=[1],
@@ -1010,13 +1010,28 @@ def test_build_marble_bag_combines_marble_counts():
 
     bag = evolverstage._build_marble_bag(0, config)
 
-    assert bag.count(evolverstage.Marble.DO_NOTHING) == 1
-    assert bag.count(evolverstage.Marble.MAJOR_MUTATION) == 2
-    assert bag.count(evolverstage.Marble.NAB_INSTRUCTION) == 3
-    assert bag.count(evolverstage.Marble.MINOR_MUTATION) == 4
-    assert bag.count(evolverstage.Marble.MICRO_MUTATION) == 5
-    assert bag.count(evolverstage.Marble.INSTRUCTION_LIBRARY) == 6
-    assert bag.count(evolverstage.Marble.MAGIC_NUMBER_MUTATION) == 7
+    assert sum(
+        isinstance(strategy, evolverstage.DoNothingMutation) for strategy in bag
+    ) == 1
+    assert sum(
+        isinstance(strategy, evolverstage.MajorMutation) for strategy in bag
+    ) == 2
+    assert sum(
+        isinstance(strategy, evolverstage.NabInstruction) for strategy in bag
+    ) == 3
+    assert sum(
+        isinstance(strategy, evolverstage.MinorMutation) for strategy in bag
+    ) == 4
+    assert sum(
+        isinstance(strategy, evolverstage.MicroMutation) for strategy in bag
+    ) == 5
+    assert sum(
+        isinstance(strategy, evolverstage.InstructionLibraryMutation)
+        for strategy in bag
+    ) == 6
+    assert sum(
+        isinstance(strategy, evolverstage.MagicNumberMutation) for strategy in bag
+    ) == 7
     assert len(bag) == sum(range(1, 8))
 
 

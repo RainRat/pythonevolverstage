@@ -1522,16 +1522,25 @@ def _log_era_summary(
     console_log("\n".join(summary_lines), minimum_level=VerbosityLevel.DEFAULT)
 
 
-def _build_marble_bag(era: int, active_config: EvolverConfig) -> list[Marble]:
-    return (
-        [Marble.DO_NOTHING] * active_config.nothing_list[era]
-        + [Marble.MAJOR_MUTATION] * active_config.random_list[era]
-        + [Marble.NAB_INSTRUCTION] * active_config.nab_list[era]
-        + [Marble.MINOR_MUTATION] * active_config.mini_mut_list[era]
-        + [Marble.MICRO_MUTATION] * active_config.micro_mut_list[era]
-        + [Marble.INSTRUCTION_LIBRARY] * active_config.library_list[era]
-        + [Marble.MAGIC_NUMBER_MUTATION] * active_config.magic_number_list[era]
+def _build_marble_bag(
+    era: int, active_config: EvolverConfig
+) -> list[BaseMutationStrategy]:
+    bag: list[BaseMutationStrategy] = []
+
+    bag.extend(DoNothingMutation() for _ in range(active_config.nothing_list[era]))
+    bag.extend(MajorMutation() for _ in range(active_config.random_list[era]))
+    bag.extend(NabInstruction() for _ in range(active_config.nab_list[era]))
+    bag.extend(MinorMutation() for _ in range(active_config.mini_mut_list[era]))
+    bag.extend(MicroMutation() for _ in range(active_config.micro_mut_list[era]))
+    bag.extend(
+        InstructionLibraryMutation()
+        for _ in range(active_config.library_list[era])
     )
+    bag.extend(
+        MagicNumberMutation() for _ in range(active_config.magic_number_list[era])
+    )
+
+    return bag
 
 
 def run_final_tournament(active_config: EvolverConfig):
@@ -2014,7 +2023,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     benchmark_logger = BenchmarkLogger(
         filename=active_config.benchmark_log_file
     )
-    bag: list[Marble] = []
+    bag: list[BaseMutationStrategy] = []
     interrupted = False
     era_count = len(active_config.battlerounds_list)
     era_duration = active_config.clock_time / era_count
