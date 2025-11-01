@@ -7,16 +7,16 @@ import csv
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 import optuna
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent
 BASE_SETTINGS_PATH = REPO_ROOT / "settings.ini"
 TRIAL_OUTPUT_ROOT = REPO_ROOT / "optuna_trials"
-TUNING_ARENA_INDEX = 4
-CLOCK_TIME_HOURS = 0.25
 
 _ARENA_LIST_KEYS = [
     "CORESIZE_LIST",
@@ -31,25 +31,54 @@ _ARENA_LIST_KEYS = [
     "ARENA_WEIGHT_LIST",
 ]
 
-_PER_ERA_INT_SPACES = {
-    "BATTLEROUNDS_LIST": (1, 200),
-    "BENCHMARK_BATTLE_FREQUENCY_LIST": (0, 50),
-    "CHAMPION_BATTLE_FREQUENCY_LIST": (0, 50),
-    "RANDOM_PAIR_BATTLE_FREQUENCY_LIST": (0, 200),
-    "ARCHIVE_LIST": (0, 10000),
-    "UNARCHIVE_LIST": (0, 10000),
-    "CROSSOVERRATE_LIST": (1, 40),
-    "TRANSPOSITIONRATE_LIST": (1, 40),
-    "NOTHING_LIST": (0, 40),
-    "RANDOM_LIST": (0, 20),
-    "NAB_LIST": (0, 20),
-    "MINI_MUT_LIST": (0, 20),
-    "MICRO_MUT_LIST": (0, 20),
-    "LIBRARY_LIST": (0, 20),
-    "MAGIC_NUMBER_LIST": (0, 20),
-}
+@dataclass(frozen=True)
+class OptimizerConfig:
+    tuning_arena_index: int
+    clock_time_hours: float
+    n_trials: int
+    per_era_int_spaces: dict[str, tuple[int, int]]
+    per_era_bool_keys: list[str]
 
-_PER_ERA_BOOL_KEYS = ["PREFER_WINNER_LIST"]
+
+def _load_optimizer_config(path: Path) -> OptimizerConfig:
+    with path.open("r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle)
+
+    if not isinstance(data, dict):
+        raise ValueError("Optimizer configuration must be a mapping")
+
+    try:
+        tuning_arena_index = int(data["tuning_arena_index"])
+        clock_time_hours = float(data["clock_time_hours"])
+        n_trials = int(data["n_trials"])
+    except KeyError as exc:
+        raise ValueError(f"Missing required optimizer config key: {exc.args[0]}") from exc
+
+    raw_spaces = data.get("per_era_int_spaces", {})
+    if not isinstance(raw_spaces, dict):
+        raise ValueError("per_era_int_spaces must be a mapping of key to [low, high]")
+
+    per_era_int_spaces: dict[str, tuple[int, int]] = {}
+    for key, value in raw_spaces.items():
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ValueError(
+                f"per_era_int_spaces entry for {key!r} must be a list of two integers"
+            )
+        low, high = value
+        per_era_int_spaces[key] = (int(low), int(high))
+
+    raw_bool_keys = data.get("per_era_bool_keys", [])
+    if not isinstance(raw_bool_keys, list):
+        raise ValueError("per_era_bool_keys must be a list of strings")
+    per_era_bool_keys = [str(item) for item in raw_bool_keys]
+
+    return OptimizerConfig(
+        tuning_arena_index=tuning_arena_index,
+        clock_time_hours=clock_time_hours,
+        n_trials=n_trials,
+        per_era_int_spaces=per_era_int_spaces,
+        per_era_bool_keys=per_era_bool_keys,
+    )
 
 
 def _load_base_configuration() -> configparser.ConfigParser:
@@ -78,15 +107,15 @@ def _get_era_count() -> int:
 ERA_COUNT = _get_era_count()
 
 
-def _get_arena_specific_value(key: str) -> str:
+def _get_arena_specific_value(key: str, arena_index: int) -> str:
     values = _parse_list(_BASE_DEFAULTS.get(key, ""))
     if not values:
         raise RuntimeError(f"Missing list value for {key} in settings.ini")
-    if TUNING_ARENA_INDEX >= len(values):
+    if arena_index >= len(values):
         raise RuntimeError(
-            f"Arena index {TUNING_ARENA_INDEX} is out of range for {key} (length={len(values)})"
+            f"Arena index {arena_index} is out of range for {key} (length={len(values)})"
         )
-    return values[TUNING_ARENA_INDEX]
+    return values[arena_index]
 
 
 def _suggest_per_era_ints(trial: optuna.trial.Trial, key: str, bounds: tuple[int, int]) -> list[int]:
@@ -112,7 +141,9 @@ def _set_list(config: configparser.ConfigParser, key: str, values: Iterable[obje
     config["DEFAULT"][key] = ",".join(str(v) for v in values)
 
 
-def _build_trial_configuration(trial: optuna.trial.Trial, run_dir: Path) -> Path:
+def _build_trial_configuration(
+    trial: optuna.trial.Trial, run_dir: Path, optimizer_config: OptimizerConfig
+) -> Path:
     config = configparser.ConfigParser()
     config.optionxform = str
     config["DEFAULT"] = {}
@@ -121,17 +152,19 @@ def _build_trial_configuration(trial: optuna.trial.Trial, run_dir: Path) -> Path
 
     config["DEFAULT"]["LAST_ARENA"] = "0"
     for key in _ARENA_LIST_KEYS:
-        config["DEFAULT"][key] = _get_arena_specific_value(key)
+        config["DEFAULT"][key] = _get_arena_specific_value(
+            key, optimizer_config.tuning_arena_index
+        )
 
-    for key, bounds in _PER_ERA_INT_SPACES.items():
+    for key, bounds in optimizer_config.per_era_int_spaces.items():
         values = _suggest_per_era_ints(trial, key, bounds)
         _set_list(config, key, values)
 
-    for key in _PER_ERA_BOOL_KEYS:
+    for key in optimizer_config.per_era_bool_keys:
         values = _suggest_per_era_bools(trial, key)
         _set_list(config, key, ("True" if value else "False" for value in values))
 
-    config["DEFAULT"]["CLOCK_TIME"] = str(CLOCK_TIME_HOURS)
+    config["DEFAULT"]["CLOCK_TIME"] = str(optimizer_config.clock_time_hours)
     config["DEFAULT"]["RUN_FINAL_TOURNAMENT"] = "True"
     config["DEFAULT"]["BENCHMARK_FINAL_TOURNAMENT"] = "True"
     config["DEFAULT"]["FINAL_TOURNAMENT_CSV"] = "final_tournament.csv"
@@ -150,7 +183,7 @@ def _prepare_arena_directory(run_dir: Path) -> None:
     arena_dir.mkdir(parents=True, exist_ok=True)
 
 
-def _run_trial(trial: optuna.trial.Trial) -> float:
+def _run_trial(trial: optuna.trial.Trial, optimizer_config: OptimizerConfig) -> float:
     trial_dir = TRIAL_OUTPUT_ROOT / f"trial_{trial.number:04d}"
     if trial_dir.exists():
         shutil.rmtree(trial_dir)
@@ -159,7 +192,7 @@ def _run_trial(trial: optuna.trial.Trial) -> float:
     run_dir.mkdir(parents=True)
 
     _prepare_arena_directory(run_dir)
-    config_path = _build_trial_configuration(trial, run_dir)
+    config_path = _build_trial_configuration(trial, run_dir, optimizer_config)
 
     cmd = [sys.executable, "evolverstage.py", "--config", str(config_path), "--seed", str(trial.number)]
     subprocess.run(cmd, check=True, cwd=REPO_ROOT)
@@ -199,19 +232,33 @@ def _run_trial(trial: optuna.trial.Trial) -> float:
     return float(best_score)
 
 
-def objective(trial: optuna.trial.Trial) -> float:
-    return _run_trial(trial)
+def objective(trial: optuna.trial.Trial, optimizer_config: OptimizerConfig) -> float:
+    return _run_trial(trial, optimizer_config)
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Optuna optimizer for evolverstage settings")
-    parser.add_argument("--trials", type=int, default=10, help="Number of Optuna trials to run")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=REPO_ROOT / "optimizer_config.yaml",
+        help="Path to optimizer YAML configuration file",
+    )
+    parser.add_argument(
+        "--trials",
+        type=int,
+        default=None,
+        help="Number of Optuna trials to run (overrides YAML config if provided)",
+    )
     args = parser.parse_args(argv)
 
     TRIAL_OUTPUT_ROOT.mkdir(parents=True, exist_ok=True)
 
+    optimizer_config = _load_optimizer_config(args.config)
+    n_trials = args.trials if args.trials is not None else optimizer_config.n_trials
+
     study = optuna.create_study(direction="maximize")
-    study.optimize(objective, n_trials=args.trials)
+    study.optimize(lambda trial: objective(trial, optimizer_config), n_trials=n_trials)
 
     print("Best score:", study.best_value)
     print("Best parameters:")
