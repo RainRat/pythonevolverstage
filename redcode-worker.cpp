@@ -835,6 +835,102 @@ void validate_battle_parameters(
     }
 }
 
+struct PmarsRNG {
+    explicit PmarsRNG(int seed) {
+        if (seed >= 0) {
+            rng_state = normalize_seed(static_cast<int64_t>(seed) + 1);
+        } else {
+            std::random_device rd;
+            rng_state = normalize_seed(static_cast<int64_t>(rd()) + 1);
+        }
+    }
+
+    int32_t current_state() const {
+        return rng_state;
+    }
+
+    void advance() {
+        rng_state = advance_state(rng_state);
+    }
+
+    static int32_t normalize_seed(int64_t raw_seed) {
+        constexpr int64_t modulus = 2147483647LL - 1LL;
+        int64_t adjusted = raw_seed % modulus;
+        if (adjusted <= 0) {
+            adjusted += modulus;
+        }
+        return static_cast<int32_t>(adjusted);
+    }
+
+    static int32_t advance_state(int32_t state) {
+        constexpr int64_t multiplier = 16807;
+        constexpr int64_t divisor = 127773;
+        constexpr int64_t remainder = 2836;
+        constexpr int64_t modulus = 2147483647;
+
+        int64_t hi = state / divisor;
+        int64_t lo = state % divisor;
+        int64_t temp = multiplier * lo - remainder * hi;
+        if (temp <= 0) {
+            temp += modulus;
+        }
+        return static_cast<int32_t>(temp);
+    }
+
+private:
+    int32_t rng_state;
+};
+
+int run_single_round(
+    Core& core,
+    int w1_start,
+    int w2_start,
+    int max_cycles,
+    int read_limit,
+    int write_limit,
+    int max_processes,
+    int first_index
+) {
+    core.process_queues[0].clear();
+    core.process_queues[1].clear();
+
+    core.process_queues[0].push_back({w1_start, 0});
+    core.process_queues[1].push_back({w2_start, 1});
+
+    int winner_index = -1;
+    int second_index = 1 - first_index;
+
+    auto execute_turn = [&](int current_index, int opponent_index) {
+        if (core.process_queues[current_index].empty()) {
+            return;
+        }
+        WarriorProcess process = core.process_queues[current_index].front();
+        core.process_queues[current_index].pop_front();
+        core.execute(process, read_limit, write_limit, max_processes);
+
+        if (winner_index == -1) {
+            bool current_empty = core.process_queues[current_index].empty();
+            bool opponent_empty = core.process_queues[opponent_index].empty();
+            if (current_empty && !opponent_empty) {
+                winner_index = opponent_index;
+            } else if (!current_empty && opponent_empty) {
+                winner_index = current_index;
+            }
+        }
+    };
+
+    for (int cycle = 0; cycle < max_cycles; ++cycle) {
+        if (core.process_queues[0].empty() || core.process_queues[1].empty()) {
+            break;
+        }
+
+        execute_turn(first_index, second_index);
+        execute_turn(second_index, first_index);
+    }
+
+    return winner_index;
+}
+
 extern "C" {
     const char* run_battle(
         const char* warrior1_code, int w1_id,
@@ -894,37 +990,7 @@ extern "C" {
                 return response.c_str();
             }
 
-            auto normalize_pmars_seed = [](int64_t raw_seed) {
-                constexpr int64_t modulus = 2147483647LL - 1LL;
-                int64_t adjusted = raw_seed % modulus;
-                if (adjusted <= 0) {
-                    adjusted += modulus;
-                }
-                return static_cast<int32_t>(adjusted);
-            };
-
-            auto advance_pmars_seed = [](int32_t state) {
-                constexpr int64_t multiplier = 16807;
-                constexpr int64_t divisor = 127773;
-                constexpr int64_t remainder = 2836;
-                constexpr int64_t modulus = 2147483647;
-
-                int64_t hi = state / divisor;
-                int64_t lo = state % divisor;
-                int64_t temp = multiplier * lo - remainder * hi;
-                if (temp <= 0) {
-                    temp += modulus;
-                }
-                return static_cast<int32_t>(temp);
-            };
-
-            int32_t rng_state;
-            if (seed >= 0) {
-                rng_state = normalize_pmars_seed(static_cast<int64_t>(seed) + 1);
-            } else {
-                std::random_device rd;
-                rng_state = normalize_pmars_seed(static_cast<int64_t>(rd()) + 1);
-            }
+            PmarsRNG rng(seed);
             const char* trace_file = std::getenv("REDCODE_TRACE_FILE");
 
             int w1_score = 0;
@@ -946,9 +1012,9 @@ extern "C" {
                 if (use_exhaustive) {
                     w2_start = (min_distance + r) % core_size;
                 } else {
-                    int offset = rng_state % placements;
+                    int offset = rng.current_state() % placements;
                     w2_start = (min_distance + offset) % core_size;
-                    rng_state = advance_pmars_seed(rng_state);
+                    rng.advance();
                 }
 
                 for (size_t i = 0; i < w1_instrs.size(); ++i) {
@@ -958,40 +1024,17 @@ extern "C" {
                     core.memory[normalize(w2_start + i, core_size)] = w2_instrs[i];
                 }
 
-                core.process_queues[0].push_back({w1_start, 0});
-                core.process_queues[1].push_back({w2_start, 1});
-
-                int winner_index = -1;
                 int first_index = (r % 2 == 0) ? 0 : 1;
-                int second_index = 1 - first_index;
-
-                auto execute_turn = [&](int current_index, int opponent_index) {
-                    if (core.process_queues[current_index].empty()) {
-                        return;
-                    }
-                    WarriorProcess process = core.process_queues[current_index].front();
-                    core.process_queues[current_index].pop_front();
-                    core.execute(process, read_limit, write_limit, max_processes);
-
-                    if (winner_index == -1) {
-                        bool current_empty = core.process_queues[current_index].empty();
-                        bool opponent_empty = core.process_queues[opponent_index].empty();
-                        if (current_empty && !opponent_empty) {
-                            winner_index = opponent_index;
-                        } else if (!current_empty && opponent_empty) {
-                            winner_index = current_index;
-                        }
-                    }
-                };
-
-                for (int cycle = 0; cycle < max_cycles; ++cycle) {
-                    if (core.process_queues[0].empty() || core.process_queues[1].empty()) {
-                        break;
-                    }
-
-                    execute_turn(first_index, second_index);
-                    execute_turn(second_index, first_index);
-                }
+                int winner_index = run_single_round(
+                    core,
+                    w1_start,
+                    w2_start,
+                    max_cycles,
+                    read_limit,
+                    write_limit,
+                    max_processes,
+                    first_index
+                );
 
                 if (winner_index == 0) {
                     w1_score += 3;
