@@ -2283,13 +2283,6 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         runtime_seconds=end_time - start_time,
     )
 
-    flush_in_main_cleanup = (
-        active_config.use_in_memory_arenas
-        and active_config.battle_engine == "internal"
-    )
-    if not flush_in_main_cleanup:
-        get_arena_storage().flush_all()
-
     if active_config.run_final_tournament:
         run_final_tournament(active_config)
 
