@@ -253,3 +253,35 @@ cases and gives the best filesystem performance when training warriors.
 
    In either environment, the evolver runs with the repository checked out at `/app` inside the container, so any modifications
    you make to configuration files (for example, `settings.ini`) are automatically visible to the running process.
+
+
+## Running the Stress Test with Docker
+
+The repository includes a dedicated `Dockerfile.stress` and a Python script (`stress_test.py`) to validate the C++ `redcode-worker` against the `pMars` reference implementation. The stress test generates random warriors and runs thousands of battles, comparing the results from both engines to ensure they match.
+
+Build the stress test image:
+
+```bash
+docker build -t corewar-stress-test -f Dockerfile.stress .
+```
+
+Run the stress test container with default settings (10,000 iterations):
+
+```bash
+docker run --rm -it corewar-stress-test
+```
+
+To customize the number of iterations, pass arguments to the script:
+
+```bash
+docker run --rm -it corewar-stress-test python stress_test.py --iterations 50000
+```
+
+### Running on Windows
+
+The same commands work on Windows inside either a WSL 2 terminal or PowerShell. From PowerShell:
+
+```powershell
+docker build -t corewar-stress-test -f Dockerfile.stress .
+docker run --rm -it corewar-stress-test
+```
