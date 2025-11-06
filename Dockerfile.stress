@@ -25,7 +25,6 @@ RUN mkdir -p build \
     && cd build \
     && cmake .. \
     && cmake --build . \
-    && cp redcode_worker.so .. \
     && cd .. \
     && make -C pMars/src CC=gcc CFLAGS="-O4 -fomit-frame-pointer -DSERVER -DEXT94 -DPERMUTATE"
 
