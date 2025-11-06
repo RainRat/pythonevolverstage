@@ -16,7 +16,8 @@ from engine import (
     execute_battle_with_sources,
     _active_config,
 )
-from evolverstage import EvolverConfig
+from evolverstage import load_configuration
+
 
 def generate_random_warrior(length: int, arena: int) -> str:
     """Generates a random warrior of a given length."""
@@ -63,7 +64,7 @@ def main():
     args = parser.parse_args()
 
     # Basic configuration for the engine
-    config = EvolverConfig()
+    config = load_configuration("settings.ini")
     set_engine_config(config)
 
     mismatches = 0
