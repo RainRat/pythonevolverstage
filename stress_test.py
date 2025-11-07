@@ -69,8 +69,8 @@ def main():
     set_engine_config(config)
 
     # Use the warrior length from the config for the first arena
-    warrior_length = config.warlen_list[0]
-
+    #warrior_length = config.warlen_list[0]
+    warrior_length = 2 #temporary to narrow down the mismatches
     mismatches = 0
     for i in range(args.iterations):
         seed = random.randint(0, 2**31 - 1)
