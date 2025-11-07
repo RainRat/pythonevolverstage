@@ -411,11 +411,25 @@ public:
         field = (field % core_size + core_size) % core_size;
     }
 
+    int to_signed(int value) const {
+        int normalized = value % core_size;
+        if (normalized < 0) {
+            normalized += core_size;
+        }
+        int half = core_size / 2;
+        if (normalized >= half) {
+            normalized -= core_size;
+        }
+        return normalized;
+    }
+
 private:
     template <typename Operation>
     void apply_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op) {
         auto apply = [&](int& target, int value) {
-            target = op(target, value);
+            int lhs = to_signed(target);
+            int rhs = to_signed(value);
+            target = op(lhs, rhs);
             normalize_field(target);
         };
 
@@ -447,10 +461,12 @@ private:
     template <typename Operation>
     bool apply_safe_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op) {
         auto apply = [&](int& target, int value) {
-            if (value == 0) {
+            int lhs = to_signed(target);
+            int rhs = to_signed(value);
+            if (rhs == 0) {
                 return false;
             }
-            target = op(target, value);
+            target = op(lhs, rhs);
             normalize_field(target);
             return true;
         };
