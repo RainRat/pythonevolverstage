@@ -407,20 +407,24 @@ public:
               << MODE_PREFIXES[instr.b_mode] << instr.b_field << '\n';
     }
 
-    void normalize_field(int& field) {
-        field = (field % core_size + core_size) % core_size;
-    }
-
-    int to_signed(int value) const {
+    int corenorm(int value) const {
         int normalized = value % core_size;
         if (normalized < 0) {
             normalized += core_size;
         }
         int half = core_size / 2;
-        if (normalized >= half) {
+        if (normalized > half) {
             normalized -= core_size;
         }
         return normalized;
+    }
+
+    void normalize_field(int& field) {
+        field = corenorm(field);
+    }
+
+    int to_signed(int value) const {
+        return corenorm(value);
     }
 
 private:
