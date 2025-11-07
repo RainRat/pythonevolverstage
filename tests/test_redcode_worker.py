@@ -443,6 +443,35 @@ def test_immediate_source_populates_b_field():
     )
 
 
+def test_division_uses_signed_operands():
+    lib = load_worker()
+    warrior = textwrap.dedent(
+        """
+        DIV.B #-1, $4
+        JMZ.B $2, $3
+        JMP.B $0, $0
+        DAT.F #0, #0
+        DAT.F #0, #5
+        """
+    ).strip() + "\n"
+    opponent = "DAT.F #0, #0\n"
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        opponent.encode(), 2,
+        8000, 100, 8000, 8000, 8000, 100, 100, 3, -1,
+        0,
+    ).decode()
+    w1_score, w2_score = get_scores(result)
+    assert w2_score == 0, (
+        "Division by a negative operand should treat the divisor as signed; "
+        f"expected the opponent to score 0, got {w2_score}"
+    )
+    assert w1_score > 0, (
+        "Division by a negative operand should keep the executing warrior alive; "
+        f"expected a positive score, got {w1_score}"
+    )
+
+
 def test_baseline_folding_matches_reference():
     offsets = parse_folding_offsets()
     expected_fold = [-1, 0, 1, 3999, 4000, -3999, -1, 0, 1, 3999, 4000, -3999, -1, 0, 1]
