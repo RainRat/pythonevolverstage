@@ -537,7 +537,8 @@ public:
         if (instr.a_mode == IMMEDIATE) {
             a_addr_final = pc; // The address of the immediate operand is the current PC
             src = memory[pc];   // Copy the current instruction.
-            src.a_field = instr.a_field; // The immediate value goes into the A-field of the source.
+            src.a_field = instr.a_field; // The immediate value goes into both fields of the source.
+            src.b_field = instr.a_field;
         } else if (instr.a_mode == DIRECT) {
             a_addr_final = intermediate_a_addr;
             src = memory[a_addr_final];
