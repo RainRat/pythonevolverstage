@@ -10,7 +10,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from engine import (
     generate_random_instruction,
-    format_redcode_instruction,
+    instruction_to_line,
     RedcodeInstruction,
     set_engine_config,
     execute_battle_with_sources,
@@ -24,7 +24,7 @@ def generate_random_warrior(length: int, arena: int) -> str:
     lines = []
     for _ in range(length):
         instruction = generate_random_instruction(arena)
-        lines.append(format_redcode_instruction(instruction))
+        lines.append(instruction_to_line(instruction, arena))
     return "".join(lines)
 
 def run_battle(warrior1: str, warrior2: str, engine: str, seed: int):
