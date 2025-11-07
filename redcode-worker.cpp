@@ -111,6 +111,15 @@ const char* MODE_PREFIXES[] = {
     "#", "$", "@", "<", ">", "*", "{", "}"
 };
 
+std::string to_string(const Instruction& instr) {
+    std::stringstream ss;
+    ss << OPCODE_NAMES[instr.opcode] << '.'
+       << MODIFIER_NAMES[instr.modifier] << ' '
+       << MODE_PREFIXES[instr.a_mode] << instr.a_field << ", "
+       << MODE_PREFIXES[instr.b_mode] << instr.b_field;
+    return ss.str();
+}
+
 bool opcode_allowed_in_1988(Opcode opcode) {
     switch (opcode) {
         case DAT:
@@ -402,13 +411,25 @@ public:
         }
     }
 
-    void log(int pc, const Instruction& instr) {
+    void log(int pc,
+             const Instruction& instr,
+             int a_addr,
+             const Instruction& src,
+             int b_addr,
+             const Instruction& dst_before) {
+#ifdef DEBUG_TRACE
         if (!trace_enabled) return;
-        trace << pc << ": "
-              << OPCODE_NAMES[instr.opcode] << '.'
-              << MODIFIER_NAMES[instr.modifier] << ' '
-              << MODE_PREFIXES[instr.a_mode] << instr.a_field << ", "
-              << MODE_PREFIXES[instr.b_mode] << instr.b_field << '\n';
+        trace << "PC=" << pc << " " << to_string(instr)
+              << " | A=" << a_addr << " {" << to_string(src)
+              << "}, B=" << b_addr << " {" << to_string(dst_before) << "}\n";
+#endif
+    }
+
+    void log_write(int write_addr, const Instruction& value_written) {
+#ifdef DEBUG_TRACE
+        if (!trace_enabled) return;
+        trace << "  -> WRITE @" << write_addr << " {" << to_string(value_written) << "}\n";
+#endif
     }
 
     int corenorm(int value) const {
@@ -545,8 +566,6 @@ public:
         Instruction& instr = memory[pc];
         auto& owner_queue = process_queues[process.owner];
 
-        log(pc, instr);
-
         if (instr.opcode == DAT) {
             return; // Process terminates
         }
@@ -615,6 +634,9 @@ public:
 
         Instruction& dst = memory[b_addr_final];
         Instruction dst_snapshot = dst;
+
+        log(pc, instr, a_addr_final, src, b_addr_final, dst_snapshot);
+
         if (instr.b_mode == IMMEDIATE) {
             dst_snapshot = Instruction{};
             dst_snapshot.opcode = DAT;
@@ -651,16 +673,20 @@ public:
                         case X: dst.a_field = src.b_field; dst.b_field = src.a_field; break;
                         case I: dst = src; break;
                     }
+                    log_write(b_addr_final, dst);
                 }
                 break;
             case ADD:
                 apply_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs + rhs; });
+                log_write(b_addr_final, dst);
                 break;
             case SUB:
                 apply_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs - rhs; });
+                log_write(b_addr_final, dst);
                 break;
             case MUL:
                 apply_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs * rhs; });
+                log_write(b_addr_final, dst);
                 break;
             case DIV:
                 if (!apply_safe_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; })) {
@@ -668,6 +694,7 @@ public:
                     apply_b_postinc();
                     return;
                 }
+                log_write(b_addr_final, dst);
                 break;
             case MOD:
                 if (!apply_safe_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; })) {
@@ -675,6 +702,7 @@ public:
                     apply_b_postinc();
                     return;
                 }
+                log_write(b_addr_final, dst);
                 break;
             case CMP:
                 {
@@ -800,6 +828,7 @@ public:
                             if (dst.a_field != 0 || dst.b_field != 0) jump = true;
                             break;
                     }
+                    log_write(b_addr_final, dst);
                     if (jump) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; }
                 }
                 break;
