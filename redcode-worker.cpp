@@ -793,8 +793,9 @@ public:
             case SPL:
                 {
                     int next_pc = normalize(pc + 1, core_size);
+                    bool can_spawn_additional_task = owner_queue.size() < static_cast<size_t>(max_processes);
                     owner_queue.push_back({next_pc, process.owner});
-                    if (owner_queue.size() < static_cast<size_t>(max_processes)) {
+                    if (can_spawn_additional_task) {
                         owner_queue.push_back({a_addr_final, process.owner});
                     }
                 }
