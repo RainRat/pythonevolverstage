@@ -54,3 +54,10 @@ Supported:
 Submodules:
 -The official latest pMars source code has been included under pMars. Using it as an external battle program is supported, and it can also be compiled or browsed to resolve ambiguities about intended execution.
 -Instruction semantics should match pMARS. When adding or updating instruction-level tests, treat pMARS as the reference implementation and prefer its behaviour over existing expectations if they disagree.
+
+Debugging the C++ worker:
+
+-To enable detailed instruction-level tracing, set the `DEBUG_TRACE` CMake option to `ON`. For example: `cmake .. -DDEBUG_TRACE=ON`.
+-Set the `REDCODE_TRACE_FILE` environment variable to a filename. For example: `export REDCODE_TRACE_FILE=trace.log`.
+-When the worker runs, it will append a log of every instruction executed to that file.
+-This option is off by default because it has a significant performance cost.

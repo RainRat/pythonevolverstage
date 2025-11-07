@@ -229,7 +229,8 @@ def test_mov_immediate_copies_dat_instruction(tmp_path, monkeypatch):
     assert not result.startswith("ERROR:"), result
 
     trace_contents = trace_file.read_text(encoding="utf-8")
-    assert "1: DAT.F #7, #7" in trace_contents
+    assert "WRITE @1 {DAT.F #7, #7}" in trace_contents
+
 
 def test_1988_mode_rejects_1994_opcode():
     lib = load_worker()
@@ -394,7 +395,7 @@ def test_baseline_jmn_djn_flags_report_or_logic(monkeypatch, tmp_path):
     ).decode()
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
-    assert trace_text.count("MOV.B #1") == 2
+    assert trace_text.count("MOV.B #1, $6") == 2
     assert "MOV.B #2" not in trace_text
 
 
@@ -581,8 +582,8 @@ def test_fold_negative_boundary(monkeypatch, tmp_path):
     ).decode()
     assert not result.startswith("ERROR:"), result
     trace_text = trace_file.read_text(encoding="utf-8")
-    assert trace_text.count("DAT.F #111, #222") == 1
-    assert "DAT.F #777, #888" in trace_text
+    assert "WRITE @3 {DAT.F #111, #222}" in trace_text
+    assert "WRITE @4 {DAT.F #777, #888}" in trace_text
 
 
 def test_warrior_exceeding_dynamic_length_is_rejected():

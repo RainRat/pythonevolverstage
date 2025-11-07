@@ -8,7 +8,13 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "RelWithDebInfo" "MinSizeRel")
 endif()
 
+option(DEBUG_TRACE "Enable detailed execution tracing" OFF)
+
 add_library(redcode_worker SHARED redcode-worker.cpp)
+
+if(DEBUG_TRACE)
+  target_compile_definitions(redcode_worker PRIVATE DEBUG_TRACE)
+endif()
 
 # On Windows, CMake adds a "lib" prefix by default, which we don't want for ctypes.
 # Configure the output so that the shared library is emitted in the project root
