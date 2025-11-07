@@ -70,6 +70,10 @@ struct Instruction {
                b_mode == other.b_mode &&
                b_field == other.b_field;
     }
+
+    bool operator!=(const Instruction& other) const {
+        return !(*this == other);
+    }
 };
 
 struct WarriorProcess {
@@ -705,7 +709,7 @@ public:
                         dst_snapshot,
                         instr.modifier,
                         not_equals,
-                        [](const Instruction& lhs, const Instruction& rhs) { return !(lhs == rhs); },
+                        [](const Instruction& lhs, const Instruction& rhs) { return lhs != rhs; },
                         combine_or
                     );
                 }
@@ -767,42 +771,33 @@ public:
                 break;
             case DJN:
                 {
-                    Instruction temp = dst_snapshot;
                     bool jump = false;
                     switch (instr.modifier) {
                         case A:
                             dst.a_field--; normalize_field(dst.a_field);
-                            temp.a_field--; normalize_field(temp.a_field);
-                            if (temp.a_field != 0) jump = true;
+                            if (dst.a_field != 0) jump = true;
                             break;
                         case B:
                             dst.b_field--; normalize_field(dst.b_field);
-                            temp.b_field--; normalize_field(temp.b_field);
-                            if (temp.b_field != 0) jump = true;
+                            if (dst.b_field != 0) jump = true;
                             break;
                         case AB:
                             dst.b_field--; normalize_field(dst.b_field);
-                            temp.b_field--; normalize_field(temp.b_field);
-                            if (temp.b_field != 0) jump = true;
+                            if (dst.b_field != 0) jump = true;
                             break;
                         case BA:
                             dst.a_field--; normalize_field(dst.a_field);
-                            temp.a_field--; normalize_field(temp.a_field);
-                            if (temp.a_field != 0) jump = true;
+                            if (dst.a_field != 0) jump = true;
                             break;
                         case F: case I:
                             dst.a_field--; normalize_field(dst.a_field);
                             dst.b_field--; normalize_field(dst.b_field);
-                            temp.a_field--; normalize_field(temp.a_field);
-                            temp.b_field--; normalize_field(temp.b_field);
-                            if (temp.a_field != 0 || temp.b_field != 0) jump = true;
+                            if (dst.a_field != 0 || dst.b_field != 0) jump = true;
                             break;
                         case X:
                             dst.a_field--; normalize_field(dst.a_field);
                             dst.b_field--; normalize_field(dst.b_field);
-                            temp.a_field--; normalize_field(temp.a_field);
-                            temp.b_field--; normalize_field(temp.b_field);
-                            if (temp.a_field != 0 || temp.b_field != 0) jump = true;
+                            if (dst.a_field != 0 || dst.b_field != 0) jump = true;
                             break;
                     }
                     if (jump) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; }
@@ -811,9 +806,8 @@ public:
             case SPL:
                 {
                     int next_pc = normalize(pc + 1, core_size);
-                    bool can_spawn_additional_task = owner_queue.size() < static_cast<size_t>(max_processes);
                     owner_queue.push_back({next_pc, process.owner});
-                    if (can_spawn_additional_task) {
+                    if (owner_queue.size() < static_cast<size_t>(max_processes)) {
                         owner_queue.push_back({a_addr_final, process.owner});
                     }
                 }
