@@ -460,9 +460,15 @@ private:
 
     template <typename Operation>
     bool apply_safe_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op) {
+        auto canonicalize = [&](int value) {
+            int normalized = value;
+            normalize_field(normalized);
+            return normalized;
+        };
+
         auto apply = [&](int& target, int value) {
-            int lhs = to_signed(target);
-            int rhs = to_signed(value);
+            int lhs = canonicalize(target);
+            int rhs = canonicalize(value);
             if (rhs == 0) {
                 return false;
             }
