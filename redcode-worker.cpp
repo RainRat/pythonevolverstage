@@ -1109,17 +1109,8 @@ extern "C" {
                 } else if (winner_index == 1) {
                     w2_score += 3;
                 } else {
-                    int w1_procs = core.process_queues[0].size();
-                    int w2_procs = core.process_queues[1].size();
-
-                    if (w1_procs > 0 && w2_procs == 0) {
-                        w1_score += 3;
-                    } else if (w2_procs > 0 && w1_procs == 0) {
-                        w2_score += 3;
-                    } else {
-                        w1_score += 1;
-                        w2_score += 1;
-                    }
+                    w1_score += 1;
+                    w2_score += 1;
                 }
 
                 rounds_played = r + 1;
