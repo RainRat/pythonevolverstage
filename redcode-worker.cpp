@@ -557,6 +557,8 @@ public:
         // --- B-Operand ---
         int primary_b_offset = fold(instr.b_field, write_limit);
         int intermediate_b_addr = normalize(pc + primary_b_offset, core_size);
+        int* pointer_field = nullptr;
+        bool apply_postinc = false;
         if (instr.b_mode == IMMEDIATE) {
             b_addr_final = pc; // Immediate B-mode targets the current instruction.
         } else if (instr.b_mode == DIRECT) {
@@ -565,15 +567,23 @@ public:
             bool use_a = (instr.b_mode == A_INDIRECT || instr.b_mode == A_PREDEC || instr.b_mode == A_POSTINC);
             bool predec = (instr.b_mode == A_PREDEC || instr.b_mode == B_PREDEC);
             bool postinc = (instr.b_mode == A_POSTINC || instr.b_mode == B_POSTINC);
-            int& field = use_a ? memory[intermediate_b_addr].a_field : memory[intermediate_b_addr].b_field;
-            if (predec) { field--; normalize_field(field); }
-            int secondary_b_offset = field;
+            pointer_field = use_a ? &memory[intermediate_b_addr].a_field : &memory[intermediate_b_addr].b_field;
+            if (predec) {
+                (*pointer_field)--;
+                normalize_field(*pointer_field);
+            }
+            int secondary_b_offset = *pointer_field;
             int final_b_offset = fold(primary_b_offset + secondary_b_offset, write_limit);
             b_addr_final = normalize(pc + final_b_offset, core_size);
-            if (postinc) { field++; normalize_field(field); }
+            apply_postinc = postinc;
         }
 
         Instruction& dst = memory[b_addr_final];
+        Instruction dst_snapshot = dst;
+        if (pointer_field && apply_postinc) {
+            (*pointer_field)++;
+            normalize_field(*pointer_field);
+        }
         bool skip = false;
 
         // --- Instruction Execution ---
@@ -621,7 +631,7 @@ public:
                     auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
                     skip = check_condition(
                         lhs,
-                        dst,
+                        dst_snapshot,
                         instr.modifier,
                         equals,
                         [](const Instruction& lhs, const Instruction& rhs) { return lhs == rhs; },
@@ -640,7 +650,7 @@ public:
                     auto combine_or = [](bool lhs, bool rhs) { return lhs || rhs; };
                     skip = check_condition(
                         lhs,
-                        dst,
+                        dst_snapshot,
                         instr.modifier,
                         not_equals,
                         [](const Instruction& lhs, const Instruction& rhs) { return !(lhs == rhs); },
@@ -659,7 +669,7 @@ public:
                     auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
                     skip = check_condition(
                         lhs,
-                        dst,
+                        dst_snapshot,
                         instr.modifier,
                         less_than,
                         [less_than, combine_and](const Instruction& lhs, const Instruction& rhs) {
@@ -675,12 +685,12 @@ public:
                 return;
             case JMZ:
                 switch (instr.modifier) {
-                    case A: if (dst.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst.a_field == 0 && dst.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst.a_field == 0 && dst.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case A: if (dst_snapshot.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst_snapshot.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             // ICWS'94 spec text (lines 0725-0735) describes JMN.I/DJN.I as taking the
@@ -693,17 +703,17 @@ public:
             // both the Python and C++ implementations intentionally follow EMI94.
             case JMN:
                 switch (instr.modifier) {
-                    case A: if (dst.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst.a_field != 0 || dst.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst.a_field != 0 || dst.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case A: if (dst_snapshot.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst_snapshot.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             case DJN:
                 {
-                    Instruction temp = dst;
+                    Instruction temp = dst_snapshot;
                     bool jump = false;
                     switch (instr.modifier) {
                         case A:
@@ -835,49 +845,85 @@ void validate_battle_parameters(
     }
 }
 
-struct PmarsRNG {
-    explicit PmarsRNG(int seed) {
-        if (seed >= 0) {
-            rng_state = normalize_seed(static_cast<int64_t>(seed) + 1);
-        } else {
-            std::random_device rd;
-            rng_state = normalize_seed(static_cast<int64_t>(rd()) + 1);
+struct PmarsPlacementGenerator {
+    explicit PmarsPlacementGenerator(int seed_value, int min_distance) {
+        rng_state = initialize_state(seed_value, min_distance);
+    }
+
+    int next_offset(int placements) {
+        if (placements <= 0) {
+            return 0;
         }
-    }
-
-    int32_t current_state() const {
-        return rng_state;
-    }
-
-    void advance() {
+        int offset = positive_mod(rng_state, placements);
         rng_state = advance_state(rng_state);
+        return offset;
     }
 
-    static int32_t normalize_seed(int64_t raw_seed) {
-        constexpr int64_t modulus = 2147483647LL - 1LL;
-        int64_t adjusted = raw_seed % modulus;
-        if (adjusted <= 0) {
-            adjusted += modulus;
+private:
+    static constexpr int64_t RNG_MODULUS = 2147483647LL;
+    static constexpr int64_t FIXED_SEED_MODULUS = 1073741825LL;
+
+    static int32_t initialize_state(int seed_value, int min_distance) {
+        if (seed_value <= 0) {
+            return random_state();
+        }
+
+        int64_t normalized = normalize_fixed_seed(static_cast<int64_t>(seed_value));
+        if (normalized <= 0) {
+            return random_state();
+        }
+        if (normalized < min_distance) {
+            throw std::runtime_error(
+                "Fixed warrior position cannot be smaller than the configured minimum distance"
+            );
+        }
+
+        int64_t adjusted = normalized - min_distance;
+        return normalize_state(adjusted);
+    }
+
+    static int64_t normalize_fixed_seed(int64_t value) {
+        int64_t normalized = value % FIXED_SEED_MODULUS;
+        if (normalized < 0) {
+            normalized += FIXED_SEED_MODULUS;
+        }
+        return normalized;
+    }
+
+    static int32_t random_state() {
+        std::random_device rd;
+        return normalize_state(static_cast<int64_t>(rd()));
+    }
+
+    static int32_t normalize_state(int64_t value) {
+        int64_t adjusted = value % RNG_MODULUS;
+        if (adjusted < 0) {
+            adjusted += RNG_MODULUS;
         }
         return static_cast<int32_t>(adjusted);
+    }
+
+    static int positive_mod(int32_t value, int modulus) {
+        int result = value % modulus;
+        if (result < 0) {
+            result += modulus;
+        }
+        return result;
     }
 
     static int32_t advance_state(int32_t state) {
         constexpr int64_t multiplier = 16807;
         constexpr int64_t divisor = 127773;
         constexpr int64_t remainder = 2836;
-        constexpr int64_t modulus = 2147483647;
 
-        int64_t hi = state / divisor;
-        int64_t lo = state % divisor;
-        int64_t temp = multiplier * lo - remainder * hi;
-        if (temp <= 0) {
-            temp += modulus;
+        int64_t state64 = static_cast<int64_t>(state);
+        int64_t temp = multiplier * (state64 % divisor) - remainder * (state64 / divisor);
+        if (temp < 0) {
+            temp += RNG_MODULUS;
         }
         return static_cast<int32_t>(temp);
     }
 
-private:
     int32_t rng_state;
 };
 
@@ -990,7 +1036,7 @@ extern "C" {
                 return response.c_str();
             }
 
-            PmarsRNG rng(seed);
+            PmarsPlacementGenerator placement_rng(seed, min_distance);
             const char* trace_file = std::getenv("REDCODE_TRACE_FILE");
 
             int w1_score = 0;
@@ -998,24 +1044,18 @@ extern "C" {
 
             int placements = core_size - (2 * min_distance) + 1;
             if (placements <= 0) {
-                placements = core_size;
+                throw std::runtime_error(
+                    "Core size is too small for the configured warrior distance"
+                );
             }
-
-            bool use_exhaustive = rounds >= placements;
-            int planned_rounds = use_exhaustive ? placements : rounds;
+            int planned_rounds = rounds;
 
             int rounds_played = 0;
-            for (int r = 0; r < planned_rounds; ++r) {
+            for (int r = 0; r < rounds; ++r) {
                 Core core(core_size, trace_file);
                 int w1_start = 0;
-                int w2_start = min_distance % core_size;
-                if (use_exhaustive) {
-                    w2_start = (min_distance + r) % core_size;
-                } else {
-                    int offset = rng.current_state() % placements;
-                    w2_start = (min_distance + offset) % core_size;
-                    rng.advance();
-                }
+                int offset = placement_rng.next_offset(placements);
+                int w2_start = normalize(min_distance + offset, core_size);
 
                 for (size_t i = 0; i < w1_instrs.size(); ++i) {
                     core.memory[normalize(w1_start + i, core_size)] = w1_instrs[i];
