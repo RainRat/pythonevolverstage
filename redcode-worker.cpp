@@ -602,6 +602,15 @@ public:
 
         Instruction& dst = memory[b_addr_final];
         Instruction dst_snapshot = dst;
+        if (instr.b_mode == IMMEDIATE) {
+            dst_snapshot = Instruction{};
+            dst_snapshot.opcode = DAT;
+            dst_snapshot.modifier = F;
+            dst_snapshot.a_mode = IMMEDIATE;
+            dst_snapshot.b_mode = IMMEDIATE;
+            dst_snapshot.a_field = instr.b_field;
+            dst_snapshot.b_field = instr.b_field;
+        }
         auto apply_b_postinc = [&]() {
             if (pointer_field && defer_postinc) {
                 (*pointer_field)++;

@@ -540,6 +540,20 @@ def test_mov_b_immediate_operand(monkeypatch, tmp_path):
     assert "DAT.F $0, $123" in trace_text
 
 
+def test_cmp_immediate_b_operand_uses_literal():
+    lib = load_worker()
+    warrior = "CMP.I #5,#5\nDAT.F #0,#0\nJMP.B $0,$0\n"
+    opponent = "DAT.F #0,#0\n"
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        opponent.encode(), 2,
+        80, 200, 80, 6, 6, 10, 10, 1, 37,
+        0,
+    ).decode()
+    scores = get_scores(result)
+    assert scores[0] > scores[1], result
+
+
 def test_fold_negative_boundary(monkeypatch, tmp_path):
     lib = load_worker()
     warrior = textwrap.dedent(
