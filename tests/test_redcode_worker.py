@@ -199,6 +199,38 @@ def test_min_distance_shorter_than_max_warrior_length_is_rejected():
     assert "Min distance must be greater than or equal to max warrior length" in result
 
 
+def test_mov_immediate_copies_dat_instruction(tmp_path, monkeypatch):
+    lib = load_worker()
+    trace_file = tmp_path / "trace.log"
+    monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
+
+    warrior1 = "\n".join(
+        [
+            "MOV.I #7, $1",
+            "JMP.F $1, $0",
+        ]
+    ) + "\n"
+    warrior2 = "\n".join(
+        [
+            "NOP.F $0, $0",
+            "NOP.F $0, $0",
+        ]
+    ) + "\n"
+
+    result = lib.run_battle(
+        warrior1.encode(), 1,
+        warrior2.encode(), 2,
+        80, 50, 10,
+        80, 80,
+        5, 5, 1, -1,
+        0,
+    ).decode()
+
+    assert not result.startswith("ERROR:"), result
+
+    trace_contents = trace_file.read_text(encoding="utf-8")
+    assert "1: DAT.F #7, #7" in trace_contents
+
 def test_1988_mode_rejects_1994_opcode():
     lib = load_worker()
     warrior = "MUL.F $0, $0\n"

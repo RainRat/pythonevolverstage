@@ -535,9 +535,13 @@ public:
         int primary_a_offset = fold(instr.a_field, read_limit);
         int intermediate_a_addr = normalize(pc + primary_a_offset, core_size);
         if (instr.a_mode == IMMEDIATE) {
-            a_addr_final = pc; // The address of the immediate operand is the current PC
-            src = memory[pc];   // Copy the current instruction.
-            src.a_field = instr.a_field; // The immediate value goes into both fields of the source.
+            a_addr_final = pc; // Immediate mode sets the pointer to zero (the current PC).
+            src = Instruction{};
+            src.opcode = DAT;
+            src.modifier = F;
+            src.a_mode = IMMEDIATE;
+            src.b_mode = IMMEDIATE;
+            src.a_field = instr.a_field;
             src.b_field = instr.a_field;
         } else if (instr.a_mode == DIRECT) {
             a_addr_final = intermediate_a_addr;
