@@ -773,16 +773,16 @@ public:
             case JMP:
                 apply_a_postinc();
                 apply_b_postinc();
-                owner_queue.push_front({a_addr_final, process.owner});
+                owner_queue.push_back({a_addr_final, process.owner});
                 return;
             case JMZ:
                 switch (instr.modifier) {
-                    case A: if (dst_snapshot.a_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst_snapshot.a_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
+                    case A: if (dst_snapshot.a_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst_snapshot.a_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             // ICWS'94 spec text (lines 0725-0735) describes JMN.I/DJN.I as taking the
@@ -795,12 +795,12 @@ public:
             // both the Python and C++ implementations intentionally follow EMI94.
             case JMN:
                 switch (instr.modifier) {
-                    case A: if (dst_snapshot.a_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst_snapshot.a_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; } break;
+                    case A: if (dst_snapshot.a_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst_snapshot.a_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             case DJN:
@@ -835,20 +835,16 @@ public:
                             break;
                     }
                     log_write(b_addr_final, dst);
-                    if (jump) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_front({a_addr_final, process.owner}); return; }
+                    if (jump) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; }
                 }
                 break;
             case SPL:
                 {
-                    int next_pc = normalize(pc + 1, core_size);
-                    owner_queue.push_front({next_pc, process.owner});
                     if (owner_queue.size() < static_cast<size_t>(max_processes)) {
-                        owner_queue.push_front({a_addr_final, process.owner});
+                        owner_queue.push_back({a_addr_final, process.owner});
                     }
                 }
-                apply_a_postinc();
-                apply_b_postinc();
-                return;
+                break;
             case NOP:
                 break;
             default:
