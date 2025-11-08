@@ -638,6 +638,11 @@ public:
 
         Instruction& dst = memory[b_addr_final];
         Instruction dst_snapshot = dst;
+        Instruction effective_src = src;
+        if (instr.a_mode == IMMEDIATE) {
+            effective_src.a_field = instr.a_field;
+            effective_src.b_field = instr.a_field;
+        }
 
         log(pc, instr, a_addr_final, src, b_addr_final, dst_snapshot);
 
@@ -675,19 +680,19 @@ public:
                 }
                 break;
             case ADD:
-                apply_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs + rhs; });
+                apply_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs + rhs; });
                 log_write(b_addr_final, dst);
                 break;
             case SUB:
-                apply_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs - rhs; });
+                apply_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs - rhs; });
                 log_write(b_addr_final, dst);
                 break;
             case MUL:
-                apply_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs * rhs; });
+                apply_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs * rhs; });
                 log_write(b_addr_final, dst);
                 break;
             case DIV:
-                if (!apply_safe_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; })) {
+                if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; })) {
                     apply_a_postinc();
                     apply_b_postinc();
                     return;
@@ -695,7 +700,7 @@ public:
                 log_write(b_addr_final, dst);
                 break;
             case MOD:
-                if (!apply_safe_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; })) {
+                if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; })) {
                     apply_a_postinc();
                     apply_b_postinc();
                     return;
@@ -704,11 +709,7 @@ public:
                 break;
             case CMP:
                 {
-                    Instruction lhs = src;
-                    if (instr.a_mode == IMMEDIATE) {
-                        lhs.a_field = instr.a_field;
-                        lhs.b_field = instr.a_field;
-                    }
+                    Instruction lhs = effective_src;
                     auto equals = [](int lhs, int rhs) { return lhs == rhs; };
                     auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
                     skip = check_condition(
@@ -723,11 +724,7 @@ public:
                 break;
             case SNE:
                 {
-                    Instruction lhs = src;
-                    if (instr.a_mode == IMMEDIATE) {
-                        lhs.a_field = instr.a_field;
-                        lhs.b_field = instr.a_field;
-                    }
+                    Instruction lhs = effective_src;
                     auto not_equals = [](int lhs, int rhs) { return lhs != rhs; };
                     auto combine_or = [](bool lhs, bool rhs) { return lhs || rhs; };
                     skip = check_condition(
@@ -742,11 +739,7 @@ public:
                 break;
             case SLT:
                 {
-                    Instruction lhs = src;
-                    if (instr.a_mode == IMMEDIATE) {
-                        lhs.a_field = instr.a_field;
-                        lhs.b_field = instr.a_field;
-                    }
+                    Instruction lhs = effective_src;
                     auto less_than = [](int lhs, int rhs) { return lhs < rhs; };
                     auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
                     skip = check_condition(
