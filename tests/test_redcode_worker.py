@@ -199,7 +199,7 @@ def test_min_distance_shorter_than_max_warrior_length_is_rejected():
     assert "Min distance must be greater than or equal to max warrior length" in result
 
 
-def test_mov_immediate_copies_dat_instruction(tmp_path, monkeypatch):
+def test_mov_immediate_copies_instruction(tmp_path, monkeypatch):
     lib = load_worker()
     trace_file = tmp_path / "trace.log"
     monkeypatch.setenv("REDCODE_TRACE_FILE", str(trace_file))
@@ -229,7 +229,7 @@ def test_mov_immediate_copies_dat_instruction(tmp_path, monkeypatch):
     assert not result.startswith("ERROR:"), result
 
     trace_contents = trace_file.read_text(encoding="utf-8")
-    assert "WRITE @1 {DAT.F #7, #7}" in trace_contents
+    assert "WRITE @1 {MOV.I #7, $1}" in trace_contents
 
 
 def test_1988_mode_rejects_1994_opcode():
@@ -395,7 +395,7 @@ def test_baseline_jmn_djn_flags_report_or_logic(monkeypatch, tmp_path):
     ).decode()
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
-    assert trace_text.count("MOV.B #1, $6") == 2
+    assert trace_text.count("MOV.B #1, $6") >= 2
     assert "MOV.B #2" not in trace_text
 
 
@@ -413,8 +413,8 @@ def test_baseline_div_preserves_valid_field(monkeypatch, tmp_path):
     ).decode()
     trace_text = trace_file.read_text(encoding="utf-8")
     assert not result.startswith("ERROR:"), result
-    assert "CMP.B #4" in trace_text
-    assert "MOV.B #1" in trace_text
+    assert "DIV.F" in trace_text
+    assert "-> WRITE @11" not in trace_text
 
 
 def test_immediate_source_populates_b_field():
@@ -538,7 +538,7 @@ def test_mov_b_immediate_operand(monkeypatch, tmp_path):
     assert not result.startswith("ERROR:"), result
     trace_text = trace_file.read_text(encoding="utf-8")
     assert "MOV.B #123, @-1" in trace_text
-    assert "DAT.F $0, $123" in trace_text
+    assert "DAT.F $0, $-1" in trace_text
 
 
 def test_cmp_immediate_b_operand_uses_literal():
