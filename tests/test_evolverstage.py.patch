@@ -1,0 +1,28 @@
+--- a/tests/test_evolverstage.py
++++ b/tests/test_evolverstage.py
+@@ -1078,7 +1078,7 @@
+     temp_config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
+     captured: dict[str, dict[str, object]] = {}
+
+-    def fake_run(executable, warrior_files, flag_args):
++    def fake_run(executable, warrior_files, flag_args, stdin_payload=None, use_pty=False):
+         captured["flag_args"] = dict(flag_args)
+         return "Alpha by Example scores 10\nBeta by Example scores 20\n"
+
+@@ -1112,7 +1112,7 @@
+     temp_config = replace(_DEFAULT_CONFIG, battle_engine="pmars")
+     captured: dict[str, dict[str, object]] = {}
+
+-    def fake_run(executable, warrior_files, flag_args):
++    def fake_run(executable, warrior_files, flag_args, stdin_payload=None, use_pty=False):
+         captured["flag_args"] = dict(flag_args)
+         return "Alpha by Example scores 10\nBeta by Example scores 20\n"
+
+@@ -1148,7 +1148,7 @@
+     temp_config = replace(_DEFAULT_CONFIG, battle_engine="nmars")
+     captured: dict[str, dict[str, object]] = {}
+
+-    def fake_run(executable, warrior_files, flag_args):
++    def fake_run(executable, warrior_files, flag_args, stdin_payload=None, use_pty=False):
+         captured["flag_args"] = dict(flag_args)
+         return "Alpha by Example scores 10\nBeta by Example scores 20\n"

@@ -62,6 +62,7 @@ def main():
     """Main function for the stress test."""
     parser = argparse.ArgumentParser(description="Stress-test redcode-worker against pMars.")
     parser.add_argument("--iterations", type=int, default=10000, help="Number of battles to run.")
+    parser.add_argument("--seed", type=int, help="An optional seed to force a specific battle.")
     args = parser.parse_args()
 
     # Basic configuration for the engine
@@ -69,11 +70,10 @@ def main():
     set_engine_config(config)
 
     # Use the warrior length from the config for the first arena
-    #warrior_length = config.warlen_list[0]
-    warrior_length = 2 #temporary to narrow down the mismatches
+    warrior_length = config.warlen_list[0]
     mismatches = 0
     for i in range(args.iterations):
-        seed = random.randint(0, 2**31 - 1)
+        seed = args.seed if args.seed else random.randint(0, 2**31 - 1)
 
         warrior1 = generate_random_warrior(warrior_length, 0)
         warrior2 = generate_random_warrior(warrior_length, 0)
