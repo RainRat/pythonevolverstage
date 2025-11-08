@@ -518,16 +518,20 @@ private:
                 return apply(dst.a_field, src.b_field);
             case F:
             case I: {
-                // We must evaluate both operations, so we can't short-circuit.
-                // A bitwise AND ensures both sides are evaluated.
                 bool a_ok = apply(dst.a_field, src.a_field);
+                if (!a_ok) {
+                    return false;
+                }
                 bool b_ok = apply(dst.b_field, src.b_field);
-                return a_ok & b_ok;
+                return b_ok;
             }
             case X: {
                 bool a_ok = apply(dst.a_field, src.b_field);
+                if (!a_ok) {
+                    return false;
+                }
                 bool b_ok = apply(dst.b_field, src.a_field);
-                return a_ok & b_ok;
+                return b_ok;
             }
         }
 
@@ -588,13 +592,7 @@ public:
         int intermediate_a_addr = normalize(pc + primary_a_offset, core_size);
         if (instr.a_mode == IMMEDIATE) {
             a_addr_final = pc; // Immediate mode sets the pointer to zero (the current PC).
-            src = Instruction{};
-            src.opcode = DAT;
-            src.modifier = F;
-            src.a_mode = IMMEDIATE;
-            src.b_mode = IMMEDIATE;
-            src.a_field = instr.a_field;
-            src.b_field = instr.a_field;
+            src = memory[a_addr_final];
         } else if (instr.a_mode == DIRECT) {
             a_addr_final = intermediate_a_addr;
             src = memory[a_addr_final];
@@ -644,13 +642,7 @@ public:
         log(pc, instr, a_addr_final, src, b_addr_final, dst_snapshot);
 
         if (instr.b_mode == IMMEDIATE) {
-            dst_snapshot = Instruction{};
-            dst_snapshot.opcode = DAT;
-            dst_snapshot.modifier = F;
-            dst_snapshot.a_mode = IMMEDIATE;
-            dst_snapshot.b_mode = IMMEDIATE;
-            dst_snapshot.a_field = instr.b_field;
-            dst_snapshot.b_field = instr.b_field;
+            dst_snapshot = memory[pc];
         }
         auto apply_a_postinc = [&]() {
             if (a_pointer_field && defer_a_postinc) {
@@ -823,16 +815,27 @@ public:
                             dst.a_field--; normalize_field(dst.a_field);
                             if (dst.a_field != 0) jump = true;
                             break;
-                        case F: case I:
+                        case F:
+                        case I: {
+                            int pre_a = dst_snapshot.a_field;
+                            int pre_b = dst_snapshot.b_field;
                             dst.a_field--; normalize_field(dst.a_field);
                             dst.b_field--; normalize_field(dst.b_field);
-                            if (dst.a_field != 0 || dst.b_field != 0) jump = true;
+                            if (pre_a != 1 || pre_b != 1) {
+                                jump = true;
+                            }
                             break;
-                        case X:
+                        }
+                        case X: {
+                            int pre_a = dst_snapshot.a_field;
+                            int pre_b = dst_snapshot.b_field;
                             dst.a_field--; normalize_field(dst.a_field);
                             dst.b_field--; normalize_field(dst.b_field);
-                            if (dst.a_field != 0 || dst.b_field != 0) jump = true;
+                            if (pre_a != 1 || pre_b != 1) {
+                                jump = true;
+                            }
                             break;
+                        }
                     }
                     log_write(b_addr_final, dst);
                     if (jump) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; }
