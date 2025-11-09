@@ -583,6 +583,7 @@ public:
         // --- B-Operand ---
         int primary_b_offset = fold(instr.b_field, write_limit);
         int intermediate_b_addr = normalize(pc + primary_b_offset, core_size);
+        int* b_pointer_field = nullptr;
         if (instr.b_mode == IMMEDIATE) {
             b_addr_final = pc;
         } else if (instr.b_mode == DIRECT) {
@@ -604,13 +605,17 @@ public:
             b_addr_final = normalize(pc + final_b_offset, core_size);
 
             if (instr.b_mode == A_POSTINC || instr.b_mode == B_POSTINC) {
-                *offset_field_ptr = normalize(*offset_field_ptr + 1, core_size);
+                b_pointer_field = offset_field_ptr;
             }
         }
 
         Instruction& dst = memory[b_addr_final];
         Instruction dst_snapshot = dst;
         Instruction effective_src = src;
+
+        if (b_pointer_field != nullptr) {
+            *b_pointer_field = normalize(*b_pointer_field + 1, core_size);
+        }
 
         log(pc, instr, a_addr_final, src, b_addr_final, dst_snapshot);
 
