@@ -549,9 +549,16 @@ public:
 
         // --- Operand Evaluation ---
         int a_addr_final;
-        int b_addr_final;
+        int b_addr_read;
+        int b_addr_write;
         Instruction src;
         int* a_pointer_field = nullptr;
+        auto apply_a_postincrement = [&]() {
+            if (a_pointer_field != nullptr) {
+                *a_pointer_field = normalize(*a_pointer_field + 1, core_size);
+                a_pointer_field = nullptr;
+            }
+        };
 
         // --- A-Operand ---
         int primary_a_offset = fold(instr.a_field, read_limit);
@@ -584,55 +591,62 @@ public:
             }
         }
 
+        apply_a_postincrement();
+
         // --- B-Operand ---
-        int primary_b_offset = fold(instr.b_field, write_limit);
-        int intermediate_b_addr = normalize(pc + primary_b_offset, core_size);
+        int primary_b_offset_write = fold(instr.b_field, write_limit);
+        int primary_b_offset_read = fold(instr.b_field, read_limit);
+        int intermediate_b_addr_write = normalize(pc + primary_b_offset_write, core_size);
+        int intermediate_b_addr_read = normalize(pc + primary_b_offset_read, core_size);
         int* b_pointer_field = nullptr;
+        auto apply_b_postincrement = [&]() {
+            if (b_pointer_field != nullptr) {
+                *b_pointer_field = normalize(*b_pointer_field + 1, core_size);
+                b_pointer_field = nullptr;
+            }
+        };
+        int secondary_b_offset = 0;
         if (instr.b_mode == IMMEDIATE) {
-            b_addr_final = pc;
+            b_addr_write = pc;
+            b_addr_read = pc;
         } else if (instr.b_mode == DIRECT) {
-            b_addr_final = intermediate_b_addr;
+            b_addr_write = intermediate_b_addr_write;
+            b_addr_read = intermediate_b_addr_read;
         } else {
             int* offset_field_ptr;
             if (instr.b_mode == A_INDIRECT || instr.b_mode == A_PREDEC || instr.b_mode == A_POSTINC) {
-                offset_field_ptr = &memory[intermediate_b_addr].a_field;
+                offset_field_ptr = &memory[intermediate_b_addr_write].a_field;
             } else {
-                offset_field_ptr = &memory[intermediate_b_addr].b_field;
+                offset_field_ptr = &memory[intermediate_b_addr_write].b_field;
             }
 
             if (instr.b_mode == A_PREDEC || instr.b_mode == B_PREDEC) {
                 *offset_field_ptr = normalize(*offset_field_ptr - 1, core_size);
             }
 
-            int secondary_b_offset = *offset_field_ptr;
-            int final_b_offset = fold(primary_b_offset + secondary_b_offset, write_limit);
-            b_addr_final = normalize(pc + final_b_offset, core_size);
+            secondary_b_offset = *offset_field_ptr;
+            int final_b_offset_write = fold(primary_b_offset_write + secondary_b_offset, write_limit);
+            b_addr_write = normalize(pc + final_b_offset_write, core_size);
+            int final_b_offset_read = fold(primary_b_offset_read + secondary_b_offset, read_limit);
+            b_addr_read = normalize(pc + final_b_offset_read, core_size);
 
             if (instr.b_mode == A_POSTINC || instr.b_mode == B_POSTINC) {
                 b_pointer_field = offset_field_ptr;
             }
         }
 
-        Instruction& dst = memory[b_addr_final];
-        Instruction dst_snapshot = dst;
+        Instruction& dst = memory[b_addr_write];
+        Instruction dst_snapshot = memory[b_addr_read];
         Instruction effective_src = src;
-
-        auto apply_postincrements = [&]() {
-            if (a_pointer_field != nullptr) {
-                *a_pointer_field = normalize(*a_pointer_field + 1, core_size);
-                a_pointer_field = nullptr;
-            }
-            if (b_pointer_field != nullptr) {
-                *b_pointer_field = normalize(*b_pointer_field + 1, core_size);
-                b_pointer_field = nullptr;
-            }
-        };
-
-        log(pc, instr, a_addr_final, src, b_addr_final, dst_snapshot);
 
         if (instr.b_mode == IMMEDIATE) {
             dst_snapshot = memory[pc];
         }
+
+        log(pc, instr, a_addr_final, src, b_addr_read, dst_snapshot);
+
+        apply_b_postincrement();
+
         bool skip = false;
         bool queued_next_instruction = false;
 
@@ -649,40 +663,38 @@ public:
                         case X: dst.a_field = src.b_field; dst.b_field = src.a_field; break;
                         case I: dst = src; break;
                     }
-                    log_write(b_addr_final, dst);
+                    log_write(b_addr_write, dst);
                 }
                 break;
             case ADD:
                 apply_arithmetic_operation(dst, effective_src, instr.modifier, [this](int lhs, int rhs) {
                     return (lhs + rhs) % core_size;
                 });
-                log_write(b_addr_final, dst);
+                log_write(b_addr_write, dst);
                 break;
             case SUB:
                 apply_arithmetic_operation(dst, effective_src, instr.modifier, [this](int lhs, int rhs) {
                     return (lhs - rhs + core_size) % core_size;
                 });
-                log_write(b_addr_final, dst);
+                log_write(b_addr_write, dst);
                 break;
             case MUL:
                 apply_arithmetic_operation(dst, effective_src, instr.modifier, [this](int lhs, int rhs) {
                     return static_cast<int>((static_cast<long long>(lhs) * rhs) % core_size);
                 });
-                log_write(b_addr_final, dst);
+                log_write(b_addr_write, dst);
                 break;
             case DIV:
                 if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; })) {
-                    apply_postincrements();
                     return;
                 }
-                log_write(b_addr_final, dst);
+                log_write(b_addr_write, dst);
                 break;
             case MOD:
                 if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; })) {
-                    apply_postincrements();
                     return;
                 }
-                log_write(b_addr_final, dst);
+                log_write(b_addr_write, dst);
                 break;
             case CMP:
                 {
@@ -788,36 +800,43 @@ public:
                 break;
             case DJN:
                 {
+                    Instruction decremented_snapshot = dst_snapshot;
                     bool jump = false;
                     switch (instr.modifier) {
                         case A:
                             dst.a_field = normalize(dst.a_field - 1, core_size);
-                            if (dst.a_field != 0) jump = true;
+                            decremented_snapshot.a_field = normalize(decremented_snapshot.a_field - 1, core_size);
+                            if (decremented_snapshot.a_field != 0) jump = true;
                             break;
                         case B:
                             dst.b_field = normalize(dst.b_field - 1, core_size);
-                            if (dst.b_field != 0) jump = true;
+                            decremented_snapshot.b_field = normalize(decremented_snapshot.b_field - 1, core_size);
+                            if (decremented_snapshot.b_field != 0) jump = true;
                             break;
                         case AB:
                             dst.b_field = normalize(dst.b_field - 1, core_size);
-                            if (dst.b_field != 0) jump = true;
+                            decremented_snapshot.b_field = normalize(decremented_snapshot.b_field - 1, core_size);
+                            if (decremented_snapshot.b_field != 0) jump = true;
                             break;
                         case BA:
                             dst.a_field = normalize(dst.a_field - 1, core_size);
-                            if (dst.a_field != 0) jump = true;
+                            decremented_snapshot.a_field = normalize(decremented_snapshot.a_field - 1, core_size);
+                            if (decremented_snapshot.a_field != 0) jump = true;
                             break;
                         case F:
                         case I:
                         case X: {
                             dst.a_field = normalize(dst.a_field - 1, core_size);
                             dst.b_field = normalize(dst.b_field - 1, core_size);
-                            if (dst.a_field != 0 || dst.b_field != 0) {
+                            decremented_snapshot.a_field = normalize(decremented_snapshot.a_field - 1, core_size);
+                            decremented_snapshot.b_field = normalize(decremented_snapshot.b_field - 1, core_size);
+                            if (decremented_snapshot.a_field != 0 || decremented_snapshot.b_field != 0) {
                                 jump = true;
                             }
                             break;
                         }
                     }
-                    log_write(b_addr_final, dst);
+                    log_write(b_addr_write, dst);
                     if (jump) {
                         owner_queue.push_back({a_addr_final, process.owner});
                         queued_next_instruction = true;
@@ -840,8 +859,6 @@ public:
             default:
                 break;
         }
-
-        apply_postincrements();
 
         if (!queued_next_instruction) {
             int next_pc = normalize(pc + (skip ? 2 : 1), core_size);
