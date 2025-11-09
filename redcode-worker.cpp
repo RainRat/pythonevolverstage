@@ -605,6 +605,11 @@ public:
                 b_pointer_field = nullptr;
             }
         };
+        struct BPostIncrementGuard {
+            decltype(apply_b_postincrement)& func;
+            explicit BPostIncrementGuard(decltype(apply_b_postincrement)& f) : func(f) {}
+            ~BPostIncrementGuard() { func(); }
+        } b_postincrement_guard{apply_b_postincrement};
         int secondary_b_offset = 0;
         if (instr.b_mode == IMMEDIATE) {
             b_addr_write = pc;
@@ -644,8 +649,6 @@ public:
         }
 
         log(pc, instr, a_addr_final, src, b_addr_read, dst_snapshot);
-
-        apply_b_postincrement();
 
         bool skip = false;
         bool queued_next_instruction = false;
