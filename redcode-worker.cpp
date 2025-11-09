@@ -598,13 +598,9 @@ public:
             src = memory[a_addr_final];
         } else {
             // Determine which field to *modify* for pre-decrement
-            bool use_a_field_for_modify = (instr.a_mode == A_PREDEC); // Only A_PREDEC modifies A-field
-            bool use_b_field_for_modify = (instr.a_mode == B_PREDEC); // Only B_PREDEC modifies B-field
+            bool use_b_field_for_modify =
+                    (instr.a_mode == A_PREDEC || instr.a_mode == B_PREDEC); // pMARS decrements B-field for both
 
-            if (use_a_field_for_modify) {
-                memory[intermediate_a_addr].a_field--;
-                normalize_field(memory[intermediate_a_addr].a_field);
-            }
             if (use_b_field_for_modify) {
                 memory[intermediate_a_addr].b_field--;
                 normalize_field(memory[intermediate_a_addr].b_field);
@@ -636,13 +632,9 @@ public:
             b_addr_final = intermediate_b_addr;
         } else {
             // Determine which field to *modify* for pre-decrement
-            bool use_a_field_for_predec = (instr.b_mode == A_PREDEC);
-            bool use_b_field_for_predec = (instr.b_mode == B_PREDEC);
+            bool use_b_field_for_predec =
+                    (instr.b_mode == A_PREDEC || instr.b_mode == B_PREDEC);
 
-            if (use_a_field_for_predec) {
-                memory[intermediate_b_addr].a_field--;
-                normalize_field(memory[intermediate_b_addr].a_field);
-            }
             if (use_b_field_for_predec) {
                 memory[intermediate_b_addr].b_field--;
                 normalize_field(memory[intermediate_b_addr].b_field);
