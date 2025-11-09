@@ -612,6 +612,18 @@ public:
             }
         }
 
+        auto apply_a_postinc = [&]() {
+            if (a_pointer_field && defer_a_postinc) {
+                (*a_pointer_field)++;
+                normalize_field(*a_pointer_field);
+                defer_a_postinc = false;
+            }
+        };
+
+        // Post-increment A-mode updates must occur before the B-operand is
+        // evaluated, matching the sequencing described in the ICWS'94 draft.
+        apply_a_postinc();
+
         // --- B-Operand ---
         int primary_b_offset = fold(instr.b_field, write_limit);
         int intermediate_b_addr = normalize(pc + primary_b_offset, core_size);
@@ -649,18 +661,17 @@ public:
         if (instr.b_mode == IMMEDIATE) {
             dst_snapshot = memory[pc];
         }
-        auto apply_a_postinc = [&]() {
-            if (a_pointer_field && defer_a_postinc) {
-                (*a_pointer_field)++;
-                normalize_field(*a_pointer_field);
-            }
-        };
         auto apply_b_postinc = [&]() {
             if (pointer_field && defer_postinc) {
                 (*pointer_field)++;
                 normalize_field(*pointer_field);
+                defer_postinc = false;
             }
         };
+
+        // Post-increment B-mode increments happen immediately after the
+        // B-instruction is fetched, before executing the opcode.
+        apply_b_postinc();
         bool skip = false;
 
         // --- Instruction Execution ---
