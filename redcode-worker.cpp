@@ -432,40 +432,12 @@ public:
 #endif
     }
 
-    int corenorm(int value) const {
-        int normalized = value % core_size;
-        if (normalized < 0) {
-            normalized += core_size;
-        }
-        int half = core_size / 2;
-        if (normalized > half) {
-            normalized -= core_size;
-        }
-        return normalized;
-    }
-
-    void normalize_field(int& field) {
-        field %= core_size;
-        if (field > core_size / 2) {
-            field -= core_size;
-        }
-        if (field < -core_size / 2) {
-            field += core_size;
-        }
-    }
-
-    int to_signed(int value) const {
-        return corenorm(value);
-    }
-
 private:
     template <typename Operation>
     void apply_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op) {
         auto apply = [&](int& target, int value) {
-            int lhs = to_signed(target);
-            int rhs = to_signed(value);
-            target = op(lhs, rhs);
-            normalize_field(target);
+            target = op(normalize(target, core_size), normalize(value, core_size));
+            target = normalize(target, core_size);
         };
 
         switch (modifier) {
@@ -496,14 +468,11 @@ private:
     template <typename Operation>
     bool apply_safe_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op) {
         auto apply = [&](int& target, int value) {
-            int lhs = to_signed(target);
-            int rhs = to_signed(value);
+            int rhs = value;
             if (rhs == 0) {
                 return false;
             }
-            int result = op(lhs, rhs);
-            target = result;
-            normalize_field(target);
+            target = op(target, rhs);
             return true;
         };
 
@@ -519,19 +488,13 @@ private:
             case F:
             case I: {
                 bool a_ok = apply(dst.a_field, src.a_field);
-                if (!a_ok) {
-                    return false;
-                }
                 bool b_ok = apply(dst.b_field, src.b_field);
-                return b_ok;
+                return a_ok && b_ok;
             }
             case X: {
                 bool a_ok = apply(dst.a_field, src.b_field);
-                if (!a_ok) {
-                    return false;
-                }
                 bool b_ok = apply(dst.b_field, src.a_field);
-                return b_ok;
+                return a_ok && b_ok;
             }
         }
 
@@ -591,32 +554,30 @@ public:
         int primary_a_offset = fold(instr.a_field, read_limit);
         int intermediate_a_addr = normalize(pc + primary_a_offset, core_size);
         if (instr.a_mode == IMMEDIATE) {
-            a_addr_final = pc; // Immediate mode sets the pointer to zero (the current PC).
+            a_addr_final = pc;
             src = memory[a_addr_final];
         } else if (instr.a_mode == DIRECT) {
             a_addr_final = intermediate_a_addr;
             src = memory[a_addr_final];
         } else {
-            // Determine which field to *modify* for pre-decrement
-            bool use_b_field_for_modify =
-                    (instr.a_mode == A_PREDEC || instr.a_mode == B_PREDEC); // pMARS decrements B-field for both
-
-            if (use_b_field_for_modify) {
-                memory[intermediate_a_addr].b_field--;
-                normalize_field(memory[intermediate_a_addr].b_field);
+            int* offset_field_ptr;
+            if (instr.a_mode == A_INDIRECT || instr.a_mode == A_PREDEC || instr.a_mode == A_POSTINC) {
+                offset_field_ptr = &memory[intermediate_a_addr].a_field;
+            } else {
+                offset_field_ptr = &memory[intermediate_a_addr].b_field;
             }
 
-            // [FIX 1] The secondary offset is *always* read from the B-field
-            int secondary_a_offset = memory[intermediate_a_addr].b_field;
+            if (instr.a_mode == A_PREDEC || instr.a_mode == B_PREDEC) {
+                *offset_field_ptr = normalize(*offset_field_ptr - 1, core_size);
+            }
+
+            int secondary_a_offset = *offset_field_ptr;
             int final_a_offset = fold(primary_a_offset + secondary_a_offset, read_limit);
             a_addr_final = normalize(pc + final_a_offset, core_size);
             src = memory[a_addr_final];
 
-            // Check for *any* post-increment to set up the pointer
-            bool postinc = (instr.a_mode == A_POSTINC || instr.a_mode == B_POSTINC);
-            if (postinc) {
-                // [FIX 2] Post-increment *always* targets the B-field
-                a_pointer_field = &memory[intermediate_a_addr].b_field;
+            if (instr.a_mode == A_POSTINC || instr.a_mode == B_POSTINC) {
+                a_pointer_field = offset_field_ptr;
                 defer_a_postinc = true;
             }
         }
@@ -627,33 +588,28 @@ public:
         int* pointer_field = nullptr;
         bool defer_postinc = false;
         if (instr.b_mode == IMMEDIATE) {
-            b_addr_final = pc; // Immediate B-mode targets the current instruction.
+            b_addr_final = pc;
         } else if (instr.b_mode == DIRECT) {
             b_addr_final = intermediate_b_addr;
         } else {
-            // Determine which field to *modify* for pre-decrement
-            bool use_b_field_for_predec =
-                    (instr.b_mode == A_PREDEC || instr.b_mode == B_PREDEC);
-
-            if (use_b_field_for_predec) {
-                memory[intermediate_b_addr].b_field--;
-                normalize_field(memory[intermediate_b_addr].b_field);
+            int* offset_field_ptr;
+            if (instr.b_mode == A_INDIRECT || instr.b_mode == A_PREDEC || instr.b_mode == A_POSTINC) {
+                offset_field_ptr = &memory[intermediate_b_addr].a_field;
+            } else {
+                offset_field_ptr = &memory[intermediate_b_addr].b_field;
             }
 
-            // [FIX 1] The secondary offset is *always* read from the B-field
-            int secondary_b_offset = memory[intermediate_b_addr].b_field;
+            if (instr.b_mode == A_PREDEC || instr.b_mode == B_PREDEC) {
+                *offset_field_ptr = normalize(*offset_field_ptr - 1, core_size);
+            }
+
+            int secondary_b_offset = *offset_field_ptr;
             int final_b_offset = fold(primary_b_offset + secondary_b_offset, write_limit);
             b_addr_final = normalize(pc + final_b_offset, core_size);
 
-            // Check for *any* post-increment
-            bool postinc = (instr.b_mode == A_POSTINC || instr.b_mode == B_POSTINC);
-            if (postinc) {
-                // [FIX 2] Post-increment *always* targets the B-field
-                pointer_field = &memory[intermediate_b_addr].b_field;
+            if (instr.b_mode == A_POSTINC || instr.b_mode == B_POSTINC) {
+                pointer_field = offset_field_ptr;
                 defer_postinc = true;
-            } else {
-                pointer_field = nullptr; // Ensure pointer is null if not post-incrementing
-                defer_postinc = false;
             }
         }
 
@@ -672,14 +628,12 @@ public:
         }
         auto apply_a_postinc = [&]() {
             if (a_pointer_field && defer_a_postinc) {
-                (*a_pointer_field)++;
-                normalize_field(*a_pointer_field);
+                *a_pointer_field = normalize(*a_pointer_field + 1, core_size);
             }
         };
         auto apply_b_postinc = [&]() {
             if (pointer_field && defer_postinc) {
-                (*pointer_field)++;
-                normalize_field(*pointer_field);
+                *pointer_field = normalize(*pointer_field + 1, core_size);
             }
         };
         bool skip = false;
@@ -701,15 +655,21 @@ public:
                 }
                 break;
             case ADD:
-                apply_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs + rhs; });
+                apply_arithmetic_operation(dst, effective_src, instr.modifier, [this](int lhs, int rhs) {
+                    return (lhs + rhs) % core_size;
+                });
                 log_write(b_addr_final, dst);
                 break;
             case SUB:
-                apply_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs - rhs; });
+                apply_arithmetic_operation(dst, effective_src, instr.modifier, [this](int lhs, int rhs) {
+                    return (lhs - rhs + core_size) % core_size;
+                });
                 log_write(b_addr_final, dst);
                 break;
             case MUL:
-                apply_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs * rhs; });
+                apply_arithmetic_operation(dst, effective_src, instr.modifier, [this](int lhs, int rhs) {
+                    return static_cast<int>((static_cast<long long>(lhs) * rhs) % core_size);
+                });
                 log_write(b_addr_final, dst);
                 break;
             case DIV:
@@ -731,14 +691,16 @@ public:
             case CMP:
                 {
                     Instruction lhs = effective_src;
-                    auto equals = [](int lhs, int rhs) { return lhs == rhs; };
-                    auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
+                    auto equals = [this](int l, int r) {
+                        return normalize(l, core_size) == normalize(r, core_size);
+                    };
+                    auto combine_and = [](bool l, bool r) { return l && r; };
                     skip = check_condition(
                         lhs,
                         dst_snapshot,
                         instr.modifier,
                         equals,
-                        [](const Instruction& lhs, const Instruction& rhs) { return lhs == rhs; },
+                        [](const Instruction& l, const Instruction& r) { return l == r; },
                         combine_and
                     );
                 }
@@ -746,14 +708,18 @@ public:
             case SNE:
                 {
                     Instruction lhs = effective_src;
-                    auto not_equals = [](int lhs, int rhs) { return lhs != rhs; };
-                    auto combine_or = [](bool lhs, bool rhs) { return lhs || rhs; };
+                    auto not_equals = [this](int l, int r) {
+                        return normalize(l, core_size) != normalize(r, core_size);
+                    };
+                    auto combine_or = [](bool l, bool r) { return l || r; };
                     skip = check_condition(
                         lhs,
                         dst_snapshot,
                         instr.modifier,
                         not_equals,
-                        [](const Instruction& lhs, const Instruction& rhs) { return lhs != rhs; },
+                        [this, not_equals](const Instruction& l, const Instruction& r) {
+                            return not_equals(l.a_field, r.a_field) || not_equals(l.b_field, r.b_field) || l.opcode != r.opcode || l.modifier != r.modifier || l.a_mode != r.a_mode || l.b_mode != r.b_mode;
+                        },
                         combine_or
                     );
                 }
@@ -761,16 +727,18 @@ public:
             case SLT:
                 {
                     Instruction lhs = effective_src;
-                    auto less_than = [](int lhs, int rhs) { return lhs < rhs; };
-                    auto combine_and = [](bool lhs, bool rhs) { return lhs && rhs; };
+                    auto less_than = [this](int l, int r) {
+                        return normalize(l, core_size) < normalize(r, core_size);
+                    };
+                    auto combine_and = [](bool l, bool r) { return l && r; };
                     skip = check_condition(
                         lhs,
                         dst_snapshot,
                         instr.modifier,
                         less_than,
-                        [less_than, combine_and](const Instruction& lhs, const Instruction& rhs) {
-                            return combine_and(less_than(lhs.a_field, rhs.a_field),
-                                               less_than(lhs.b_field, rhs.b_field));
+                        [this, less_than, combine_and](const Instruction& l, const Instruction& r) {
+                            return combine_and(less_than(l.a_field, r.a_field),
+                                               less_than(l.b_field, r.b_field));
                         },
                         combine_and
                     );
@@ -814,38 +782,27 @@ public:
                     bool jump = false;
                     switch (instr.modifier) {
                         case A:
-                            dst.a_field--; normalize_field(dst.a_field);
+                            dst.a_field = normalize(dst.a_field - 1, core_size);
                             if (dst.a_field != 0) jump = true;
                             break;
                         case B:
-                            dst.b_field--; normalize_field(dst.b_field);
+                            dst.b_field = normalize(dst.b_field - 1, core_size);
                             if (dst.b_field != 0) jump = true;
                             break;
                         case AB:
-                            dst.b_field--; normalize_field(dst.b_field);
+                            dst.b_field = normalize(dst.b_field - 1, core_size);
                             if (dst.b_field != 0) jump = true;
                             break;
                         case BA:
-                            dst.a_field--; normalize_field(dst.a_field);
+                            dst.a_field = normalize(dst.a_field - 1, core_size);
                             if (dst.a_field != 0) jump = true;
                             break;
                         case F:
-                        case I: {
-                            int pre_a = dst_snapshot.a_field;
-                            int pre_b = dst_snapshot.b_field;
-                            dst.a_field--; normalize_field(dst.a_field);
-                            dst.b_field--; normalize_field(dst.b_field);
-                            if (pre_a != 1 || pre_b != 1) {
-                                jump = true;
-                            }
-                            break;
-                        }
+                        case I:
                         case X: {
-                            int pre_a = dst_snapshot.a_field;
-                            int pre_b = dst_snapshot.b_field;
-                            dst.a_field--; normalize_field(dst.a_field);
-                            dst.b_field--; normalize_field(dst.b_field);
-                            if (pre_a != 1 || pre_b != 1) {
+                            dst.a_field = normalize(dst.a_field - 1, core_size);
+                            dst.b_field = normalize(dst.b_field - 1, core_size);
+                            if (dst.a_field != 0 || dst.b_field != 0) {
                                 jump = true;
                             }
                             break;
