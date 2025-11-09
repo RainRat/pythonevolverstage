@@ -597,17 +597,30 @@ public:
             a_addr_final = intermediate_a_addr;
             src = memory[a_addr_final];
         } else {
-            bool use_a = (instr.a_mode == A_INDIRECT || instr.a_mode == A_PREDEC || instr.a_mode == A_POSTINC);
-            bool predec = (instr.a_mode == A_PREDEC || instr.a_mode == B_PREDEC);
-            bool postinc = (instr.a_mode == A_POSTINC || instr.a_mode == B_POSTINC);
-            int& field = use_a ? memory[intermediate_a_addr].a_field : memory[intermediate_a_addr].b_field;
-            if (predec) { field--; normalize_field(field); }
-            int secondary_a_offset = field;
+            // Determine which field to *modify* for pre-decrement
+            bool use_a_field_for_modify = (instr.a_mode == A_PREDEC); // Only A_PREDEC modifies A-field
+            bool use_b_field_for_modify = (instr.a_mode == B_PREDEC); // Only B_PREDEC modifies B-field
+
+            if (use_a_field_for_modify) {
+                memory[intermediate_a_addr].a_field--;
+                normalize_field(memory[intermediate_a_addr].a_field);
+            }
+            if (use_b_field_for_modify) {
+                memory[intermediate_a_addr].b_field--;
+                normalize_field(memory[intermediate_a_addr].b_field);
+            }
+
+            // [FIX 1] The secondary offset is *always* read from the B-field
+            int secondary_a_offset = memory[intermediate_a_addr].b_field;
             int final_a_offset = fold(primary_a_offset + secondary_a_offset, read_limit);
             a_addr_final = normalize(pc + final_a_offset, core_size);
             src = memory[a_addr_final];
+
+            // Check for *any* post-increment to set up the pointer
+            bool postinc = (instr.a_mode == A_POSTINC || instr.a_mode == B_POSTINC);
             if (postinc) {
-                a_pointer_field = &field;
+                // [FIX 2] Post-increment *always* targets the B-field
+                a_pointer_field = &memory[intermediate_a_addr].b_field;
                 defer_a_postinc = true;
             }
         }
@@ -622,18 +635,34 @@ public:
         } else if (instr.b_mode == DIRECT) {
             b_addr_final = intermediate_b_addr;
         } else {
-            bool use_a = (instr.b_mode == A_INDIRECT || instr.b_mode == A_PREDEC || instr.b_mode == A_POSTINC);
-            bool predec = (instr.b_mode == A_PREDEC || instr.b_mode == B_PREDEC);
-            bool postinc = (instr.b_mode == A_POSTINC || instr.b_mode == B_POSTINC);
-            pointer_field = use_a ? &memory[intermediate_b_addr].a_field : &memory[intermediate_b_addr].b_field;
-            if (predec) {
-                (*pointer_field)--;
-                normalize_field(*pointer_field);
+            // Determine which field to *modify* for pre-decrement
+            bool use_a_field_for_predec = (instr.b_mode == A_PREDEC);
+            bool use_b_field_for_predec = (instr.b_mode == B_PREDEC);
+
+            if (use_a_field_for_predec) {
+                memory[intermediate_b_addr].a_field--;
+                normalize_field(memory[intermediate_b_addr].a_field);
             }
-            int secondary_b_offset = *pointer_field;
+            if (use_b_field_for_predec) {
+                memory[intermediate_b_addr].b_field--;
+                normalize_field(memory[intermediate_b_addr].b_field);
+            }
+
+            // [FIX 1] The secondary offset is *always* read from the B-field
+            int secondary_b_offset = memory[intermediate_b_addr].b_field;
             int final_b_offset = fold(primary_b_offset + secondary_b_offset, write_limit);
             b_addr_final = normalize(pc + final_b_offset, core_size);
-            defer_postinc = postinc;
+
+            // Check for *any* post-increment
+            bool postinc = (instr.b_mode == A_POSTINC || instr.b_mode == B_POSTINC);
+            if (postinc) {
+                // [FIX 2] Post-increment *always* targets the B-field
+                pointer_field = &memory[intermediate_b_addr].b_field;
+                defer_postinc = true;
+            } else {
+                pointer_field = nullptr; // Ensure pointer is null if not post-incrementing
+                defer_postinc = false;
+            }
         }
 
         Instruction& dst = memory[b_addr_final];
