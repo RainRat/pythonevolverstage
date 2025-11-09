@@ -175,17 +175,21 @@ int normalize(int address, int core_size) {
 }
 
 int fold(int offset, int limit) {
-    // Folds an offset to be within the range [-limit/2, limit/2]
-    // This is equivalent to the corenorm function in the Python script.
+    if (limit == 0) {
+        return 0;
+    }
+
+    int result = offset % limit;
+    if (result < 0) {
+        result += limit;
+    }
+
     int half_limit = limit / 2;
-    if (offset > half_limit) {
-        return offset - limit;
+    if (result > half_limit) {
+        result -= limit;
     }
-    // The negative boundary is inclusive, matching the Python implementation.
-    if (offset <= -half_limit) {
-        return offset + limit;
-    }
-    return offset;
+
+    return result;
 }
 
 
@@ -623,6 +627,7 @@ public:
             dst_snapshot = memory[pc];
         }
         bool skip = false;
+        bool queued_next_instruction = false;
 
         // --- Instruction Execution ---
         switch (instr.opcode) {
@@ -794,6 +799,10 @@ public:
                 break;
             case SPL:
                 {
+                    int next_pc = normalize(pc + 1, core_size);
+                    owner_queue.push_back({next_pc, process.owner});
+                    queued_next_instruction = true;
+
                     if (owner_queue.size() < static_cast<size_t>(max_processes)) {
                         owner_queue.push_back({a_addr_final, process.owner});
                     }
@@ -805,8 +814,10 @@ public:
                 break;
         }
 
-        int next_pc = normalize(pc + (skip ? 2 : 1), core_size);
-        owner_queue.push_back({next_pc, process.owner});
+        if (!queued_next_instruction) {
+            int next_pc = normalize(pc + (skip ? 2 : 1), core_size);
+            owner_queue.push_back({next_pc, process.owner});
+        }
     }
 
 
