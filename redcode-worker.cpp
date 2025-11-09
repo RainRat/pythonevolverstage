@@ -580,7 +580,7 @@ public:
             src = memory[a_addr_final];
 
             if (instr.a_mode == A_POSTINC || instr.a_mode == B_POSTINC) {
-                *offset_field_ptr = normalize(*offset_field_ptr + 1, core_size);
+                a_pointer_field = offset_field_ptr;
             }
         }
 
@@ -617,9 +617,16 @@ public:
         Instruction dst_snapshot = dst;
         Instruction effective_src = src;
 
-        if (b_pointer_field != nullptr) {
-            *b_pointer_field = normalize(*b_pointer_field + 1, core_size);
-        }
+        auto apply_postincrements = [&]() {
+            if (a_pointer_field != nullptr) {
+                *a_pointer_field = normalize(*a_pointer_field + 1, core_size);
+                a_pointer_field = nullptr;
+            }
+            if (b_pointer_field != nullptr) {
+                *b_pointer_field = normalize(*b_pointer_field + 1, core_size);
+                b_pointer_field = nullptr;
+            }
+        };
 
         log(pc, instr, a_addr_final, src, b_addr_final, dst_snapshot);
 
@@ -665,12 +672,14 @@ public:
                 break;
             case DIV:
                 if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; })) {
+                    apply_postincrements();
                     return;
                 }
                 log_write(b_addr_final, dst);
                 break;
             case MOD:
                 if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; })) {
+                    apply_postincrements();
                     return;
                 }
                 log_write(b_addr_final, dst);
@@ -733,15 +742,23 @@ public:
                 break;
             case JMP:
                 owner_queue.push_back({a_addr_final, process.owner});
-                return;
+                queued_next_instruction = true;
+                break;
             case JMZ:
-                switch (instr.modifier) {
-                    case A: if (dst_snapshot.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst_snapshot.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                {
+                    bool jump = false;
+                    switch (instr.modifier) {
+                        case A: jump = (dst_snapshot.a_field == 0); break;
+                        case B: jump = (dst_snapshot.b_field == 0); break;
+                        case AB: jump = (dst_snapshot.b_field == 0); break;
+                        case BA: jump = (dst_snapshot.a_field == 0); break;
+                        case F: case I: jump = (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0); break;
+                        case X: jump = (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0); break;
+                    }
+                    if (jump) {
+                        owner_queue.push_back({a_addr_final, process.owner});
+                        queued_next_instruction = true;
+                    }
                 }
                 break;
             // ICWS'94 spec text (lines 0725-0735) describes JMN.I/DJN.I as taking the
@@ -753,13 +770,20 @@ public:
             // tests. This policy is documented in AGENTS.md so contributors know that
             // both the Python and C++ implementations intentionally follow EMI94.
             case JMN:
-                switch (instr.modifier) {
-                    case A: if (dst_snapshot.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst_snapshot.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                {
+                    bool jump = false;
+                    switch (instr.modifier) {
+                        case A: jump = (dst_snapshot.a_field != 0); break;
+                        case B: jump = (dst_snapshot.b_field != 0); break;
+                        case AB: jump = (dst_snapshot.b_field != 0); break;
+                        case BA: jump = (dst_snapshot.a_field != 0); break;
+                        case F: case I: jump = (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0); break;
+                        case X: jump = (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0); break;
+                    }
+                    if (jump) {
+                        owner_queue.push_back({a_addr_final, process.owner});
+                        queued_next_instruction = true;
+                    }
                 }
                 break;
             case DJN:
@@ -794,7 +818,10 @@ public:
                         }
                     }
                     log_write(b_addr_final, dst);
-                    if (jump) { owner_queue.push_back({a_addr_final, process.owner}); return; }
+                    if (jump) {
+                        owner_queue.push_back({a_addr_final, process.owner});
+                        queued_next_instruction = true;
+                    }
                 }
                 break;
             case SPL:
@@ -813,6 +840,8 @@ public:
             default:
                 break;
         }
+
+        apply_postincrements();
 
         if (!queued_next_instruction) {
             int next_pc = normalize(pc + (skip ? 2 : 1), core_size);
