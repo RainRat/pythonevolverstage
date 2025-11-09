@@ -548,7 +548,6 @@ public:
         int b_addr_final;
         Instruction src;
         int* a_pointer_field = nullptr;
-        bool defer_a_postinc = false;
 
         // --- A-Operand ---
         int primary_a_offset = fold(instr.a_field, read_limit);
@@ -577,16 +576,14 @@ public:
             src = memory[a_addr_final];
 
             if (instr.a_mode == A_POSTINC || instr.a_mode == B_POSTINC) {
-                a_pointer_field = offset_field_ptr;
-                defer_a_postinc = true;
+                *offset_field_ptr = normalize(*offset_field_ptr + 1, core_size);
             }
         }
 
         // --- B-Operand ---
         int primary_b_offset = fold(instr.b_field, write_limit);
         int intermediate_b_addr = normalize(pc + primary_b_offset, core_size);
-        int* pointer_field = nullptr;
-        bool defer_postinc = false;
+        int* b_pointer_field = nullptr;
         if (instr.b_mode == IMMEDIATE) {
             b_addr_final = pc;
         } else if (instr.b_mode == DIRECT) {
@@ -608,17 +605,16 @@ public:
             b_addr_final = normalize(pc + final_b_offset, core_size);
 
             if (instr.b_mode == A_POSTINC || instr.b_mode == B_POSTINC) {
-                pointer_field = offset_field_ptr;
-                defer_postinc = true;
+                b_pointer_field = offset_field_ptr;
             }
         }
 
         Instruction& dst = memory[b_addr_final];
         Instruction dst_snapshot = dst;
         Instruction effective_src = src;
-        if (instr.a_mode == IMMEDIATE) {
-            effective_src.a_field = instr.a_field;
-            effective_src.b_field = instr.a_field;
+
+        if (b_pointer_field != nullptr) {
+            *b_pointer_field = normalize(*b_pointer_field + 1, core_size);
         }
 
         log(pc, instr, a_addr_final, src, b_addr_final, dst_snapshot);
@@ -626,16 +622,6 @@ public:
         if (instr.b_mode == IMMEDIATE) {
             dst_snapshot = memory[pc];
         }
-        auto apply_a_postinc = [&]() {
-            if (a_pointer_field && defer_a_postinc) {
-                *a_pointer_field = normalize(*a_pointer_field + 1, core_size);
-            }
-        };
-        auto apply_b_postinc = [&]() {
-            if (pointer_field && defer_postinc) {
-                *pointer_field = normalize(*pointer_field + 1, core_size);
-            }
-        };
         bool skip = false;
 
         // --- Instruction Execution ---
@@ -674,16 +660,12 @@ public:
                 break;
             case DIV:
                 if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; })) {
-                    apply_a_postinc();
-                    apply_b_postinc();
                     return;
                 }
                 log_write(b_addr_final, dst);
                 break;
             case MOD:
                 if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; })) {
-                    apply_a_postinc();
-                    apply_b_postinc();
                     return;
                 }
                 log_write(b_addr_final, dst);
@@ -745,18 +727,16 @@ public:
                 }
                 break;
             case JMP:
-                apply_a_postinc();
-                apply_b_postinc();
                 owner_queue.push_back({a_addr_final, process.owner});
                 return;
             case JMZ:
                 switch (instr.modifier) {
-                    case A: if (dst_snapshot.a_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst_snapshot.a_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case A: if (dst_snapshot.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst_snapshot.a_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst_snapshot.a_field == 0 && dst_snapshot.b_field == 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             // ICWS'94 spec text (lines 0725-0735) describes JMN.I/DJN.I as taking the
@@ -769,12 +749,12 @@ public:
             // both the Python and C++ implementations intentionally follow EMI94.
             case JMN:
                 switch (instr.modifier) {
-                    case A: if (dst_snapshot.a_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case B: if (dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case AB: if (dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case BA: if (dst_snapshot.a_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case F: case I: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
-                    case X: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case A: if (dst_snapshot.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case B: if (dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case AB: if (dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case BA: if (dst_snapshot.a_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case F: case I: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
+                    case X: if (dst_snapshot.a_field != 0 || dst_snapshot.b_field != 0) { owner_queue.push_back({a_addr_final, process.owner}); return; } break;
                 }
                 break;
             case DJN:
@@ -809,7 +789,7 @@ public:
                         }
                     }
                     log_write(b_addr_final, dst);
-                    if (jump) { apply_a_postinc(); apply_b_postinc(); owner_queue.push_back({a_addr_final, process.owner}); return; }
+                    if (jump) { owner_queue.push_back({a_addr_final, process.owner}); return; }
                 }
                 break;
             case SPL:
@@ -826,8 +806,6 @@ public:
         }
 
         int next_pc = normalize(pc + (skip ? 2 : 1), core_size);
-        apply_a_postinc();
-        apply_b_postinc();
         owner_queue.push_back({next_pc, process.owner});
     }
 
