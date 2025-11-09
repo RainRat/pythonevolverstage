@@ -599,17 +599,6 @@ public:
         int intermediate_b_addr_write = normalize(pc + primary_b_offset_write, core_size);
         int intermediate_b_addr_read = normalize(pc + primary_b_offset_read, core_size);
         int* b_pointer_field = nullptr;
-        auto apply_b_postincrement = [&]() {
-            if (b_pointer_field != nullptr) {
-                *b_pointer_field = normalize(*b_pointer_field + 1, core_size);
-                b_pointer_field = nullptr;
-            }
-        };
-        struct BPostIncrementGuard {
-            decltype(apply_b_postincrement)& func;
-            explicit BPostIncrementGuard(decltype(apply_b_postincrement)& f) : func(f) {}
-            ~BPostIncrementGuard() { func(); }
-        } b_postincrement_guard{apply_b_postincrement};
         int secondary_b_offset = 0;
         if (instr.b_mode == IMMEDIATE) {
             b_addr_write = pc;
@@ -646,6 +635,12 @@ public:
 
         if (instr.b_mode == IMMEDIATE) {
             dst_snapshot = memory[pc];
+        }
+
+        // B-postincrement must be applied after its address is used for the read,
+        // but before the instruction executes.
+        if (b_pointer_field != nullptr) {
+            *b_pointer_field = normalize(*b_pointer_field + 1, core_size);
         }
 
         log(pc, instr, a_addr_final, src, b_addr_read, dst_snapshot);
