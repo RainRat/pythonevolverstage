@@ -540,7 +540,7 @@ public:
         }
 
         int pc = process.pc;
-        Instruction& instr = memory[pc];
+        Instruction instr = memory[pc];
         auto& owner_queue = process_queues[process.owner];
 
         if (instr.opcode == DAT) {
