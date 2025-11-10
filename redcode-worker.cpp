@@ -548,6 +548,8 @@ public:
         }
 
         // --- Operand Evaluation ---
+        int a_val_a;
+        int a_val_b;
         int a_addr_final;
         int b_addr_read;
         int b_addr_write;
@@ -566,9 +568,13 @@ public:
         if (instr.a_mode == IMMEDIATE) {
             a_addr_final = pc;
             src = memory[a_addr_final];
+            a_val_a = instr.a_field;
+            a_val_b = instr.b_field;
         } else if (instr.a_mode == DIRECT) {
             a_addr_final = intermediate_a_addr;
             src = memory[a_addr_final];
+            a_val_a = src.a_field;
+            a_val_b = src.b_field;
         } else {
             int* offset_field_ptr;
             if (instr.a_mode == A_INDIRECT || instr.a_mode == A_PREDEC || instr.a_mode == A_POSTINC) {
@@ -585,6 +591,8 @@ public:
             int final_a_offset = fold(primary_a_offset + secondary_a_offset, read_limit);
             a_addr_final = normalize(pc + final_a_offset, core_size);
             src = memory[a_addr_final];
+            a_val_a = src.a_field;
+            a_val_b = src.b_field;
 
             if (instr.a_mode == A_POSTINC || instr.a_mode == B_POSTINC) {
                 a_pointer_field = offset_field_ptr;
@@ -653,13 +661,17 @@ public:
             case MOV:
                 {
                     switch (instr.modifier) {
-                        case A: dst.a_field = src.a_field; break;
-                        case B: dst.b_field = src.b_field; break;
-                        case AB: dst.b_field = src.a_field; break;
-                        case BA: dst.a_field = src.b_field; break;
-                        case F: dst.a_field = src.a_field; dst.b_field = src.b_field; break;
-                        case X: dst.a_field = src.b_field; dst.b_field = src.a_field; break;
-                        case I: dst = src; break;
+                        case A: dst.a_field = a_val_a; break;
+                        case B: dst.b_field = a_val_b; break;
+                        case AB: dst.b_field = a_val_a; break;
+                        case BA: dst.a_field = a_val_b; break;
+                        case F: dst.a_field = a_val_a; dst.b_field = a_val_b; break;
+                        case X: dst.a_field = a_val_b; dst.b_field = a_val_a; break;
+                        case I:
+                            dst = memory[a_addr_final];
+                            dst.a_field = a_val_a;
+                            dst.b_field = a_val_b;
+                            break;
                     }
                     log_write(b_addr_write, dst);
                 }
