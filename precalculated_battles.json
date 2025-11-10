@@ -12,7 +12,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -28,7 +30,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -44,7 +48,9 @@
       "cycles": 500000,
       "processes": 10000,
       "warlen": 200,
-      "wardistance": 200
+      "wardistance": 200,
+      "readlimit": 55440,
+      "writelimit": 55440
     }
   },
   {
@@ -60,7 +66,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -76,7 +84,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -92,7 +102,9 @@
       "cycles": 80000,
       "processes": 8000,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -108,7 +120,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -124,7 +138,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -140,7 +156,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -156,7 +174,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -172,7 +192,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -188,7 +210,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -204,7 +228,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -220,7 +246,9 @@
       "cycles": 80000,
       "processes": 64,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -236,7 +264,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -252,7 +282,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -268,7 +300,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -284,7 +318,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -300,7 +336,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -316,7 +354,9 @@
       "cycles": 500000,
       "processes": 10000,
       "warlen": 200,
-      "wardistance": 200
+      "wardistance": 200,
+      "readlimit": 55440,
+      "writelimit": 55440
     }
   },
   {
@@ -332,7 +372,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -348,7 +390,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -364,7 +408,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -380,7 +426,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -396,7 +444,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -412,7 +462,9 @@
       "cycles": 80000,
       "processes": 64,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -428,7 +480,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -444,7 +498,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -460,7 +516,9 @@
       "cycles": 80000,
       "processes": 64,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -476,7 +534,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -492,7 +552,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -508,7 +570,9 @@
       "cycles": 80000,
       "processes": 64,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -524,7 +588,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -540,7 +606,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -556,7 +624,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -572,7 +642,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -588,7 +660,9 @@
       "cycles": 80000,
       "processes": 8000,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -604,7 +678,9 @@
       "cycles": 500000,
       "processes": 10000,
       "warlen": 200,
-      "wardistance": 200
+      "wardistance": 200,
+      "readlimit": 55440,
+      "writelimit": 55440
     }
   },
   {
@@ -620,7 +696,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -636,7 +714,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -652,7 +732,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -668,7 +750,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -684,7 +768,9 @@
       "cycles": 80000,
       "processes": 8000,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -700,7 +786,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -716,7 +804,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -732,7 +822,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -748,7 +840,9 @@
       "cycles": 80000,
       "processes": 8000,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -764,7 +858,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -780,7 +876,9 @@
       "cycles": 80000,
       "processes": 8000,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -796,7 +894,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -812,7 +912,9 @@
       "cycles": 500000,
       "processes": 10000,
       "warlen": 200,
-      "wardistance": 200
+      "wardistance": 200,
+      "readlimit": 55440,
+      "writelimit": 55440
     }
   },
   {
@@ -828,7 +930,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -844,7 +948,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -860,7 +966,9 @@
       "cycles": 80000,
       "processes": 64,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -876,7 +984,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -892,7 +1002,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -908,7 +1020,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -924,7 +1038,9 @@
       "cycles": 500000,
       "processes": 10000,
       "warlen": 200,
-      "wardistance": 200
+      "wardistance": 200,
+      "readlimit": 55440,
+      "writelimit": 55440
     }
   },
   {
@@ -940,7 +1056,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -956,7 +1074,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -972,7 +1092,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -988,7 +1110,9 @@
       "cycles": 500000,
       "processes": 10000,
       "warlen": 200,
-      "wardistance": 200
+      "wardistance": 200,
+      "readlimit": 55440,
+      "writelimit": 55440
     }
   },
   {
@@ -1004,7 +1128,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -1020,7 +1146,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -1036,7 +1164,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -1052,7 +1182,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -1068,7 +1200,9 @@
       "cycles": 100000,
       "processes": 8000,
       "warlen": 300,
-      "wardistance": 300
+      "wardistance": 300,
+      "readlimit": 8192,
+      "writelimit": 8192
     }
   },
   {
@@ -1084,7 +1218,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -1100,7 +1236,9 @@
       "cycles": 500000,
       "processes": 10000,
       "warlen": 200,
-      "wardistance": 200
+      "wardistance": 200,
+      "readlimit": 55440,
+      "writelimit": 55440
     }
   },
   {
@@ -1116,7 +1254,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -1132,7 +1272,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -1148,7 +1290,9 @@
       "cycles": 800,
       "processes": 80,
       "warlen": 5,
-      "wardistance": 5
+      "wardistance": 5,
+      "readlimit": 80,
+      "writelimit": 80
     }
   },
   {
@@ -1164,7 +1308,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -1180,7 +1326,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -1196,7 +1344,9 @@
       "cycles": 80000,
       "processes": 8,
       "warlen": 100,
-      "wardistance": 100
+      "wardistance": 100,
+      "readlimit": 8000,
+      "writelimit": 8000
     }
   },
   {
@@ -1212,7 +1362,9 @@
       "cycles": 8000,
       "processes": 8,
       "warlen": 50,
-      "wardistance": 50
+      "wardistance": 50,
+      "readlimit": 800,
+      "writelimit": 800
     }
   },
   {
@@ -1228,7 +1380,9 @@
       "cycles": 8000,
       "processes": 800,
       "warlen": 20,
-      "wardistance": 20
+      "wardistance": 20,
+      "readlimit": 800,
+      "writelimit": 800
     }
   }
 ]
