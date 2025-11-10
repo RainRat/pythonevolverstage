@@ -613,8 +613,14 @@ public:
             a_val_b = src.b_field;
         }
 
+        // --- A-Operand Side Effects ---
+        // This MUST happen after A-eval and before B-eval to match pMARS.
+        if (a_pointer_field != nullptr) {
+            *a_pointer_field = normalize(*a_pointer_field + 1, core_size);
+        }
+
         // --- B-Operand ---
-        // Note: B-operand is resolved *after* A-operand's pre-decrement, but *before* its post-increment.
+        // Note: B-operand is resolved *after* A-operand's pre-decrement AND post-increment.
         if (instr.b_mode == IMMEDIATE) {
             b_addr_final = pc;
         } else {
@@ -643,9 +649,6 @@ public:
         }
 
         // --- Side Effects & Snapshots ---
-        if (a_pointer_field != nullptr) {
-            *a_pointer_field = normalize(*a_pointer_field + 1, core_size);
-        }
 
         Instruction& dst = memory[b_addr_final];
         Instruction dst_snapshot;
