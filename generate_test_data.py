@@ -36,6 +36,8 @@ def generate_battle_data(num_battles: int, output_file: str):
         processes = config.processes_list[arena_index]
         warlen = config.warlen_list[arena_index]
         wardistance = config.wardistance_list[arena_index]
+        readlimit = config.readlimit_list[arena_index]
+        writelimit = config.writelimit_list[arena_index]
 
         # Generate warriors with the correct length for the arena
         warrior1 = generate_random_warrior(warlen, arena_index)
@@ -48,6 +50,8 @@ def generate_battle_data(num_battles: int, output_file: str):
             "processes_list": config.processes_list,
             "warlen_list": config.warlen_list,
             "wardistance_list": config.wardistance_list,
+            "readlimit_list": config.readlimit_list,
+            "writelimit_list": config.writelimit_list,
         }
 
         config.coresize_list = [coresize]
@@ -55,6 +59,8 @@ def generate_battle_data(num_battles: int, output_file: str):
         config.processes_list = [processes]
         config.warlen_list = [warlen]
         config.wardistance_list = [wardistance]
+        config.readlimit_list = [readlimit]
+        config.writelimit_list = [writelimit]
 
         original_engine = config.battle_engine
         config.battle_engine = "pmars"
@@ -84,6 +90,8 @@ def generate_battle_data(num_battles: int, output_file: str):
                     "processes": processes,
                     "warlen": warlen,
                     "wardistance": wardistance,
+                    "readlimit": readlimit,
+                    "writelimit": writelimit,
                 }
             })
         finally:
@@ -94,6 +102,8 @@ def generate_battle_data(num_battles: int, output_file: str):
             config.processes_list = original_config_lists["processes_list"]
             config.warlen_list = original_config_lists["warlen_list"]
             config.wardistance_list = original_config_lists["wardistance_list"]
+            config.readlimit_list = original_config_lists["readlimit_list"]
+            config.writelimit_list = original_config_lists["writelimit_list"]
 
     with open(output_file, "w") as f:
         json.dump(battle_data, f, indent=2)
