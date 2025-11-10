@@ -77,8 +77,7 @@ def main():
     print("-" * 80)
 
     # Use the warrior length from the config for the first arena
-    #warrior_length = config.warlen_list[0]
-    warrior_length = 2 #temporary to narrow down the mismatches
+    warrior_length = config.warlen_list[0]
     mismatches = 0
     for i in range(args.iterations):
         seed = random.randint(0, 2**31 - 1)
@@ -100,7 +99,7 @@ def main():
             print(f"pMars scores: {scores_pmars}")
             print("-" * 80)
 
-        if (i + 1) % 100 == 0:
+        if (i + 1) % 1000 == 0:
             print(f"Completed {i+1}/{args.iterations} iterations with {mismatches} mismatches.")
 
     print(f"Stress test complete. Found {mismatches} mismatches in {args.iterations} iterations.")
