@@ -460,12 +460,12 @@ void apply_arithmetic_operation(Instruction& dst, const Instruction& src, Modifi
             dst.b_field = op(norm_dst_b, norm_src_b);
             break;
         case AB:
-            // pMars: dst.b = op(dst.a, src.b)
-            dst.b_field = op(norm_dst_a, norm_src_b);
+            // pMars: dst.b = op(dst.b, src.a)
+            dst.b_field = op(norm_dst_b, norm_src_a);
             break;
         case BA:
-            // pMars: dst.a = op(dst.b, src.a)
-            dst.a_field = op(norm_dst_b, norm_src_a);
+            // pMars: dst.a = op(dst.a, src.b)
+            dst.a_field = op(norm_dst_a, norm_src_b);
             break;
         case F:
         case I:
@@ -502,12 +502,12 @@ void apply_arithmetic_operation(Instruction& dst, const Instruction& src, Modifi
                 else dst.b_field = op(norm_dst_b, norm_src_b);
                 break;
             case AB:
-                if (norm_src_b == 0) term_b = true;
-                else dst.b_field = op(norm_dst_a, norm_src_b);
+                if (norm_src_a == 0) term_b = true;
+                else dst.b_field = op(norm_dst_b, norm_src_a);
                 break;
             case BA:
-                if (norm_src_a == 0) term_a = true;
-                else dst.a_field = op(norm_dst_b, norm_src_a);
+                if (norm_src_b == 0) term_a = true;
+                else dst.a_field = op(norm_dst_a, norm_src_b);
                 break;
             case F:
             case I:
