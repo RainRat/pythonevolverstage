@@ -638,12 +638,14 @@ public:
         }
 
         Instruction& dst = memory[b_addr_write];
-        Instruction dst_snapshot = memory[b_addr_read];
-        Instruction effective_src = src;
+        Instruction dst_snapshot;
 
         if (instr.b_mode == IMMEDIATE) {
-            dst_snapshot = memory[pc];
+            dst_snapshot = instr;
+        } else {
+            dst_snapshot = memory[b_addr_read];
         }
+        Instruction effective_src = src;
 
         // B-postincrement must be applied after its address is used for the read,
         // but before the instruction executes.
