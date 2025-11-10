@@ -68,6 +68,14 @@ def main():
     config = load_configuration("settings.ini")
     set_engine_config(config)
 
+    print("Stress test configuration:")
+    print(f"  Coresize: {config.coresize_list[0]}")
+    print(f"  Cycles: {config.cycles_list[0]}")
+    print(f"  Processes: {config.processes_list[0]}")
+    print(f"  Warrior length: {config.warlen_list[0]}")
+    print(f"  Min distance: {config.wardistance_list[0]}")
+    print("-" * 80)
+
     # Use the warrior length from the config for the first arena
     #warrior_length = config.warlen_list[0]
     warrior_length = 2 #temporary to narrow down the mismatches
