@@ -470,39 +470,41 @@ private:
     }
 
     template <typename Operation>
-    bool apply_safe_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op) {
+    void apply_safe_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op, bool& did_fail) {
         auto apply = [&](int& target, int value) {
-            int rhs = value;
-            if (rhs == 0) {
-                return false;
+            int n_value = normalize(value, core_size);
+            if (n_value == 0) {
+                did_fail = true;
+            } else {
+                target = op(normalize(target, core_size), n_value);
+                target = normalize(target, core_size);
             }
-            target = op(target, rhs);
-            return true;
         };
 
+        did_fail = false;
         switch (modifier) {
             case A:
-                return apply(dst.a_field, src.a_field);
+                apply(dst.a_field, src.a_field);
+                break;
             case B:
-                return apply(dst.b_field, src.b_field);
+                apply(dst.b_field, src.b_field);
+                break;
             case AB:
-                return apply(dst.b_field, src.a_field);
+                apply(dst.b_field, src.a_field);
+                break;
             case BA:
-                return apply(dst.a_field, src.b_field);
+                apply(dst.a_field, src.b_field);
+                break;
             case F:
-            case I: {
-                bool a_ok = apply(dst.a_field, src.a_field);
-                bool b_ok = apply(dst.b_field, src.b_field);
-                return a_ok && b_ok;
-            }
-            case X: {
-                bool a_ok = apply(dst.a_field, src.b_field);
-                bool b_ok = apply(dst.b_field, src.a_field);
-                return a_ok && b_ok;
-            }
+            case I:
+                apply(dst.a_field, src.a_field);
+                apply(dst.b_field, src.b_field);
+                break;
+            case X:
+                apply(dst.a_field, src.b_field);
+                apply(dst.b_field, src.a_field);
+                break;
         }
-
-        return true;
     }
 
     template <typename FieldPredicate, typename InstructionPredicate, typename Combiner>
@@ -697,16 +699,24 @@ public:
                 log_write(b_addr_write, dst);
                 break;
             case DIV:
-                if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; })) {
-                    return;
+                {
+                    bool did_fail = false;
+                    apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; }, did_fail);
+                    if (did_fail) {
+                        return;
+                    }
+                    log_write(b_addr_write, dst);
                 }
-                log_write(b_addr_write, dst);
                 break;
             case MOD:
-                if (!apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; })) {
-                    return;
+                {
+                    bool did_fail = false;
+                    apply_safe_arithmetic_operation(dst, effective_src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; }, did_fail);
+                    if (did_fail) {
+                        return;
+                    }
+                    log_write(b_addr_write, dst);
                 }
-                log_write(b_addr_write, dst);
                 break;
             case CMP:
                 {
