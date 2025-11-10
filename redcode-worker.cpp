@@ -438,12 +438,12 @@ public:
 
 private:
 template<typename Operation>
-void apply_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op) {
+void apply_arithmetic_operation(Instruction& dst, const Instruction& src, const Instruction& dst_snapshot, Modifier modifier, Operation op) {
     // Pre-normalize all potentially-used fields from the source (src)
     // and destination (dst) instructions, just as pMars's ARITH macro
     // does with IRB (dst) and IRA(src).
-    int norm_dst_a = normalize(dst.a_field, core_size);
-    int norm_dst_b = normalize(dst.b_field, core_size);
+    int norm_dst_a = normalize(dst_snapshot.a_field, core_size);
+    int norm_dst_b = normalize(dst_snapshot.b_field, core_size);
     int norm_src_a = normalize(src.a_field, core_size);
     int norm_src_b = normalize(src.b_field, core_size);
 
@@ -474,21 +474,21 @@ void apply_arithmetic_operation(Instruction& dst, const Instruction& src, Modifi
             dst.b_field = op(norm_dst_b, norm_src_b);
             break;
         case X:
-            // pMars: dst.a = op(dst.b, src.a), dst.b = op(dst.a, src.b)
-            dst.a_field = op(norm_dst_b, norm_src_a);
-            dst.b_field = op(norm_dst_a, norm_src_b);
+            // pMars: dst.a = op(dst.a, src.b), dst.b = op(dst.b, src.a)
+            dst.a_field = op(norm_dst_a, norm_src_b);
+            dst.b_field = op(norm_dst_b, norm_src_a);
             break;
     }
 }
 
     template <typename Operation>
-    void apply_safe_arithmetic_operation(Instruction& dst, const Instruction& src, Modifier modifier, Operation op, bool& did_fail) {
+    void apply_safe_arithmetic_operation(Instruction& dst, const Instruction& src, const Instruction& dst_snapshot, Modifier modifier, Operation op, bool& did_fail) {
         did_fail = false;
         bool term_a = false;
         bool term_b = false;
 
-        int norm_dst_a = normalize(dst.a_field, core_size);
-        int norm_dst_b = normalize(dst.b_field, core_size);
+        int norm_dst_a = normalize(dst_snapshot.a_field, core_size);
+        int norm_dst_b = normalize(dst_snapshot.b_field, core_size);
         int norm_src_a = normalize(src.a_field, core_size);
         int norm_src_b = normalize(src.b_field, core_size);
 
@@ -517,10 +517,13 @@ void apply_arithmetic_operation(Instruction& dst, const Instruction& src, Modifi
                 else dst.b_field = op(norm_dst_b, norm_src_b);
                 break;
             case X:
-                if (norm_src_a == 0) term_a = true;
-                else dst.a_field = op(norm_dst_b, norm_src_a);
-                if (norm_src_b == 0) term_b = true;
-                else dst.b_field = op(norm_dst_a, norm_src_b);
+                // dst.a_field = op(dst.a, src.b)
+                if (norm_src_b == 0) term_a = true;
+                else dst.a_field = op(norm_dst_a, norm_src_b);
+
+                // dst.b_field = op(dst.b, src.a)
+                if (norm_src_a == 0) term_b = true;
+                else dst.b_field = op(norm_dst_b, norm_src_a);
                 break;
         }
 
@@ -691,19 +694,19 @@ public:
                 }
                 break;
             case ADD:
-                apply_arithmetic_operation(dst, src, instr.modifier, [this](int lhs, int rhs) {
+                apply_arithmetic_operation(dst, src, dst_snapshot, instr.modifier, [this](int lhs, int rhs) {
                     return (lhs + rhs) % core_size;
                 });
                 log_write(b_addr_final, dst);
                 break;
             case SUB:
-                apply_arithmetic_operation(dst, src, instr.modifier, [this](int lhs, int rhs) {
+                apply_arithmetic_operation(dst, src, dst_snapshot, instr.modifier, [this](int lhs, int rhs) {
                     return (lhs - rhs + core_size) % core_size;
                 });
                 log_write(b_addr_final, dst);
                 break;
             case MUL:
-                apply_arithmetic_operation(dst, src, instr.modifier, [this](int lhs, int rhs) {
+                apply_arithmetic_operation(dst, src, dst_snapshot, instr.modifier, [this](int lhs, int rhs) {
                     return static_cast<int>((static_cast<long long>(lhs) * rhs) % core_size);
                 });
                 log_write(b_addr_final, dst);
@@ -711,7 +714,7 @@ public:
             case DIV:
                 {
                     bool did_fail = false;
-                    apply_safe_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; }, did_fail);
+                    apply_safe_arithmetic_operation(dst, src, dst_snapshot, instr.modifier, [](int lhs, int rhs) { return lhs / rhs; }, did_fail);
                     if (did_fail) {
                         return;
                     }
@@ -721,7 +724,7 @@ public:
             case MOD:
                 {
                     bool did_fail = false;
-                    apply_safe_arithmetic_operation(dst, src, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; }, did_fail);
+                    apply_safe_arithmetic_operation(dst, src, dst_snapshot, instr.modifier, [](int lhs, int rhs) { return lhs % rhs; }, did_fail);
                     if (did_fail) {
                         return;
                     }
