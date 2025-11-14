@@ -81,6 +81,11 @@ struct WarriorProcess {
     int owner;
 };
 
+struct ParsedWarrior {
+    std::vector<Instruction> instructions;
+    int entry_point = 0;
+};
+
 // --- Mappings for Parsing ---
 
 const std::map<std::string, Opcode> OPCODE_MAP = {
@@ -364,8 +369,13 @@ Instruction parse_line(const std::string& line, bool use_1988_rules) {
     return instr;
 }
 
-std::vector<Instruction> parse_warrior(const std::string& code, bool use_1988_rules) {
-    std::vector<Instruction> warrior_code;
+ParsedWarrior parse_warrior(const std::string& code, bool use_1988_rules) {
+    ParsedWarrior parsed;
+    std::map<std::string, size_t> label_positions;
+    bool has_entry_label = false;
+    std::string entry_label_display;
+    std::string entry_label_lookup;
+    bool seen_non_comment_line = false;
     std::stringstream ss(code);
     std::string line;
     int line_number = 0;
@@ -384,9 +394,85 @@ std::vector<Instruction> parse_warrior(const std::string& code, bool use_1988_ru
             }
         }
 
+        std::stringstream token_stream(trimmed);
+        std::string first_token;
+        if (!(token_stream >> first_token)) {
+            continue;
+        }
+
+        std::string first_token_upper = to_upper_copy(first_token);
+
+        if (!seen_non_comment_line) {
+            if (first_token_upper == "ORG") {
+                std::string label_token;
+                if (!(token_stream >> label_token)) {
+                    throw std::runtime_error(
+                        "ORG directive requires a label in line: " + trimmed
+                    );
+                }
+                std::string extra_token;
+                if (token_stream >> extra_token) {
+                    throw std::runtime_error(
+                        "ORG directive must specify exactly one label in line: " + trimmed
+                    );
+                }
+                std::string label_clean = label_token;
+                if (!label_clean.empty() && label_clean.back() == ':') {
+                    label_clean.pop_back();
+                }
+                if (label_clean.empty()) {
+                    throw std::runtime_error(
+                        "ORG directive requires a non-empty label in line: " + trimmed
+                    );
+                }
+                entry_label_display = label_clean;
+                entry_label_lookup = to_upper_copy(label_clean);
+                has_entry_label = true;
+                seen_non_comment_line = true;
+                continue;
+            }
+            seen_non_comment_line = true;
+        } else if (first_token_upper == "ORG") {
+            throw std::runtime_error(
+                "ORG directive is only allowed as the first non-comment line"
+            );
+        }
+
+        std::string instruction_text = trimmed;
+        if (first_token.find('.') == std::string::npos) {
+            std::string label = first_token;
+            if (!label.empty() && label.back() == ':') {
+                label.pop_back();
+            }
+            if (label.empty()) {
+                throw std::runtime_error(
+                    "Label must contain characters before the instruction in line: " + trimmed
+                );
+            }
+            std::string label_lookup = to_upper_copy(label);
+            if (label_positions.find(label_lookup) != label_positions.end()) {
+                throw std::runtime_error(
+                    "Duplicate label '" + label + "' encountered in line: " + trimmed
+                );
+            }
+            label_positions[label_lookup] = parsed.instructions.size();
+
+            size_t label_pos = instruction_text.find(first_token);
+            if (label_pos != std::string::npos) {
+                instruction_text = trim(instruction_text.substr(label_pos + first_token.size()));
+            } else {
+                instruction_text.clear();
+            }
+            if (instruction_text.empty()) {
+                throw std::runtime_error(
+                    "Label '" + label + "' is not followed by an instruction in line: " + trimmed
+                );
+            }
+        }
+
         try {
-            warrior_code.push_back(parse_line(trimmed, use_1988_rules));
-            if (warrior_code.size() > static_cast<size_t>(MAX_WARRIOR_LENGTH)) {
+            parsed.instructions.push_back(parse_line(instruction_text, use_1988_rules));
+            if (parsed.instructions.size() > static_cast<size_t>(MAX_WARRIOR_LENGTH)) {
                 throw std::runtime_error(
                     "Warrior exceeds maximum length of " + std::to_string(MAX_WARRIOR_LENGTH) + " instructions"
                 );
@@ -397,7 +483,17 @@ std::vector<Instruction> parse_warrior(const std::string& code, bool use_1988_ru
             );
         }
     }
-    return warrior_code;
+    if (has_entry_label) {
+        auto it = label_positions.find(entry_label_lookup);
+        if (it == label_positions.end()) {
+            throw std::runtime_error(
+                "ORG directive references undefined label '" + entry_label_display + "'"
+            );
+        }
+        parsed.entry_point = static_cast<int>(it->second);
+    }
+
+    return parsed;
 }
 
 
@@ -1126,8 +1222,11 @@ extern "C" {
                 rounds
             );
 
-            auto w1_instrs = parse_warrior(warrior1_code, use_1988);
-            auto w2_instrs = parse_warrior(warrior2_code, use_1988);
+            auto w1_parsed = parse_warrior(warrior1_code, use_1988);
+            auto w2_parsed = parse_warrior(warrior2_code, use_1988);
+
+            const auto& w1_instrs = w1_parsed.instructions;
+            const auto& w2_instrs = w2_parsed.instructions;
 
             if (w1_instrs.empty()) {
                 throw std::runtime_error("Warrior 1 contains no executable instructions");
@@ -1148,7 +1247,7 @@ extern "C" {
                 );
             }
 
-            if (w1_instrs == w2_instrs) {
+            if (w1_instrs == w2_instrs && w1_parsed.entry_point == w2_parsed.entry_point) {
                 std::stringstream tie_result;
                 tie_result << w1_id << " 0 0 0 " << (rounds) << " scores\n";
                 tie_result << w2_id << " 0 0 0 " << (rounds) << " scores";
@@ -1178,17 +1277,20 @@ extern "C" {
                 int w2_start = normalize(min_distance + offset, core_size);
 
                 for (size_t i = 0; i < w1_instrs.size(); ++i) {
-                    core.memory[normalize(w1_start + i, core_size)] = w1_instrs[i];
+                    core.memory[normalize(w1_start + static_cast<int>(i), core_size)] = w1_instrs[i];
                 }
                 for (size_t i = 0; i < w2_instrs.size(); ++i) {
-                    core.memory[normalize(w2_start + i, core_size)] = w2_instrs[i];
+                    core.memory[normalize(w2_start + static_cast<int>(i), core_size)] = w2_instrs[i];
                 }
+
+                int w1_entry_address = normalize(w1_start + w1_parsed.entry_point, core_size);
+                int w2_entry_address = normalize(w2_start + w2_parsed.entry_point, core_size);
 
                 int first_index = (r % 2 == 0) ? 0 : 1;
                 int winner_index = run_single_round(
                     core,
-                    w1_start,
-                    w2_start,
+                    w1_entry_address,
+                    w2_entry_address,
                     max_cycles,
                     read_limit,
                     write_limit,

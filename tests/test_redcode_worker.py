@@ -269,7 +269,29 @@ def test_org_pseudo_opcode_rejected():
         0,
     ).decode()
     assert result.startswith("ERROR:"), f"Expected ORG to be rejected, got: {result}"
-    assert "Unknown opcode 'ORG'" in result
+    assert "references undefined label" in result
+
+
+def test_org_start_label_sets_entry_point():
+    lib = load_worker()
+    warrior = (
+        "ORG START\n"
+        "DAT.F #0, #0\n"
+        "START  JMP.B $1, $0\n"
+        "DAT.F #0, #0\n"
+    )
+    opponent = "DAT.F #0, #0\n"
+    result = lib.run_battle(
+        warrior.encode(), 1,
+        opponent.encode(), 2,
+        40, 1, 40, 40, 40, 10, 10, 1, 25,
+        0,
+    ).decode()
+    assert not result.startswith("ERROR:"), f"Unexpected error: {result}"
+    w1_score, w2_score = get_scores(result)
+    assert w1_score == 3 and w2_score == 0, (
+        "Warrior should win the round when starting at the labeled entry point"
+    )
 
 
 def test_battle_stops_once_outcome_decided():
