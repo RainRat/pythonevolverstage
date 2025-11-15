@@ -1402,8 +1402,16 @@ def handle_archiving(
 
         instructions_written = 0
         new_lines: list[str] = []
-        for line in sourcelines:
-            instruction = parse_redcode_instruction(line)
+        for line_number, line in enumerate(sourcelines, start=1):
+            try:
+                instruction = parse_redcode_instruction(line)
+            except ValueError as exc:
+                raise ValueError(
+                    (
+                        f"Failed to parse archived warrior '{archive_choice}' "
+                        f"(line {line_number}): {exc}"
+                    )
+                ) from exc
             if instruction is None:
                 continue
             new_lines.append(instruction_to_line(instruction, arena))
