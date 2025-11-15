@@ -234,6 +234,7 @@ def test_handle_archiving_uses_disk_storage(tmp_path):
         clock_time=0.0,
         battle_log_file=None,
         final_era_only=False,
+        final_tournament_only=False,
         nothing_list=[0],
         random_list=[0],
         nab_list=[0],
