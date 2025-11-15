@@ -41,6 +41,7 @@ class EvolverConfig:
     benchmark_log_file: Optional[str]
     benchmark_log_generation_interval: int
     final_era_only: bool
+    final_tournament_only: bool
     nothing_list: list[int]
     random_list: list[int]
     nab_list: list[int]
@@ -815,6 +816,8 @@ def load_configuration(path: str) -> EvolverConfig:
         benchmark_log_file=benchmark_log_file,
         benchmark_log_generation_interval=benchmark_log_generation_interval,
         final_era_only=_read_config("FINAL_ERA_ONLY", data_type="bool"),
+        final_tournament_only=
+        _read_config("FINAL_TOURNAMENT_ONLY", data_type="bool") or False,
         nothing_list=_read_config("NOTHING_LIST", data_type="int_list") or [],
         random_list=_read_config("RANDOM_LIST", data_type="int_list") or [],
         nab_list=_read_config("NAB_LIST", data_type="int_list") or [],
