@@ -105,6 +105,7 @@ def test_load_configuration_parses_types(tmp_path, write_config):
     )
     assert config.benchmark_log_generation_interval == 5000
     assert config.final_era_only is False
+    assert config.final_tournament_only is False
     assert config.nothing_list == [1, 2]
     assert config.random_list == [4, 5]
     assert config.nab_list == [6, 7]
@@ -263,6 +264,65 @@ def test_boolean_parser_respects_explicit_values():
     bool_parser = evolverstage._CONFIG_PARSERS["bool"]
     assert bool_parser("False", key="FINAL_ERA_ONLY", parser=parser) is False
 
+
+def test_main_runs_final_tournament_only_mode(monkeypatch, tmp_path):
+    config = replace(
+        _DEFAULT_CONFIG,
+        base_path=str(tmp_path),
+        archive_path=str(tmp_path / "archive"),
+        last_arena=0,
+        numwarriors=2,
+        final_tournament_only=True,
+        run_final_tournament=False,
+        battle_log_file=None,
+        benchmark_log_file=None,
+    )
+
+    arena_dir = tmp_path / "arena0"
+    archive_dir = tmp_path / "archive"
+    arena_dir.mkdir()
+    archive_dir.mkdir()
+    warrior_path = arena_dir / "1.red"
+    warrior_path.write_text("MOV 0, 0\n", encoding="utf-8")
+    (arena_dir / "2.red").write_text("MOV 1, 1\n", encoding="utf-8")
+
+    monkeypatch.setattr(evolverstage, "load_configuration", lambda _: config)
+    monkeypatch.setattr(evolverstage, "set_console_verbosity", lambda verbosity: verbosity)
+    monkeypatch.setattr(evolverstage, "console_log", lambda *args, **kwargs: None)
+
+    final_tournament_calls: list[evolverstage.EvolverConfig] = []
+
+    def record_final_tournament(active_config):
+        final_tournament_calls.append(active_config)
+
+    monkeypatch.setattr(evolverstage, "run_final_tournament", record_final_tournament)
+
+    try:
+        previous_config = evolverstage.get_active_config()
+    except RuntimeError:
+        previous_config = None
+
+    try:
+        previous_storage = evolverstage.get_arena_storage()
+    except RuntimeError:
+        previous_storage = None
+
+    try:
+        result = evolverstage._main_impl(["--config", str(tmp_path / "config.ini")])
+        assert result == 0
+        assert final_tournament_calls == [config]
+        assert warrior_path.read_text(encoding="utf-8") == "MOV 0, 0\n"
+    finally:
+        if previous_config is not None:
+            evolverstage.set_active_config(previous_config)
+        else:
+            evolverstage.set_active_config(_DEFAULT_CONFIG)
+        if previous_storage is not None:
+            evolverstage.set_arena_storage(previous_storage)
+        else:
+            evolverstage.set_arena_storage(
+                evolverstage.create_arena_storage(_DEFAULT_CONFIG)
+            )
 
 def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_config):
     benchmark_root = tmp_path / "benchmarks" / "arena0"

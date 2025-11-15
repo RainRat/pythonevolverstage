@@ -1225,6 +1225,14 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     set_arena_storage(storage)
     storage.load_existing()
 
+    if active_config.final_tournament_only:
+        console_log(
+            "Final tournament only mode enabled. Skipping evolution loop.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+        run_final_tournament(active_config)
+        return 0
+
     if not active_config.alreadyseeded:
         console_log("Seeding", minimum_level=VerbosityLevel.TERSE)
         for arena in range(0, active_config.last_arena + 1):
