@@ -4,9 +4,10 @@ import sys
 from pathlib import Path
 
 # Add project root to path to allow importing engine module
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from config import set_active_config
 from engine import (
     set_engine_config,
     execute_battle_with_sources,
@@ -19,6 +20,7 @@ from stress_test import generate_random_warrior
 def generate_battle_data(num_battles: int, output_file: str):
     """Generates pre-calculated battle data and saves it to a file."""
     config = load_configuration("settings.ini")
+    set_active_config(config)
     set_engine_config(config)
 
     battle_data = []
@@ -32,7 +34,7 @@ def generate_battle_data(num_battles: int, output_file: str):
 
         # Get parameters for the selected arena
         coresize = config.coresize_list[arena_index]
-        cycles = config.cycles_list[arena_index]
+        cycles = min(config.cycles_list[arena_index], 800)
         processes = config.processes_list[arena_index]
         warlen = config.warlen_list[arena_index]
         wardistance = config.wardistance_list[arena_index]

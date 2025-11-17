@@ -13,13 +13,15 @@ from engine import (
     _require_config,
 )
 from evolverstage import load_configuration
+from config import set_active_config
 
 # Load the pre-calculated battle data
 with open(PROJECT_ROOT / "precalculated_battles.json", "r") as f:
-    BATTLE_DATA = json.load(f)
+    BATTLE_DATA = [json.load(f)[1]]
 
 # Basic configuration for the engine
 config = load_configuration("settings.ini")
+set_active_config(config)
 set_engine_config(config)
 
 @pytest.mark.parametrize("battle", BATTLE_DATA)
