@@ -4,6 +4,8 @@ import platform
 import subprocess
 from functools import lru_cache
 
+import pytest
+
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent
 
 
@@ -31,6 +33,9 @@ def ensure_pmars_compiled() -> pathlib.Path:
     binary_name = "pmars.exe" if platform.system() == "Windows" else "pmars"
     source_dir = PROJECT_ROOT / "pMars" / "src"
     binary_path = source_dir / binary_name
+
+    if not source_dir.exists():
+        pytest.skip("Bundled pMARS source is unavailable; skipping parity tests.")
 
     try:
         subprocess.run(["make", "pmars"], cwd=source_dir, check=True)

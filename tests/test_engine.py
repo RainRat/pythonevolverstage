@@ -233,6 +233,8 @@ def test_handle_archiving_uses_disk_storage(tmp_path):
         arena_checkpoint_interval=10000,
         clock_time=0.0,
         battle_log_file=None,
+        benchmark_log_file=None,
+        benchmark_log_generation_interval=0,
         final_era_only=False,
         final_tournament_only=False,
         nothing_list=[0],
