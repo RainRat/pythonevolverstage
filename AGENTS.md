@@ -32,7 +32,7 @@ The cpp program:
 
 Testing requirements:
 
-- Run the full Python and C++ test suites with `pytest tests/test_evolverstage.py tests/test_redcode_worker.py` before finishing.
+- Run the full Python and C++ test suites with `pytest tests/` before finishing.
 - Do not commit empty `arena(n)/` or `archive/` folders. (They would just initially mislead the user about whether the arenas are already seeded and whether an archive is included with the repo.)
 
 Adherence to spec:
