@@ -99,7 +99,7 @@ def main():
             print(f"pMars scores: {scores_pmars}")
             print("-" * 80)
 
-        if (i + 1) % 1000 == 0:
+        if (i + 1) % (args.iterations // 100) == 0:
             print(f"Completed {i+1}/{args.iterations} iterations with {mismatches} mismatches.")
 
     print(f"Stress test complete. Found {mismatches} mismatches in {args.iterations} iterations.")
