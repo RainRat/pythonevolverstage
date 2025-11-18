@@ -662,8 +662,13 @@ def _parse_battle_output(
                     raise RuntimeError(
                         f"Unexpected score line format: {line.strip()}"
                     )
-                scores.append(int(splittedline[4]))
-                warriors.append(int(splittedline[0]))
+                try:
+                    scores.append(int(splittedline[4]))
+                    warriors.append(int(splittedline[0]))
+                except ValueError as exc:
+                    raise RuntimeError(
+                        f"Unexpected score line format: {line.strip()}"
+                    ) from exc
     if is_pmars:
         if not pmars_slots:
             raise RuntimeError(

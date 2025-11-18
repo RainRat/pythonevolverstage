@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 
 # Opcodes that *must* have a modifier (e.g., .I, .A, .B)
-# 'DAT' and 'NOP' are excluded as they are valid without modifiers.
 OPCODES_REQUIRING_MODS = {
     'MOV',
     'ADD',
@@ -27,7 +26,8 @@ OPCODES_REQUIRING_MODS = {
     'SNE',
     'SLT',
     'SPL',
-    'DAT'
+    'DAT',
+    'NOP'
 }
 
 # Pseudo-ops that look like opcodes but are fine without modifiers

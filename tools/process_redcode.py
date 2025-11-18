@@ -15,10 +15,10 @@ This script can operate in two modes:
 from __future__ import annotations
 
 import argparse
+import glob
+import sys
 from pathlib import Path
 from typing import Iterable, Set, List, Optional
-import glob  # <--- ADD THIS
-import sys   # <--- ADD THIS
 # Base opcodes supported by the evolver (from script 1)
 _VALID_BASE_OPCODES = {
     "DAT", "MOV", "ADD", "SUB", "MUL", "DIV", "MOD",
@@ -400,5 +400,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    import sys
     main()
