@@ -18,3 +18,8 @@ benchmarks/*
 build/
 *.so
 __pycache__/
+
+# Optimizer and tool outputs
+optuna_trials/
+progress.png
+precalculated_battles.json

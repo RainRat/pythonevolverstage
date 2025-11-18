@@ -100,7 +100,7 @@ Evolver output will now rewrite numbers either negative or positive, whichever i
                 - Over a LAN
                 - Over the Internet with Google Drive, etc.
 
-11. (New) Optional log file
+11. Optional log file
 Results of battles saved so you can analyse your progress. Current fields are 'era', 'arena', 'winner', 'loser', 'score1', 'score2', and 'bred_with'. Edit BATTLE_LOG_FILE setting to choose a file name; comment out or leave blank for no log.
 
 12. Champion-aware matchmaking
