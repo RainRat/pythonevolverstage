@@ -306,8 +306,11 @@ class PseudoGraphicalConsole(ConsoleInterface):
             log_lines = list(self._log_lines)[-remaining_rows:]
             lines_to_draw.extend(log_lines)
 
-        display_width = max(0, width)
         for row, line in enumerate(lines_to_draw[:height]):
+            display_width = width if row < height - 1 else max(0, width - 1)
+            if display_width <= 0:
+                continue
+
             clipped_line = line[:display_width]
             self._screen.addnstr(row, 0, clipped_line, display_width)
 
