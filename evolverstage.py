@@ -789,11 +789,23 @@ def run_final_tournament(active_config: EvolverConfig):
         )
         return
 
+    try:
+        storage = get_arena_storage()
+    except RuntimeError:
+        storage = create_arena_storage(active_config)
+        set_arena_storage(storage)
+    else:
+        storage_config = getattr(storage, "_config", None)
+        if storage_config is not None and storage_config.base_path != active_config.base_path:
+            storage = create_arena_storage(active_config)
+            set_arena_storage(storage)
+    if active_config.use_in_memory_arenas:
+        storage.load_existing()
+
     final_era_index = max(0, len(active_config.battlerounds_list) - 1)
     use_in_memory_internal = (
         active_config.use_in_memory_arenas and active_config.battle_engine == 'internal'
     )
-    storage = get_arena_storage()
     use_benchmarks = (
         active_config.benchmark_final_tournament
         and any(active_config.benchmark_sets.values())
