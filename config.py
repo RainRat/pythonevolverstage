@@ -7,6 +7,7 @@ from typing import Callable, Optional, Tuple, cast
 from ui import VerbosityLevel, console_log
 
 BASE_ADDRESSING_MODES = {"$", "#", "@", "<", ">", "*", "{", "}"}
+MAX_WARRIOR_FILENAME_ID = 65534
 
 
 @dataclass
@@ -149,7 +150,7 @@ def get_arena_spec(arena: int) -> str:
 
 
 def _require_worker_limits() -> Tuple[int, int, int, int, int, int, int]:
-    from engine import (
+    from battle_runner import (
         CPP_WORKER_MAX_CORE_SIZE,
         CPP_WORKER_MAX_CYCLES,
         CPP_WORKER_MAX_PROCESSES,
@@ -262,7 +263,7 @@ def _detect_existing_seed(active_config: EvolverConfig) -> tuple[bool, list[str]
 
 
 def validate_config(active_config: EvolverConfig, config_path: Optional[str] = None) -> None:
-    from engine import CPP_WORKER_MAX_ROUNDS, MAX_WARRIOR_FILENAME_ID
+    from battle_runner import CPP_WORKER_MAX_ROUNDS
 
     if active_config.last_arena is None:
         raise ValueError("LAST_ARENA must be specified in the configuration.")
