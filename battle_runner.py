@@ -49,6 +49,26 @@ def configure_battle_rng(random_int_func) -> None:
     _rng_int = random_int_func
 
 
+def _require_battle_config():
+    active_config = get_active_config()
+    config_module = sys.modules.get("config")
+    placeholder_cls = getattr(config_module, "_ConfigNotLoaded", None)
+    if placeholder_cls is not None and isinstance(active_config, placeholder_cls):
+        active_config = None
+
+    if active_config is not None:
+        return active_config
+
+    engine_module = sys.modules.get("engine")
+    if engine_module is not None and hasattr(engine_module, "_require_config"):
+        return engine_module._require_config()  # type: ignore[attr-defined]
+
+    raise RuntimeError(
+        "Active evolver configuration has not been set. Call set_active_config() "
+        "or main() before using module-level helpers."
+    )
+
+
 def _deduplicate_paths(candidates: Iterable[Path]) -> list[Path]:
     seen: set[str] = set()
     unique_candidates: list[Path] = []
@@ -663,7 +683,7 @@ def execute_battle_with_sources(
     battlerounds_override: Optional[int] = None,
     seed: Optional[int] = None,
 ) -> tuple[list[int], list[int]]:
-    config = get_active_config()
+    config = _require_battle_config()
     engine_name = config.battle_engine
     battlerounds = (
         battlerounds_override
