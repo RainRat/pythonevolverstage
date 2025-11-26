@@ -9,7 +9,7 @@ import time
 import warnings
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Sequence, Tuple, TypeVar, Union, TextIO
+from typing import Callable, List, Optional, Sequence, Tuple, Union, TextIO
 
 from engine import *
 import config as _config_module
@@ -57,9 +57,6 @@ _BENCHMARK_WARRIOR_ID_BASE = MAX_WARRIOR_FILENAME_ID - 10_000
 _FINAL_STANDINGS_DISPLAY_LIMIT = 20
 _PER_WARRIOR_SUMMARY_LIMIT = 20
 
-T = TypeVar("T")
-
-
 def set_rng_sequence(sequence: list[int]) -> None:
     """Set a deterministic RNG sequence for tests."""
 
@@ -92,14 +89,12 @@ def get_random_int(min_val: int, max_val: int) -> int:
     return random.randint(min_val, max_val)
 
 
-def _get_random_choice(sequence: Sequence[T]) -> T:
-    if not sequence:
-        raise ValueError("Cannot choose from an empty sequence")
-    index = get_random_int(0, len(sequence) - 1)
-    return sequence[index]
-
-
-configure_rng(get_random_int, _get_random_choice)
+configure_rng(
+    get_random_int,
+    lambda sequence: sequence[get_random_int(0, len(sequence) - 1)]
+    if sequence
+    else (_ for _ in ()).throw(ValueError("Cannot choose from an empty sequence")),
+)
 
 
 def _select_arena_index(active_config: EvolverConfig) -> int:
@@ -1528,15 +1523,6 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         run_final_tournament(active_config)
 
     return 0
-
-
-def _count_archive_warriors(archive_dir: str) -> int:
-    """Legacy helper retained for tests; delegates to :class:`DiskArchiveStorage`."""
-
-    storage = DiskArchiveStorage(archive_path=archive_dir)
-    return storage.count()
-
-
 def main(argv: Optional[List[str]] = None) -> int:
     try:
         return _main_impl(argv)

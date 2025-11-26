@@ -1105,7 +1105,9 @@ def test_count_archive_warriors_counts_only_red_files(tmp_path):
     (archive_dir / "subdir").mkdir()
     (archive_dir / "subdir" / "nested.red").write_text("", encoding="utf-8")
 
-    assert evolverstage._count_archive_warriors(str(archive_dir)) == 2
+    archive_storage = engine.DiskArchiveStorage(archive_path=str(archive_dir))
+
+    assert archive_storage.count() == 2
 
 
 def test_count_instruction_library_entries_ignores_comments(tmp_path):
