@@ -2108,17 +2108,18 @@ def test_micro_mutation_handler():
         b_field=10,
     )
     evolverstage.set_rng_sequence([1, 1, 1, 2, 2, 1, 2, 2])
+    micro_mutation = evolverstage.MicroMutation()
     try:
-        instruction = evolverstage.apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        instruction = micro_mutation.apply(instruction, 0, _DEFAULT_CONFIG, 0)
         assert instruction.a_field == 6
 
-        instruction = evolverstage.apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        instruction = micro_mutation.apply(instruction, 0, _DEFAULT_CONFIG, 0)
         assert instruction.a_field == 5
 
-        instruction = evolverstage.apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        instruction = micro_mutation.apply(instruction, 0, _DEFAULT_CONFIG, 0)
         assert instruction.b_field == 11
 
-        instruction = evolverstage.apply_micro_mutation(instruction, 0, _DEFAULT_CONFIG, 0)
+        instruction = micro_mutation.apply(instruction, 0, _DEFAULT_CONFIG, 0)
         assert instruction.b_field == 10
     finally:
         evolverstage.set_rng_sequence([])
@@ -2141,52 +2142,53 @@ def test_minor_mutation_handler(monkeypatch):
     monkeypatch.setattr(evolverstage.config, "warlen_list", [5])
 
     evolverstage.set_rng_sequence([1, 1, 2, 1, 3, 0, 4, 2, 3, 5, 0, 6, 1, -7])
+    minor_mutation = evolverstage.MinorMutation()
     try:
-        mutated = evolverstage.apply_minor_mutation(
+        mutated = minor_mutation.apply(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
-            _magic_number=0,
+            magic_number=0,
         )
         assert mutated.opcode == "ADD"
 
-        mutated = evolverstage.apply_minor_mutation(
+        mutated = minor_mutation.apply(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
-            _magic_number=0,
+            magic_number=0,
         )
         assert mutated.modifier == "B"
 
-        mutated = evolverstage.apply_minor_mutation(
+        mutated = minor_mutation.apply(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
-            _magic_number=0,
+            magic_number=0,
         )
         assert mutated.a_mode == "#"
 
-        mutated = evolverstage.apply_minor_mutation(
+        mutated = minor_mutation.apply(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
-            _magic_number=0,
+            magic_number=0,
         )
         assert mutated.a_field == 3
 
-        mutated = evolverstage.apply_minor_mutation(
+        mutated = minor_mutation.apply(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
-            _magic_number=0,
+            magic_number=0,
         )
         assert mutated.b_mode == "#"
 
-        mutated = evolverstage.apply_minor_mutation(
+        mutated = minor_mutation.apply(
             base_instruction.copy(),
             arena=0,
             config=evolverstage.config,
-            _magic_number=0,
+            magic_number=0,
         )
         assert mutated.b_field == -7
     finally:
