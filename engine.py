@@ -200,117 +200,6 @@ class BaseMutationStrategy(ABC):
         raise NotImplementedError
 
 
-def apply_major_mutation(
-    _instruction: RedcodeInstruction,
-    arena: int,
-    _config: "EvolverConfig",
-    _magic_number: int,
-) -> RedcodeInstruction:
-    return generate_random_instruction(arena)
-
-
-def apply_nab_instruction(
-    instruction: RedcodeInstruction,
-    arena: int,
-    config: "EvolverConfig",
-    _magic_number: int,
-) -> RedcodeInstruction:
-    if config.last_arena == 0:
-        return instruction
-
-    donor_arena = _rng_int(0, config.last_arena)
-    while donor_arena == arena and config.last_arena > 0:
-        donor_arena = _rng_int(0, config.last_arena)
-
-    console_log(
-        "Nab instruction from arena " + str(donor_arena),
-        minimum_level=VerbosityLevel.VERBOSE,
-    )
-    storage = get_arena_storage()
-    donor_warrior = _rng_int(1, config.numwarriors)
-    donor_lines = storage.get_warrior_lines(donor_arena, donor_warrior)
-
-    if donor_lines:
-        return parse_instruction_or_default(_rng_choice(donor_lines))
-
-    console_log(
-        "Donor warrior empty; skipping mutation.",
-        minimum_level=VerbosityLevel.VERBOSE,
-    )
-    return instruction
-
-
-def apply_minor_mutation(
-    instruction: RedcodeInstruction,
-    arena: int,
-    config: "EvolverConfig",
-    _magic_number: int,
-) -> RedcodeInstruction:
-    r = _rng_int(1, 6)
-    if r == 1:
-        instruction.opcode = choose_random_opcode(arena)
-    elif r == 2:
-        instruction.modifier = choose_random_modifier(arena)
-    elif r == 3:
-        instruction.a_mode = choose_random_mode(arena)
-    elif r == 4:
-        instruction.a_field = weighted_random_number(
-            config.coresize_list[arena], config.warlen_list[arena]
-        )
-    elif r == 5:
-        instruction.b_mode = choose_random_mode(arena)
-    elif r == 6:
-        instruction.b_field = weighted_random_number(
-            config.coresize_list[arena], config.warlen_list[arena]
-        )
-    return instruction
-
-
-def apply_micro_mutation(
-    instruction: RedcodeInstruction,
-    _arena: int,
-    _config: "EvolverConfig",
-    _magic_number: int,
-) -> RedcodeInstruction:
-    target_field = "a_field" if _rng_int(1, 2) == 1 else "b_field"
-    current_value = _ensure_int(getattr(instruction, target_field))
-    if _rng_int(1, 2) == 1:
-        current_value += 1
-    else:
-        current_value -= 1
-    setattr(instruction, target_field, current_value)
-    return instruction
-
-
-def apply_instruction_library(
-    instruction: RedcodeInstruction,
-    _arena: int,
-    config: "EvolverConfig",
-    _magic_number: int,
-) -> RedcodeInstruction:
-    if not config.library_path or not os.path.exists(config.library_path):
-        return instruction
-
-    with open(config.library_path, "r") as library_handle:
-        library_lines = library_handle.readlines()
-    if library_lines:
-        return parse_instruction_or_default(_rng_choice(library_lines))
-    return default_instruction()
-
-
-def apply_magic_number_mutation(
-    instruction: RedcodeInstruction,
-    _arena: int,
-    _config: "EvolverConfig",
-    magic_number: int,
-) -> RedcodeInstruction:
-    if _rng_int(1, 2) == 1:
-        instruction.a_field = magic_number
-    else:
-        instruction.b_field = magic_number
-    return instruction
-
-
 class DoNothingMutation(BaseMutationStrategy):
     def apply(
         self,
@@ -330,7 +219,7 @@ class MajorMutation(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
-        return apply_major_mutation(instruction, arena, config, magic_number)
+        return generate_random_instruction(arena)
 
 
 class NabInstruction(BaseMutationStrategy):
@@ -341,7 +230,29 @@ class NabInstruction(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
-        return apply_nab_instruction(instruction, arena, config, magic_number)
+        if config.last_arena == 0:
+            return instruction
+
+        donor_arena = _rng_int(0, config.last_arena)
+        while donor_arena == arena and config.last_arena > 0:
+            donor_arena = _rng_int(0, config.last_arena)
+
+        console_log(
+            "Nab instruction from arena " + str(donor_arena),
+            minimum_level=VerbosityLevel.VERBOSE,
+        )
+        storage = get_arena_storage()
+        donor_warrior = _rng_int(1, config.numwarriors)
+        donor_lines = storage.get_warrior_lines(donor_arena, donor_warrior)
+
+        if donor_lines:
+            return parse_instruction_or_default(_rng_choice(donor_lines))
+
+        console_log(
+            "Donor warrior empty; skipping mutation.",
+            minimum_level=VerbosityLevel.VERBOSE,
+        )
+        return instruction
 
 
 class MinorMutation(BaseMutationStrategy):
@@ -352,7 +263,24 @@ class MinorMutation(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
-        return apply_minor_mutation(instruction, arena, config, magic_number)
+        r = _rng_int(1, 6)
+        if r == 1:
+            instruction.opcode = choose_random_opcode(arena)
+        elif r == 2:
+            instruction.modifier = choose_random_modifier(arena)
+        elif r == 3:
+            instruction.a_mode = choose_random_mode(arena)
+        elif r == 4:
+            instruction.a_field = weighted_random_number(
+                config.coresize_list[arena], config.warlen_list[arena]
+            )
+        elif r == 5:
+            instruction.b_mode = choose_random_mode(arena)
+        elif r == 6:
+            instruction.b_field = weighted_random_number(
+                config.coresize_list[arena], config.warlen_list[arena]
+            )
+        return instruction
 
 
 class MicroMutation(BaseMutationStrategy):
@@ -363,7 +291,14 @@ class MicroMutation(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
-        return apply_micro_mutation(instruction, arena, config, magic_number)
+        target_field = "a_field" if _rng_int(1, 2) == 1 else "b_field"
+        current_value = _ensure_int(getattr(instruction, target_field))
+        if _rng_int(1, 2) == 1:
+            current_value += 1
+        else:
+            current_value -= 1
+        setattr(instruction, target_field, current_value)
+        return instruction
 
 
 class InstructionLibraryMutation(BaseMutationStrategy):
@@ -374,7 +309,14 @@ class InstructionLibraryMutation(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
-        return apply_instruction_library(instruction, arena, config, magic_number)
+        if not config.library_path or not os.path.exists(config.library_path):
+            return instruction
+
+        with open(config.library_path, "r") as library_handle:
+            library_lines = library_handle.readlines()
+        if library_lines:
+            return parse_instruction_or_default(_rng_choice(library_lines))
+        return default_instruction()
 
 
 class MagicNumberMutation(BaseMutationStrategy):
@@ -385,7 +327,11 @@ class MagicNumberMutation(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
-        return apply_magic_number_mutation(instruction, arena, config, magic_number)
+        if _rng_int(1, 2) == 1:
+            instruction.a_field = magic_number
+        else:
+            instruction.b_field = magic_number
+        return instruction
 
 
 @dataclass
@@ -703,12 +649,6 @@ __all__ = [
     "MagicNumberMutation",
     "BattleType",
     "choose_battle_type",
-    "apply_major_mutation",
-    "apply_nab_instruction",
-    "apply_minor_mutation",
-    "apply_micro_mutation",
-    "apply_instruction_library",
-    "apply_magic_number_mutation",
     "ArchivingEvent",
     "ArchivingResult",
     "handle_archiving",
