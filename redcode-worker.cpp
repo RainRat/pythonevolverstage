@@ -22,7 +22,9 @@ constexpr int WARRIOR_COUNT = 2;
 // represent a compromise: they are substantially higher than the previous
 // internal limits, line up with the scale that pMARS comfortably supports on
 // contemporary hardware, and still keep memory usage and run time reasonable.
+const int MIN_CORE_SIZE = 2;
 const int MAX_CORE_SIZE = 262144;          // 256 Ki cells
+const int MIN_DISTANCE = 0;
 const int MAX_CYCLES = 5000000;            // generous cap, but still practical
 const int MAX_PROCESSES = 131072;          // matches typical large-core usage
 const int MAX_WARRIOR_LENGTH = MAX_CORE_SIZE;
@@ -1009,8 +1011,10 @@ void validate_battle_parameters(
     int max_warrior_length,
     int rounds
 ) {
-    if (core_size < 2) {
-        throw std::runtime_error("Core size must be at least 2");
+    if (core_size < MIN_CORE_SIZE) {
+        throw std::runtime_error(
+            "Core size must be at least " + std::to_string(MIN_CORE_SIZE)
+        );
     }
     if (core_size > MAX_CORE_SIZE) {
         throw std::runtime_error(
@@ -1033,9 +1037,12 @@ void validate_battle_parameters(
     if (write_limit <= 0 || write_limit > core_size) {
         throw std::runtime_error("Write limit must be between 1 and the core size");
     }
-    if (min_distance < 0 || min_distance > MAX_MIN_DISTANCE) {
+    if (min_distance < MIN_DISTANCE || min_distance > MAX_MIN_DISTANCE) {
         throw std::runtime_error(
-            "Min distance must be between 0 and " + std::to_string(MAX_MIN_DISTANCE)
+            "Min distance must be between "
+            + std::to_string(MIN_DISTANCE)
+            + " and "
+            + std::to_string(MAX_MIN_DISTANCE)
         );
     }
     if (min_distance > core_size / 2) {

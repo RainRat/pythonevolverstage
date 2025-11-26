@@ -294,21 +294,6 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
     if active_config.arena_checkpoint_interval <= 0:
         raise ValueError("ARENA_CHECKPOINT_INTERVAL must be a positive integer.")
 
-    if active_config.benchmark_log_generation_interval < 0:
-        raise ValueError("BENCHMARK_LOG_GENERATION_INTERVAL cannot be negative.")
-
-    if (
-        active_config.benchmark_log_file
-        and active_config.benchmark_log_generation_interval <= 0
-    ):
-        warnings.warn(
-            "BENCHMARK_LOG_FILE is set but BENCHMARK_LOG_GENERATION_INTERVAL is not "
-            "positive; benchmark logging will be disabled.",
-            RuntimeWarning,
-            stacklevel=2,
-        )
-        active_config.benchmark_log_file = None
-
     per_arena_lists = {
         "CORESIZE_LIST": active_config.coresize_list,
         "SANITIZE_LIST": active_config.sanitize_list,
@@ -590,6 +575,21 @@ def validate_config(active_config: EvolverConfig, config_path: Optional[str] = N
                 + ", ".join(invalid_modes)
                 + f". Allowed values are: {allowed_modes}."
             )
+
+    if active_config.benchmark_log_generation_interval < 0:
+        raise ValueError("BENCHMARK_LOG_GENERATION_INTERVAL cannot be negative.")
+
+    if (
+        active_config.benchmark_log_file
+        and active_config.benchmark_log_generation_interval <= 0
+    ):
+        warnings.warn(
+            "BENCHMARK_LOG_FILE is set but BENCHMARK_LOG_GENERATION_INTERVAL is not "
+            "positive; benchmark logging will be disabled.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        active_config.benchmark_log_file = None
 
 
 def _load_benchmark_sets(active_config: EvolverConfig) -> dict[int, list[BenchmarkWarrior]]:
