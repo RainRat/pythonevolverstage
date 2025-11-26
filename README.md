@@ -52,7 +52,7 @@ For all of these, modify the constants in settings.ini.
 FINAL_ERA_ONLY=True
 ```
 
-7. Two new evolution strategies.
+7. Two evolution strategies.
     First, the single instruction modification strategies are now all under a "bag of marbles" analogy, to get them all under the same framework and even use fewer variables. Imagine a bag with six different-coloured marbles. One for each of the five modification strategies, plus one for "do nothing". The lists now tell how many marbles of each type to put in the bag for each era. A single random number decides which strategy is used. They are:
 	- Do Nothing
 	- Completely new random instruction
