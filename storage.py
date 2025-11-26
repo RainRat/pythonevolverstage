@@ -30,10 +30,6 @@ class _ArenaStorageNotLoaded:
     pass
 
 
-def _resolve_config(config: EvolverConfig | None) -> EvolverConfig:
-    return config if config is not None else get_active_config()
-
-
 class ArenaStorage:
     """Abstract storage backend for warrior source code."""
 
@@ -70,7 +66,7 @@ class DiskArenaStorage(ArenaStorage):
         return None
 
     def get_warrior_lines(self, arena: int, warrior_id: int) -> list[str]:
-        config = _resolve_config(self._config)
+        config = self._config if self._config is not None else get_active_config()
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
         try:
@@ -82,7 +78,7 @@ class DiskArenaStorage(ArenaStorage):
     def set_warrior_lines(
         self, arena: int, warrior_id: int, lines: Sequence[str]
     ) -> None:
-        config = _resolve_config(self._config)
+        config = self._config if self._config is not None else get_active_config()
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         os.makedirs(arena_dir, exist_ok=True)
         warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
@@ -110,7 +106,7 @@ class InMemoryArenaStorage(ArenaStorage):
         self._dirty: set[tuple[int, int]] = set()
 
     def _write_warrior(self, arena: int, warrior_id: int) -> None:
-        config = _resolve_config(self._config)
+        config = self._config if self._config is not None else get_active_config()
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
         os.makedirs(arena_dir, exist_ok=True)
@@ -118,7 +114,7 @@ class InMemoryArenaStorage(ArenaStorage):
             handle.writelines(self._arenas[arena][warrior_id])
 
     def load_existing(self) -> None:
-        config = _resolve_config(self._config)
+        config = self._config if self._config is not None else get_active_config()
         for arena in range(0, config.last_arena + 1):
             arena_dir = os.path.join(config.base_path, f"arena{arena}")
             if not os.path.isdir(arena_dir):
@@ -133,7 +129,7 @@ class InMemoryArenaStorage(ArenaStorage):
         self._dirty.clear()
 
     def get_warrior_lines(self, arena: int, warrior_id: int) -> list[str]:
-        config = _resolve_config(self._config)
+        config = self._config if self._config is not None else get_active_config()
         if arena in self._arenas and warrior_id in self._arenas[arena]:
             return list(self._arenas[arena][warrior_id])
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
@@ -153,7 +149,7 @@ class InMemoryArenaStorage(ArenaStorage):
     def ensure_warriors_on_disk(
         self, arena: int, warrior_ids: Sequence[int]
     ) -> None:
-        config = _resolve_config(self._config)
+        config = self._config if self._config is not None else get_active_config()
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         if not self._dirty or not os.path.isdir(arena_dir):
             return None
