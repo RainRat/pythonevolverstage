@@ -238,7 +238,7 @@ def _load_cpp_worker_library() -> None:
                 "Internal battle engine will not be available.",
                 minimum_level=VerbosityLevel.TERSE,
             )
-    except Exception as exc:  # pragma: no cover - defensive logging
+    except (OSError, ImportError) as exc:  # pragma: no cover - defensive logging
         CPP_WORKER_LIB = None
         console_log(
             f"Could not load C++ Redcode worker: {exc}",

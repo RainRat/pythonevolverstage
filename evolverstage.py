@@ -1190,75 +1190,17 @@ def _export_final_tournament_results(
             minimum_level=VerbosityLevel.TERSE,
         )
 
-def _main_impl(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="Python Evolver Stage")
-    parser.add_argument(
-        "--config",
-        default="settings.ini",
-        help="Path to configuration INI file (default: settings.ini)",
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        help="Seed the RNG for reproducible runs",
-    )
-    parser.add_argument(
-        "--verbosity",
-        choices=[level.value for level in VerbosityLevel],
-        default=VerbosityLevel.DEFAULT.value,
-        help="Console verbosity: terse, default, verbose, or pseudo-graphical",
-    )
-    args = parser.parse_args(argv)
 
-    verbosity = VerbosityLevel(args.verbosity)
-
-    verbosity = set_console_verbosity(verbosity)
-
-    active_config = load_configuration(args.config)
-
-    set_active_config(active_config)
-
-    archive_storage = DiskArchiveStorage(archive_path=active_config.archive_path)
-    set_archive_storage(archive_storage)
-    archive_storage.initialize()
-
-    _print_run_configuration_summary(active_config)
-
-    seed_enabled = args.seed is not None
-    if seed_enabled:
-        random.seed(args.seed)
-
-    storage = create_arena_storage(active_config)
-    set_arena_storage(storage)
-    storage.load_existing()
-
-    if active_config.final_tournament_only:
-        console_log(
-            "Final tournament only mode enabled. Skipping evolution loop.",
-            minimum_level=VerbosityLevel.TERSE,
-        )
-        run_final_tournament(active_config)
-        return 0
-
-    if not active_config.alreadyseeded:
-        console_log("Seeding", minimum_level=VerbosityLevel.TERSE)
-        for arena in range(0, active_config.last_arena + 1):
-            arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
-            os.makedirs(arena_dir, exist_ok=True)
-            for warrior_id in range(1, active_config.numwarriors + 1):
-                new_lines = [
-                    instruction_to_line(generate_random_instruction(arena), arena)
-                    for _ in range(1, active_config.warlen_list[arena] + 1)
-                ]
-                storage.set_warrior_lines(arena, warrior_id, new_lines)
-        storage.flush_all()
-
+def run_evolution_loop(
+    active_config: EvolverConfig,
+    storage: ArenaStorage,
+    *,
+    verbosity: VerbosityLevel,
+) -> None:
     start_time = time.time()
     era = -1
     data_logger = DataLogger(filename=active_config.battle_log_file)
-    benchmark_logger = BenchmarkLogger(
-        filename=active_config.benchmark_log_file
-    )
+    benchmark_logger = BenchmarkLogger(filename=active_config.benchmark_log_file)
     bag: list[BaseMutationStrategy] = []
     interrupted = False
     era_count = len(active_config.battlerounds_list)
@@ -1325,7 +1267,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                         f"************** Advancing from era {previous_era + 1} to {era + 1} *******************",
                         minimum_level=VerbosityLevel.DEFAULT,
                     )
-                    get_arena_storage().flush_all()
+                    storage.flush_all()
                 bag = _build_marble_bag(era, active_config)
 
             arena_index = _select_arena_index(active_config)
@@ -1406,7 +1348,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
                 active_config.arena_checkpoint_interval
                 and total_battles % active_config.arena_checkpoint_interval == 0
             ):
-                get_arena_storage().flush_all()
+                storage.flush_all()
             winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
             champion_id = champions.get(arena_index)
             if (
@@ -1522,7 +1464,75 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
     if active_config.run_final_tournament:
         run_final_tournament(active_config)
 
+
+def _main_impl(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(description="Python Evolver Stage")
+    parser.add_argument(
+        "--config",
+        default="settings.ini",
+        help="Path to configuration INI file (default: settings.ini)",
+    )
+    parser.add_argument(
+        "--seed",
+        type=int,
+        help="Seed the RNG for reproducible runs",
+    )
+    parser.add_argument(
+        "--verbosity",
+        choices=[level.value for level in VerbosityLevel],
+        default=VerbosityLevel.DEFAULT.value,
+        help="Console verbosity: terse, default, verbose, or pseudo-graphical",
+    )
+    args = parser.parse_args(argv)
+
+    verbosity = VerbosityLevel(args.verbosity)
+
+    verbosity = set_console_verbosity(verbosity)
+
+    active_config = load_configuration(args.config)
+
+    set_active_config(active_config)
+
+    archive_storage = DiskArchiveStorage(archive_path=active_config.archive_path)
+    set_archive_storage(archive_storage)
+    archive_storage.initialize()
+
+    _print_run_configuration_summary(active_config)
+
+    seed_enabled = args.seed is not None
+    if seed_enabled:
+        random.seed(args.seed)
+
+    storage = create_arena_storage(active_config)
+    set_arena_storage(storage)
+    storage.load_existing()
+
+    if active_config.final_tournament_only:
+        console_log(
+            "Final tournament only mode enabled. Skipping evolution loop.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+        run_final_tournament(active_config)
+        return 0
+
+    if not active_config.alreadyseeded:
+        console_log("Seeding", minimum_level=VerbosityLevel.TERSE)
+        for arena in range(0, active_config.last_arena + 1):
+            arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
+            os.makedirs(arena_dir, exist_ok=True)
+            for warrior_id in range(1, active_config.numwarriors + 1):
+                new_lines = [
+                    instruction_to_line(generate_random_instruction(arena), arena)
+                    for _ in range(1, active_config.warlen_list[arena] + 1)
+                ]
+                storage.set_warrior_lines(arena, warrior_id, new_lines)
+        storage.flush_all()
+
+    run_evolution_loop(active_config, storage, verbosity=verbosity)
+
     return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     try:
         return _main_impl(argv)
