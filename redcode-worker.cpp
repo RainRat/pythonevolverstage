@@ -1210,6 +1210,9 @@ extern "C" {
         int seed,
         int use_1988_rules
     ) {
+        // Responses are stored in thread-local storage so multiple Python threads can
+        // call this function concurrently, but a recursive invocation on the same
+        // thread would reuse the buffer and is therefore not thread-safe in that case.
         thread_local std::string response;
         try {
             if (!warrior1_code || !warrior2_code) {
