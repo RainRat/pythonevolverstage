@@ -104,6 +104,13 @@ _get_override: Callable[[str, object], object] = lambda name, default: default
 _sync_export: Callable[[str, object], None] = lambda name, value: None
 
 
+@dataclass
+class InstructionTables:
+    addressing_modes: set[str]
+    generation_opcode_pool: list[str]
+    generation_opcode_pool_1988: list[str]
+
+
 def set_rng_helpers(
     random_int_func: Callable[[int, int], int],
     random_choice_func: Callable[[Sequence[T]], T],
@@ -199,22 +206,31 @@ def _build_opcode_pool(
     return pool, invalid_opcodes, False
 
 
-def rebuild_instruction_tables(active_config) -> None:
+def set_instruction_tables(tables: InstructionTables) -> None:
     global ADDRESSING_MODES, GENERATION_OPCODE_POOL, GENERATION_OPCODE_POOL_1988
 
-    ADDRESSING_MODES = set(BASE_ADDRESSING_MODES)
-    if active_config.instr_modes:
-        ADDRESSING_MODES.update(
-            mode.strip() for mode in active_config.instr_modes if mode.strip()
-        )
-    _sync_export("ADDRESSING_MODES", ADDRESSING_MODES)
+    ADDRESSING_MODES = set(tables.addressing_modes)
+    GENERATION_OPCODE_POOL = list(tables.generation_opcode_pool)
+    GENERATION_OPCODE_POOL_1988 = list(tables.generation_opcode_pool_1988)
 
+    _sync_export("ADDRESSING_MODES", ADDRESSING_MODES)
+    _sync_export("GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL)
+    _sync_export("GENERATION_OPCODE_POOL_1988", GENERATION_OPCODE_POOL_1988)
+
+
+def rebuild_instruction_tables(active_config) -> InstructionTables:
     invalid_reasons: list[str] = []
     allowed_1994 = SPEC_ALLOWED_OPCODES[SPEC_1994]
     instr_set = active_config.instr_set or []
 
+    addressing_modes = set(BASE_ADDRESSING_MODES)
+    if active_config.instr_modes:
+        addressing_modes.update(
+            mode.strip() for mode in active_config.instr_modes if mode.strip()
+        )
+
     (
-        GENERATION_OPCODE_POOL,
+        generation_opcode_pool,
         invalid_generation_opcodes,
         _,
     ) = _build_opcode_pool(
@@ -229,9 +245,9 @@ def rebuild_instruction_tables(active_config) -> None:
             + ", ".join(sorted(invalid_generation_opcodes))
         )
 
-    if not GENERATION_OPCODE_POOL:
+    if not generation_opcode_pool:
         invalid_reasons.append("must include at least one supported opcode other than DAT")
-    elif all(opcode == "DAT" for opcode in GENERATION_OPCODE_POOL):
+    elif all(opcode == "DAT" for opcode in generation_opcode_pool):
         invalid_reasons.append("must include at least one opcode other than DAT")
 
     if invalid_reasons:
@@ -239,10 +255,8 @@ def rebuild_instruction_tables(active_config) -> None:
             "Invalid INSTR_SET configuration: " + "; ".join(invalid_reasons) + "."
         )
 
-    _sync_export("GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL)
-
     (
-        GENERATION_OPCODE_POOL_1988,
+        generation_opcode_pool_1988,
         _,
         used_default_1988,
     ) = _build_opcode_pool(
@@ -251,14 +265,20 @@ def rebuild_instruction_tables(active_config) -> None:
         instr_set=instr_set,
     )
     if not used_default_1988 and not any(
-        opcode != "DAT" for opcode in GENERATION_OPCODE_POOL_1988
+        opcode != "DAT" for opcode in generation_opcode_pool_1988
     ):
         non_dat_defaults = [
             opcode for opcode in DEFAULT_1988_GENERATION_POOL if opcode != "DAT"
         ]
-        GENERATION_OPCODE_POOL_1988.extend(non_dat_defaults)
+        generation_opcode_pool_1988.extend(non_dat_defaults)
 
-    _sync_export("GENERATION_OPCODE_POOL_1988", GENERATION_OPCODE_POOL_1988)
+    tables = InstructionTables(
+        addressing_modes=addressing_modes,
+        generation_opcode_pool=generation_opcode_pool,
+        generation_opcode_pool_1988=generation_opcode_pool_1988,
+    )
+    set_instruction_tables(tables)
+    return tables
 
 
 def _safe_int(value: str) -> int:
