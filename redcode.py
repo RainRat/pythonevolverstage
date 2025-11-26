@@ -172,12 +172,6 @@ _PMARS_SCORE_RE = re.compile(
 def set_pmars_score_pattern(pattern: re.Pattern[str]) -> None:
     global _PMARS_SCORE_RE
     _PMARS_SCORE_RE = pattern
-
-
-def canonicalize_opcode(opcode: str) -> str:
-    return OPCODE_ALIASES.get(opcode, opcode)
-
-
 def _build_opcode_pool(
     allowed_opcodes: set[str],
     default_pool: Sequence[str],
@@ -335,7 +329,7 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     label = match.group("label")
     opcode = match.group("opcode").upper()
     modifier = match.group("modifier").upper()
-    canonical_opcode = canonicalize_opcode(opcode)
+    canonical_opcode = OPCODE_ALIASES.get(opcode, opcode)
     if canonical_opcode in UNSUPPORTED_OPCODES:
         return default_instruction()
     if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
@@ -386,7 +380,7 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
     config = get_active_config()
     sanitized = instr.copy()
     original_opcode = (sanitized.opcode or "").upper()
-    canonical_opcode = canonicalize_opcode(original_opcode)
+    canonical_opcode = OPCODE_ALIASES.get(original_opcode, original_opcode)
     sanitized.opcode = canonical_opcode
     if canonical_opcode in UNSUPPORTED_OPCODES:
         raise ValueError(f"Opcode '{original_opcode}' is not supported")
@@ -504,7 +498,7 @@ def generate_random_instruction(arena: int) -> RedcodeInstruction:
     num1 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
     num2 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
     opcode = choose_random_opcode(arena)
-    canonical_opcode = canonicalize_opcode(opcode)
+    canonical_opcode = OPCODE_ALIASES.get(opcode, opcode)
     return RedcodeInstruction(
         opcode=canonical_opcode,
         modifier=choose_random_modifier(arena),
