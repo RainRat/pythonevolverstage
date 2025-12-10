@@ -746,6 +746,116 @@ def _build_marble_bag(
     return bag
 
 
+def _load_tournament_warriors(
+    arena: int,
+    active_config: EvolverConfig,
+    storage: ArenaStorage,
+    *,
+    final_era_index: int,
+    use_benchmarks: bool,
+    use_in_memory_internal: bool,
+) -> tuple[list[int], list[BenchmarkWarrior], int] | None:
+    if not use_in_memory_internal:
+        arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
+        if not os.path.isdir(arena_dir):
+            console_log(
+                f"Arena {arena} directory '{arena_dir}' not found. Skipping.",
+                minimum_level=VerbosityLevel.TERSE,
+            )
+            return None
+
+    warrior_ids = [
+        warrior_id
+        for warrior_id in range(1, active_config.numwarriors + 1)
+        if storage.get_warrior_lines(arena, warrior_id)
+    ]
+
+    if not warrior_ids:
+        console_log(
+            f"Arena {arena}: no warriors available for the final tournament.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+        return None
+
+    benchmark_warriors = (
+        list(active_config.benchmark_sets.get(arena, [])) if use_benchmarks else []
+    )
+    if use_benchmarks and not benchmark_warriors:
+        console_log(
+            f"Arena {arena}: no benchmark warriors configured; using round-robin scoring.",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+
+    if benchmark_warriors:
+        arena_battles = len(warrior_ids) * len(benchmark_warriors)
+    else:
+        if len(warrior_ids) < 2:
+            console_log(
+                f"Arena {arena}: not enough warriors for a round-robin tournament. Skipping.",
+                minimum_level=VerbosityLevel.TERSE,
+            )
+            return None
+
+        arena_battles = (
+            len(warrior_ids)
+            * (len(warrior_ids) - 1)
+            // 2
+            * active_config.battlerounds_list[final_era_index]
+        )
+
+    return warrior_ids, benchmark_warriors, arena_battles
+
+
+def _print_tournament_standings(
+    arena: int,
+    rankings: list[tuple[int, int]],
+    benchmark_summary: Optional[Sequence[dict[str, object]]],
+    active_config: EvolverConfig,
+) -> None:
+    console_clear_status()
+    console_log(
+        f"\nArena {arena} final standings:",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    standings_to_show = rankings[:_FINAL_STANDINGS_DISPLAY_LIMIT]
+    for position, (warrior_id, score) in enumerate(standings_to_show, start=1):
+        console_log(
+            f"{position}. Warrior {warrior_id}: {score} points",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+    hidden_count = max(0, len(rankings) - len(standings_to_show))
+    if hidden_count:
+        if active_config.final_tournament_csv:
+            destination_hint = (
+                f"Full standings exported to {active_config.final_tournament_csv}."
+            )
+        else:
+            destination_hint = "Configure FINAL_TOURNAMENT_CSV to export full standings."
+        console_log(
+            f"  ...and {hidden_count} more warrior(s) not shown. {destination_hint}",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+    champion_id, champion_score = rankings[0]
+    console_log(
+        f"Champion: Warrior {champion_id} with {champion_score} points",
+        minimum_level=VerbosityLevel.TERSE,
+    )
+    if benchmark_summary:
+        console_log(
+            "Benchmark reference (scores from the benchmark perspective):",
+            minimum_level=VerbosityLevel.TERSE,
+        )
+        for entry in benchmark_summary:
+            console_log(
+                "  {name}: {avg:.2f} over {count} match(es)".format(
+                    name=entry.get("name", "unknown"),
+                    avg=float(entry.get("average", 0.0)),
+                    count=int(entry.get("matches", 0)),
+                ),
+                minimum_level=VerbosityLevel.TERSE,
+            )
+
+
 def run_final_tournament(active_config: EvolverConfig):
     console_clear_status()
     if active_config.last_arena < 0:
@@ -801,57 +911,19 @@ def run_final_tournament(active_config: EvolverConfig):
     arena_summaries: list[dict[str, object]] = []
     warrior_scores_by_arena: dict[int, list[int]] = {}
     for arena in range(0, active_config.last_arena + 1):
-        if not use_in_memory_internal:
-            arena_dir = os.path.join(active_config.base_path, f"arena{arena}")
-            if not os.path.isdir(arena_dir):
-                console_log(
-                    f"Arena {arena} directory '{arena_dir}' not found. Skipping.",
-                    minimum_level=VerbosityLevel.TERSE,
-                )
-                continue
-
-        warrior_ids = [
-            warrior_id
-            for warrior_id in range(1, active_config.numwarriors + 1)
-            if storage.get_warrior_lines(arena, warrior_id)
-        ]
-
-        if not warrior_ids:
-            console_log(
-                f"Arena {arena}: no warriors available for the final tournament.",
-                minimum_level=VerbosityLevel.TERSE,
-            )
-            continue
-
-        benchmark_warriors = (
-            list(active_config.benchmark_sets.get(arena, [])) if use_benchmarks else []
+        load_result = _load_tournament_warriors(
+            arena,
+            active_config,
+            storage,
+            final_era_index=final_era_index,
+            use_benchmarks=use_benchmarks,
+            use_in_memory_internal=use_in_memory_internal,
         )
-        if use_benchmarks and not benchmark_warriors:
-            console_log(
-                f"Arena {arena}: no benchmark warriors configured; using round-robin scoring.",
-                minimum_level=VerbosityLevel.TERSE,
-            )
-
-        if benchmark_warriors:
-            arena_battles = len(warrior_ids) * len(benchmark_warriors)
-        else:
-            if len(warrior_ids) < 2:
-                console_log(
-                    f"Arena {arena}: not enough warriors for a round-robin tournament. Skipping.",
-                    minimum_level=VerbosityLevel.TERSE,
-                )
-                continue
-            arena_battles = len(warrior_ids) * (len(warrior_ids) - 1) // 2
-
-        if arena_battles == 0:
-            console_log(
-                f"Arena {arena}: no battles scheduled; skipping.",
-                minimum_level=VerbosityLevel.TERSE,
-            )
+        if load_result is None:
             continue
-
-        arenas_to_run.append((arena, warrior_ids, benchmark_warriors))
+        warrior_ids, benchmark_warriors, arena_battles = load_result
         total_battles += arena_battles
+        arenas_to_run.append((arena, warrior_ids, benchmark_warriors))
 
     if not arenas_to_run:
         console_log(
@@ -900,49 +972,10 @@ def run_final_tournament(active_config: EvolverConfig):
                     warrior_scores_by_arena=warrior_scores_by_arena,
                 )
 
-            console_clear_status()
-            console_log(
-                f"\nArena {arena} final standings:",
-                minimum_level=VerbosityLevel.TERSE,
-            )
             rankings = sorted(total_scores.items(), key=lambda item: item[1], reverse=True)
-            standings_to_show = rankings[:_FINAL_STANDINGS_DISPLAY_LIMIT]
-            for position, (warrior_id, score) in enumerate(standings_to_show, start=1):
-                console_log(
-                    f"{position}. Warrior {warrior_id}: {score} points",
-                    minimum_level=VerbosityLevel.TERSE,
-                )
-            hidden_count = max(0, len(rankings) - len(standings_to_show))
-            if hidden_count:
-                if active_config.final_tournament_csv:
-                    destination_hint = (
-                        f"Full standings exported to {active_config.final_tournament_csv}."
-                    )
-                else:
-                    destination_hint = (
-                        "Configure FINAL_TOURNAMENT_CSV to export full standings."
-                    )
-                console_log(
-                    f"  ...and {hidden_count} more warrior(s) not shown. {destination_hint}",
-                    minimum_level=VerbosityLevel.TERSE,
-                )
-            champion_id, champion_score = rankings[0]
-            console_log(
-                f"Champion: Warrior {champion_id} with {champion_score} points",
-                minimum_level=VerbosityLevel.TERSE,
-            )
-            arena_average = (
-                statistics.mean(total_scores.values()) if total_scores else 0.0
-            )
-            summary_entry: dict[str, object] = {
-                "arena": arena,
-                "rankings": list(rankings),
-                "average": arena_average,
-                "mode": "benchmark" if benchmark_warriors else "round_robin",
-            }
-
+            benchmark_summary: Optional[list[dict[str, object]]] = None
             if benchmark_warriors:
-                benchmark_summary: list[dict[str, object]] = []
+                benchmark_summary = []
                 for bench_index, benchmark in enumerate(benchmark_warriors):
                     count = benchmark_counts.get(bench_index, 0)
                     average = (
@@ -958,21 +991,26 @@ def run_final_tournament(active_config: EvolverConfig):
                             "path": benchmark.path,
                         }
                     )
-                if benchmark_summary:
-                    summary_entry["benchmark"] = benchmark_summary
-                    console_log(
-                        "Benchmark reference (scores from the benchmark perspective):",
-                        minimum_level=VerbosityLevel.TERSE,
-                    )
-                    for entry in benchmark_summary:
-                        console_log(
-                            "  {name}: {avg:.2f} over {count} match(es)".format(
-                                name=entry["name"],
-                                avg=entry["average"],
-                                count=entry["matches"],
-                            ),
-                            minimum_level=VerbosityLevel.TERSE,
-                        )
+
+            _print_tournament_standings(
+                arena,
+                rankings,
+                benchmark_summary,
+                active_config,
+            )
+
+            arena_average = (
+                statistics.mean(total_scores.values()) if total_scores else 0.0
+            )
+            summary_entry: dict[str, object] = {
+                "arena": arena,
+                "rankings": list(rankings),
+                "average": arena_average,
+                "mode": "benchmark" if benchmark_warriors else "round_robin",
+            }
+
+            if benchmark_summary:
+                summary_entry["benchmark"] = benchmark_summary
 
             arena_summaries.append(summary_entry)
     except KeyboardInterrupt:
@@ -991,7 +1029,6 @@ def run_final_tournament(active_config: EvolverConfig):
         f"Final tournament completed in {_format_duration(duration)}.",
         minimum_level=VerbosityLevel.TERSE,
     )
-
 
 def _report_final_tournament_statistics(
     arena_summaries: Sequence[dict[str, object]],
