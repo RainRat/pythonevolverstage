@@ -380,13 +380,6 @@ def default_instruction() -> RedcodeInstruction:
     )
 
 
-def _is_allowed_for_spec(value: str, spec: str, allowed_map: dict[str, set[str]]) -> bool:
-    allowed = allowed_map.get(spec)
-    if not allowed:
-        return True
-    return value in allowed
-
-
 def _get_opcode_pool_for_arena(arena: int) -> list[str]:
     spec = get_arena_spec(arena)
     if spec == SPEC_1988:
@@ -405,16 +398,14 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
     if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
         raise ValueError(f"Unknown opcode '{original_opcode}'")
     spec = get_arena_spec(arena)
-    if not _is_allowed_for_spec(
-        canonical_opcode, spec, SPEC_ALLOWED_OPCODES
-    ):
+    allowed_opcodes = SPEC_ALLOWED_OPCODES.get(spec)
+    if allowed_opcodes and canonical_opcode not in allowed_opcodes:
         return default_instruction()
     if not sanitized.modifier:
         raise ValueError("Missing modifier for instruction")
     sanitized.modifier = sanitized.modifier.upper()
-    if not _is_allowed_for_spec(
-        sanitized.modifier, spec, SPEC_ALLOWED_MODIFIERS
-    ):
+    allowed_modifiers = SPEC_ALLOWED_MODIFIERS.get(spec)
+    if allowed_modifiers and sanitized.modifier not in allowed_modifiers:
         return default_instruction()
     if sanitized.a_mode not in ADDRESSING_MODES:
         raise ValueError(
@@ -424,13 +415,10 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
         raise ValueError(
             f"Invalid addressing mode '{sanitized.b_mode}' for B-field operand"
         )
-    if not _is_allowed_for_spec(
-        sanitized.a_mode, spec, SPEC_ALLOWED_ADDRESSING_MODES
-    ):
+    allowed_modes = SPEC_ALLOWED_ADDRESSING_MODES.get(spec)
+    if allowed_modes and sanitized.a_mode not in allowed_modes:
         return default_instruction()
-    if not _is_allowed_for_spec(
-        sanitized.b_mode, spec, SPEC_ALLOWED_ADDRESSING_MODES
-    ):
+    if allowed_modes and sanitized.b_mode not in allowed_modes:
         return default_instruction()
     sanitized.a_field = corenorm(
         coremod(_ensure_int(sanitized.a_field), config.sanitize_list[arena]),
@@ -477,12 +465,11 @@ def choose_random_modifier(arena: int) -> str:
         if item.strip()
     ]
     if spec == SPEC_1988:
+        allowed_modifiers = SPEC_ALLOWED_MODIFIERS.get(spec)
         modifier_pool = [
             modifier
             for modifier in modifier_pool
-            if _is_allowed_for_spec(
-                modifier, spec, SPEC_ALLOWED_MODIFIERS
-            )
+            if not allowed_modifiers or modifier in allowed_modifiers
         ]
         if not modifier_pool:
             modifier_pool = list(DEFAULT_1988_MODIFIERS)

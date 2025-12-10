@@ -13,19 +13,20 @@ from pathlib import Path
 from typing import Iterable, Optional, Sequence, Union
 
 from config import get_active_config, get_arena_spec
+from constants import (
+    CPP_WORKER_MAX_CORE_SIZE,
+    CPP_WORKER_MAX_CYCLES,
+    CPP_WORKER_MAX_PROCESSES,
+    CPP_WORKER_MAX_ROUNDS,
+    CPP_WORKER_MAX_WARRIOR_LENGTH,
+    CPP_WORKER_MIN_CORE_SIZE,
+    CPP_WORKER_MIN_DISTANCE,
+)
 from redcode import SPEC_1988, _PMARS_SCORE_RE
 from storage import get_arena_storage
 from ui import VerbosityLevel, console_log
 
 CPP_WORKER_LIB = None
-
-CPP_WORKER_MIN_DISTANCE = 0
-CPP_WORKER_MIN_CORE_SIZE = 2
-CPP_WORKER_MAX_CORE_SIZE = 262_144
-CPP_WORKER_MAX_CYCLES = 5_000_000
-CPP_WORKER_MAX_PROCESSES = 131_072
-CPP_WORKER_MAX_WARRIOR_LENGTH = CPP_WORKER_MAX_CORE_SIZE
-CPP_WORKER_MAX_ROUNDS = 100_000
 
 _rng_int = random.randint
 
