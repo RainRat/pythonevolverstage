@@ -35,6 +35,7 @@ from battle_runner import (
     _candidate_nmars_paths,
     _candidate_pmars_paths,
     _generate_internal_battle_seed,
+    _get_evolverstage_override,
     _normalize_internal_seed,
     _resolve_external_command,
     _run_external_command,
@@ -199,13 +200,6 @@ def _sync_export(name: str, value) -> None:
     module = sys.modules.get("evolverstage")
     if module is not None:
         setattr(module, name, value)
-
-
-def _get_evolverstage_override(name: str, default):
-    module = sys.modules.get("evolverstage")
-    if module is not None and hasattr(module, name):
-        return getattr(module, name)
-    return default
 
 
 redcode.set_override_helper(_get_evolverstage_override)

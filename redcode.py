@@ -152,8 +152,6 @@ class RedcodeInstruction:
         )
 
 
-_INT_LITERAL_RE = re.compile(r"^[+-]?\d+$")
-
 _REDCODE_INSTRUCTION_RE = re.compile(
     r"""
     ^\s*
@@ -282,12 +280,12 @@ def rebuild_instruction_tables(active_config) -> InstructionTables:
 
 
 def _safe_int(value: str) -> int:
-    value = value.strip()
-    if not value:
-        raise ValueError("Empty integer literal")
-    if not _INT_LITERAL_RE.fullmatch(value):
+    try:
+        return int(value)
+    except ValueError:
+        if not value.strip():
+            raise ValueError("Empty integer literal")
         raise ValueError(f"Invalid integer literal: '{value}'")
-    return int(value, 10)
 
 
 def _ensure_int(value) -> int:
