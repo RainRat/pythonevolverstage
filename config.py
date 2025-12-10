@@ -4,6 +4,15 @@ import warnings
 from dataclasses import dataclass, field
 from typing import Callable, Optional, Tuple, cast
 
+from constants import (
+    CPP_WORKER_MAX_CORE_SIZE,
+    CPP_WORKER_MAX_CYCLES,
+    CPP_WORKER_MAX_PROCESSES,
+    CPP_WORKER_MAX_ROUNDS,
+    CPP_WORKER_MAX_WARRIOR_LENGTH,
+    CPP_WORKER_MIN_CORE_SIZE,
+    CPP_WORKER_MIN_DISTANCE,
+)
 from ui import VerbosityLevel, console_log
 
 BASE_ADDRESSING_MODES = {"$", "#", "@", "<", ">", "*", "{", "}"}
@@ -145,16 +154,6 @@ def get_arena_spec(arena: int) -> str:
 
 
 def _require_worker_limits() -> Tuple[int, int, int, int, int, int, int]:
-    from battle_runner import (
-        CPP_WORKER_MAX_CORE_SIZE,
-        CPP_WORKER_MAX_CYCLES,
-        CPP_WORKER_MAX_PROCESSES,
-        CPP_WORKER_MAX_ROUNDS,
-        CPP_WORKER_MAX_WARRIOR_LENGTH,
-        CPP_WORKER_MIN_CORE_SIZE,
-        CPP_WORKER_MIN_DISTANCE,
-    )
-
     return (
         CPP_WORKER_MIN_CORE_SIZE,
         CPP_WORKER_MAX_CORE_SIZE,
