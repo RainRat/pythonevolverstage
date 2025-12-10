@@ -409,21 +409,8 @@ def _count_instruction_library_entries(library_path: Optional[str]) -> int:
     if not library_path:
         return 0
 
-    try:
-        with open(library_path, "r") as library_handle:
-            return sum(
-                1
-                for line in library_handle
-                if line.strip() and not line.lstrip().startswith(";")
-            )
-    except FileNotFoundError:
-        return 0
-    except OSError as exc:
-        warnings.warn(
-            f"Unable to read instruction library '{library_path}': {exc}",
-            RuntimeWarning,
-        )
-        return 0
+    library_cache = ensure_instruction_library_cache(library_path)
+    return sum(1 for line in library_cache if line.strip() and not line.lstrip().startswith(";"))
 
 
 def _print_run_configuration_summary(active_config: EvolverConfig) -> None:

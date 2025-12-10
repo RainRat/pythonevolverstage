@@ -117,6 +117,39 @@ T = TypeVar("T")
 
 
 _active_config: Optional["EvolverConfig"] = None
+_LIBRARY_CACHE: list[str] | None = None
+_LIBRARY_CACHE_PATH: Optional[str] = None
+
+
+def _load_instruction_library_cache(library_path: Optional[str]) -> None:
+    """Load the instruction library into a module-level cache."""
+
+    global _LIBRARY_CACHE
+    global _LIBRARY_CACHE_PATH
+    _LIBRARY_CACHE_PATH = library_path
+
+    if not library_path or not os.path.exists(library_path):
+        _LIBRARY_CACHE = []
+        return
+
+    try:
+        with open(library_path, "r") as library_handle:
+            _LIBRARY_CACHE = library_handle.readlines()
+    except OSError:
+        _LIBRARY_CACHE = []
+
+
+def get_instruction_library_cache() -> list[str] | None:
+    return _LIBRARY_CACHE
+
+
+def ensure_instruction_library_cache(library_path: Optional[str]) -> list[str]:
+    """Return the cached instruction library, loading it once if needed."""
+
+    global _LIBRARY_CACHE, _LIBRARY_CACHE_PATH
+    if _LIBRARY_CACHE is None or _LIBRARY_CACHE_PATH != library_path:
+        _load_instruction_library_cache(library_path)
+    return _LIBRARY_CACHE or []
 
 
 def set_engine_config(config: "EvolverConfig") -> None:
@@ -125,6 +158,7 @@ def set_engine_config(config: "EvolverConfig") -> None:
     global _active_config
     _active_config = config
     rebuild_instruction_tables(config)
+    _load_instruction_library_cache(config.library_path)
 
 
 def get_arena_spec(arena: int) -> str:
@@ -309,13 +343,13 @@ class InstructionLibraryMutation(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
-        if not config.library_path or not os.path.exists(config.library_path):
+        if not config.library_path:
             return instruction
 
-        with open(config.library_path, "r") as library_handle:
-            library_lines = library_handle.readlines()
-        if library_lines:
-            return parse_instruction_or_default(_rng_choice(library_lines))
+        library_cache = ensure_instruction_library_cache(config.library_path)
+
+        if library_cache:
+            return parse_instruction_or_default(_rng_choice(library_cache))
         return default_instruction()
 
 
@@ -581,6 +615,8 @@ def __getattr__(name: str):
 __all__ = [
     "set_engine_config",
     "configure_rng",
+    "get_instruction_library_cache",
+    "ensure_instruction_library_cache",
     "rebuild_instruction_tables",
     "SPEC_1994",
     "SPEC_1988",

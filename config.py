@@ -116,11 +116,6 @@ def _parse_bool_list(value: str, *, key: str, parser: configparser.ConfigParser)
 def _parse_string_list(value: str, *, key: str, parser: configparser.ConfigParser) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
-
-def _parse_str(value: str, *, key: str, parser: configparser.ConfigParser) -> str:
-    return value
-
-
 _CONFIG_PARSERS: dict[str, Callable[..., object]] = {
     "int": _parse_int,
     "float": _parse_float,
@@ -128,7 +123,7 @@ _CONFIG_PARSERS: dict[str, Callable[..., object]] = {
     "int_list": _parse_int_list,
     "bool_list": _parse_bool_list,
     "string_list": _parse_string_list,
-    "str": _parse_str,
+    "str": lambda value, **_: value,
 }
 
 
