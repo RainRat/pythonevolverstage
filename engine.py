@@ -50,7 +50,7 @@ from battle_runner import (
 from config import (
     MAX_WARRIOR_FILENAME_ID,
     get_active_config,
-    get_arena_spec as _config_get_arena_spec,
+    get_arena_spec,
 )
 from redcode import (
     ADDRESSING_MODES,
@@ -162,8 +162,6 @@ def set_engine_config(config: "EvolverConfig") -> None:
     _load_instruction_library_cache(config.library_path)
 
 
-def get_arena_spec(arena: int) -> str:
-    return _config_get_arena_spec(arena)
 
 
 def _require_config() -> "EvolverConfig":
