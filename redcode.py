@@ -299,7 +299,7 @@ def _ensure_int(value) -> int:
 def coremod(num: int, modulus: int) -> int:
     if modulus == 0:
         raise ValueError("Modulus cannot be zero")
-    return ((num % modulus) + modulus) % modulus
+    return num % modulus
 
 
 def corenorm(num: int, modulus: int) -> int:
