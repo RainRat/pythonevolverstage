@@ -508,8 +508,6 @@ def run_internal_battle(
 def _parse_battle_output(
     raw_output: str, engine_name: str, verbose: bool, expected_warriors: Sequence[int]
 ) -> tuple[list[int], list[int]]:
-    if raw_output is None:
-        raise RuntimeError("Battle engine returned no output")
     scores: list[int] = []
     warriors: list[int] = []
     score_lines_found = 0
