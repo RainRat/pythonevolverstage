@@ -7,12 +7,10 @@ import random
 import sys
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Callable,
-    Literal,
     Optional,
     Sequence,
     TypeVar,
@@ -358,82 +356,6 @@ class MagicNumberMutation(BaseMutationStrategy):
         else:
             instruction.b_field = magic_number
         return instruction
-
-
-@dataclass
-class ArchivingEvent:
-    action: Literal["archived", "unarchived"]
-    warrior_id: int
-    archive_filename: Optional[str] = None
-
-
-@dataclass
-class ArchivingResult:
-    skip_breeding: bool = False
-    events: list[ArchivingEvent] = field(default_factory=list)
-
-
-def handle_archiving(
-    winner: int, loser: int, arena: int, era: int, config: "EvolverConfig"
-) -> ArchivingResult:
-    events: list[ArchivingEvent] = []
-    storage = get_arena_storage()
-    archive_storage = get_archive_storage()
-
-    if config.archive_list[era] != 0 and _rng_int(1, config.archive_list[era]) == 1:
-        winlines = storage.get_warrior_lines(arena, winner)
-        archive_filename = archive_storage.archive_warrior(
-            warrior_id=winner,
-            lines=winlines,
-            config=config,
-            get_random_int=_rng_int,
-        )
-        events.append(
-            ArchivingEvent(
-                action="archived",
-                warrior_id=winner,
-                archive_filename=archive_filename,
-            )
-        )
-
-    if config.unarchive_list[era] != 0 and _rng_int(1, config.unarchive_list[era]) == 1:
-        unarchive_result = archive_storage.unarchive_warrior(config, _rng_choice)
-        if not unarchive_result:
-            return ArchivingResult(events=events)
-        archive_choice, sourcelines = unarchive_result
-
-        instructions_written = 0
-        new_lines: list[str] = []
-        for line_number, line in enumerate(sourcelines, start=1):
-            try:
-                instruction = parse_redcode_instruction(line)
-            except ValueError as exc:
-                raise ValueError(
-                    (
-                        f"Failed to parse archived warrior '{archive_choice}' "
-                        f"(line {line_number}): {exc}"
-                    )
-                ) from exc
-            if instruction is None:
-                continue
-            new_lines.append(instruction_to_line(instruction, arena))
-            instructions_written += 1
-            if instructions_written >= config.warlen_list[arena]:
-                break
-        while instructions_written < config.warlen_list[arena]:
-            new_lines.append(instruction_to_line(default_instruction(), arena))
-            instructions_written += 1
-        storage.set_warrior_lines(arena, loser, new_lines)
-        events.append(
-            ArchivingEvent(
-                action="unarchived",
-                warrior_id=loser,
-                archive_filename=archive_choice,
-            )
-        )
-        return ArchivingResult(skip_breeding=True, events=events)
-
-    return ArchivingResult(events=events)
 
 
 def breed_offspring(
