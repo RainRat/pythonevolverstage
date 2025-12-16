@@ -139,247 +139,253 @@ def create_directory_if_not_exists(directory):
     if not os.path.exists(directory):
         os.mkdir(directory)
 
-if ALREADYSEEDED==False: 
-  print("Seeding")
-  create_directory_if_not_exists("archive")
-  for arena in range (0,LAST_ARENA+1):
-    create_directory_if_not_exists(f"arena{arena}")
-    for i in range(1, NUMWARRIORS+1):
-      with open(os.path.join(f"arena{arena}", f"{i}.red"), "w") as f:
-          for j in range(1, WARLEN_LIST[arena]+1):
-            #Biasing toward more viable warriors: 3 in 4 chance of choosing an address within the warrior.
-            #Same bias in mutation.
-            num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-            num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-            f.write(random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
-                    str(corenorm(coremod(num1,SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+ \
-                    random.choice(INSTR_MODES)+str(corenorm(coremod(num2,SANITIZE_LIST[arena]), \
-                    CORESIZE_LIST[arena]))+"\n")
+if __name__ == "__main__":
+  if ALREADYSEEDED==False:
+    print("Seeding")
+    create_directory_if_not_exists("archive")
+    for arena in range (0,LAST_ARENA+1):
+      create_directory_if_not_exists(f"arena{arena}")
+      for i in range(1, NUMWARRIORS+1):
+        with open(os.path.join(f"arena{arena}", f"{i}.red"), "w") as f:
+            for j in range(1, WARLEN_LIST[arena]+1):
+              #Biasing toward more viable warriors: 3 in 4 chance of choosing an address within the warrior.
+              #Same bias in mutation.
+              num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+              num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+              f.write(random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
+                      str(corenorm(coremod(num1,SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+ \
+                      random.choice(INSTR_MODES)+str(corenorm(coremod(num2,SANITIZE_LIST[arena]), \
+                      CORESIZE_LIST[arena]))+"\n")
 
-starttime=time.time() #time in seconds
-era=-1
-data_logger = DataLogger(filename=BATTLE_LOG_FILE)
+  starttime=time.time() #time in seconds
+  era=-1
+  data_logger = DataLogger(filename=BATTLE_LOG_FILE)
 
-while(True):
-  #before we do anything, determine which era we are in.
-  prevera=era
-  curtime=time.time()
-  runtime_in_hours=(curtime-starttime)/60/60
-  era=0
-  if runtime_in_hours>CLOCK_TIME*(1/3):
-    era=1
-  if runtime_in_hours>CLOCK_TIME*(2/3):
-    era=2
-  if runtime_in_hours>CLOCK_TIME:
-    quit()
-  if FINAL_ERA_ONLY==True:
-    era=2
-  if era!=prevera:
-    print(f"************** Switching from era {prevera + 1} to {era + 1} *******************")
-    bag = [Marble.DO_NOTHING]*NOTHING_LIST[era] + [Marble.MAJOR_MUTATION]*RANDOM_LIST[era] + \
-          [Marble.NAB_INSTRUCTION]*NAB_LIST[era] + [Marble.MINOR_MUTATION]*MINI_MUT_LIST[era] + \
-          [Marble.MICRO_MUTATION]*MICRO_MUT_LIST[era] + [Marble.INSTRUCTION_LIBRARY]*LIBRARY_LIST[era] + \
-          [Marble.MAGIC_NUMBER_MUTATION]*MAGIC_NUMBER_LIST[era]
+  while(True):
+    #before we do anything, determine which era we are in.
+    prevera=era
+    curtime=time.time()
+    runtime_in_hours=(curtime-starttime)/60/60
+    era=0
+    if runtime_in_hours>CLOCK_TIME*(1/3):
+      era=1
+    if runtime_in_hours>CLOCK_TIME*(2/3):
+      era=2
+    if runtime_in_hours>CLOCK_TIME:
+      quit()
+    if FINAL_ERA_ONLY==True:
+      era=2
+    if era!=prevera:
+      print(f"************** Switching from era {prevera + 1} to {era + 1} *******************")
+      bag = [Marble.DO_NOTHING]*NOTHING_LIST[era] + [Marble.MAJOR_MUTATION]*RANDOM_LIST[era] + \
+            [Marble.NAB_INSTRUCTION]*NAB_LIST[era] + [Marble.MINOR_MUTATION]*MINI_MUT_LIST[era] + \
+            [Marble.MICRO_MUTATION]*MICRO_MUT_LIST[era] + [Marble.INSTRUCTION_LIBRARY]*LIBRARY_LIST[era] + \
+            [Marble.MAGIC_NUMBER_MUTATION]*MAGIC_NUMBER_LIST[era]
 
-  print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) + \
-         " hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+" complete) Era: "+str(era+1))
-  
-  #in a random arena
-  arena=random.randint(0, LAST_ARENA)
-  #two random warriors
-  cont1 = random.randint(1, NUMWARRIORS)
-  cont2 = cont1
-  while cont2 == cont1: #no self fights
-    cont2 = random.randint(1, NUMWARRIORS)
-  raw_output = run_nmars_command(arena, cont1, cont2, CORESIZE_LIST[arena], CYCLES_LIST[arena], \
-                                 PROCESSES_LIST[arena], WARLEN_LIST[arena], \
-                                 WARDISTANCE_LIST[arena], BATTLEROUNDS_LIST[era])
-  scores=[]
-  warriors=[]
-  #note nMars will sort by score regardless of the order in the command-line, so match up score with warrior
-  numline=0
-  output = raw_output.splitlines()
+    print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) + \
+           " hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+" complete) Era: "+str(era+1))
 
-  for line in output:
-    numline=numline+1
-    if "scores" in line:
-      print(line.strip())
-      splittedline=line.split()
-      scores.append( int(splittedline [4]))
-      warriors.append( int(splittedline [0]))
-  print(numline)
+    #in a random arena
+    arena=random.randint(0, LAST_ARENA)
+    #two random warriors
+    cont1 = random.randint(1, NUMWARRIORS)
+    cont2 = cont1
+    while cont2 == cont1: #no self fights
+      cont2 = random.randint(1, NUMWARRIORS)
+    raw_output = run_nmars_command(arena, cont1, cont2, CORESIZE_LIST[arena], CYCLES_LIST[arena], \
+                                   PROCESSES_LIST[arena], WARLEN_LIST[arena], \
+                                   WARDISTANCE_LIST[arena], BATTLEROUNDS_LIST[era])
+    scores=[]
+    warriors=[]
+    #note nMars will sort by score regardless of the order in the command-line, so match up score with warrior
+    numline=0
+    if raw_output is None:
+        continue
+    output = raw_output.splitlines()
 
-  if scores[1]==scores[0]:
-    print("draw") #in case of a draw, destroy one at random. we want attacking.
-    if random.randint(1,2)==1:
+    for line in output:
+      numline=numline+1
+      if "scores" in line:
+        print(line.strip())
+        splittedline=line.split()
+        scores.append( int(splittedline [4]))
+        warriors.append( int(splittedline [0]))
+    print(numline)
+
+    if len(scores) < 2:
+      continue
+
+    if scores[1]==scores[0]:
+      print("draw") #in case of a draw, destroy one at random. we want attacking.
+      if random.randint(1,2)==1:
+        winner=warriors[1]
+        loser=warriors[0]
+      else:
+        winner=warriors[0]
+        loser=warriors[1]
+    elif scores[1]>scores[0]:
       winner=warriors[1]
       loser=warriors[0]
     else:
       winner=warriors[0]
       loser=warriors[1]
-  elif scores[1]>scores[0]:
-    winner=warriors[1]
-    loser=warriors[0]
-  else:
-    winner=warriors[0]
-    loser=warriors[1]
 
-  if ARCHIVE_LIST[era]!=0 and random.randint(1,ARCHIVE_LIST[era])==1:
-    #archive winner
-    print("storing in archive")
+    if ARCHIVE_LIST[era]!=0 and random.randint(1,ARCHIVE_LIST[era])==1:
+      #archive winner
+      print("storing in archive")
+      with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
+        winlines = fw.readlines()
+      with open(os.path.join("archive", f"{random.randint(1,9999)}.red"), "w") as fd:
+        for line in winlines:
+          fd.write(line)
+
+    if UNARCHIVE_LIST[era]!=0 and random.randint(1,UNARCHIVE_LIST[era])==1:
+      print("unarchiving")
+      #replace loser with something from archive
+      with open(os.path.join("archive", random.choice(os.listdir("archive")))) as fs:
+        sourcelines = fs.readlines()
+      #this is more involved. the archive is going to contain warriors from different arenas. which isn't
+      #necessarily bad to get some crossover. A nano warrior would be workable, if inefficient in a normal core.
+      #These are the tasks:
+      #1. Truncate any too long
+      #2. Pad any too short with DATs
+      #3. Sanitize values
+      #4. Try to be tolerant of working with other evolvers that may not space things exactly the same.
+      fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # unarchived warrior destroys loser
+      countoflines=0
+      for line in sourcelines:
+        countoflines=countoflines+1
+        if countoflines>WARLEN_LIST[arena]:
+          break
+        line=line.replace('  ',' ').replace('START','').replace(', ',',').strip()
+        splitline=re.split('[ \.,\n]', line)
+        line=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(corenorm(coremod(int(splitline[2][1:]), \
+             SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+splitline[3][0:1]+ \
+             str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+"\n"
+        fl.write(line)
+      while countoflines<WARLEN_LIST[arena]:
+        countoflines=countoflines+1
+        fl.write('DAT.F $0,$0\n')
+      fl.close()
+      continue #out of while (loser replaced by archive, no point breeding)
+
+    #the loser is destroyed and the winner can breed with any warrior in the arena
     with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
       winlines = fw.readlines()
-    with open(os.path.join("archive", f"{random.randint(1,9999)}.red"), "w") as fd:
-      for line in winlines:
-        fd.write(line)
-
-  if UNARCHIVE_LIST[era]!=0 and random.randint(1,UNARCHIVE_LIST[era])==1:
-    print("unarchiving")
-    #replace loser with something from archive
-    with open(os.path.join("archive", random.choice(os.listdir("archive")))) as fs:
-      sourcelines = fs.readlines()
-    #this is more involved. the archive is going to contain warriors from different arenas. which isn't
-    #necessarily bad to get some crossover. A nano warrior would be workable, if inefficient in a normal core.
-    #These are the tasks:
-    #1. Truncate any too long
-    #2. Pad any too short with DATs
-    #3. Sanitize values
-    #4. Try to be tolerant of working with other evolvers that may not space things exactly the same.
-    fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # unarchived warrior destroys loser
-    countoflines=0
-    for line in sourcelines:
-      countoflines=countoflines+1
-      if countoflines>WARLEN_LIST[arena]:
-        break
-      line=line.replace('  ',' ').replace('START','').replace(', ',',').strip()
-      splitline=re.split('[ \.,\n]', line)
-      line=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(corenorm(coremod(int(splitline[2][1:]), \
-           SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+splitline[3][0:1]+ \
-           str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+"\n"
-      fl.write(line)
-    while countoflines<WARLEN_LIST[arena]:
-      countoflines=countoflines+1
-      fl.write('DAT.F $0,$0\n')
-    fl.close()
-    continue #out of while (loser replaced by archive, no point breeding)
-    
-  #the loser is destroyed and the winner can breed with any warrior in the arena  
-  with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
-    winlines = fw.readlines()
-  randomwarrior=str(random.randint(1, NUMWARRIORS))
-  print("winner will breed with "+randomwarrior)
-  fr = open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r")  # winner mates with random warrior
-  ranlines = fr.readlines()
-  fr.close()
-  fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # winner destroys loser
-  if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1: #shuffle a warrior
-    print("Transposition")
-    for i in range(1, random.randint(1, int((WARLEN_LIST[arena]+1)/2))):
-      fromline=random.randint(0,WARLEN_LIST[arena]-1)
-      toline=random.randint(0,WARLEN_LIST[arena]-1)
-      if random.randint(1,2)==1: #either shuffle the winner with itself or shuffle loser with itself
-        templine=winlines[toline]
-        winlines[toline]=winlines[fromline]
-        winlines[fromline]=templine
-      else:
-        templine=ranlines[toline]
-        ranlines[toline]=ranlines[fromline]
-        ranlines[fromline]=templine
-  if PREFER_WINNER_LIST[era]==True:  
-    pickingfrom=1 #if start picking from the winning warrior, more chance of winning genes passed on.
-  else:
-    pickingfrom=random.randint(1,2)
-
-  magic_number = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-  for i in range(0, WARLEN_LIST[arena]):
-    #first, pick an instruction from either parent, even if
-    #it will get overwritten by a nabbed or random instruction
-    if random.randint(1,CROSSOVERRATE_LIST[era])==1:
-      if pickingfrom==1:
-        pickingfrom=2
-      else:
-        pickingfrom=1
-
-    if pickingfrom==1:
-      templine=(winlines[i])
+    randomwarrior=str(random.randint(1, NUMWARRIORS))
+    print("winner will breed with "+randomwarrior)
+    fr = open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r")  # winner mates with random warrior
+    ranlines = fr.readlines()
+    fr.close()
+    fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # winner destroys loser
+    if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1: #shuffle a warrior
+      print("Transposition")
+      for i in range(1, random.randint(1, int((WARLEN_LIST[arena]+1)/2))):
+        fromline=random.randint(0,WARLEN_LIST[arena]-1)
+        toline=random.randint(0,WARLEN_LIST[arena]-1)
+        if random.randint(1,2)==1: #either shuffle the winner with itself or shuffle loser with itself
+          templine=winlines[toline]
+          winlines[toline]=winlines[fromline]
+          winlines[fromline]=templine
+        else:
+          templine=ranlines[toline]
+          ranlines[toline]=ranlines[fromline]
+          ranlines[fromline]=templine
+    if PREFER_WINNER_LIST[era]==True:
+      pickingfrom=1 #if start picking from the winning warrior, more chance of winning genes passed on.
     else:
-      templine=(ranlines[i])
+      pickingfrom=random.randint(1,2)
 
-    chosen_marble=random.choice(bag)  
-    if chosen_marble==Marble.MAJOR_MUTATION: #completely random
-      print("Major mutation")
-      num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-      num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-      templine=random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
-               str(num1)+","+random.choice(INSTR_MODES)+str(num2)+"\n"
-    elif chosen_marble==Marble.NAB_INSTRUCTION and (LAST_ARENA!=0):
-      #nab instruction from another arena. Doesn't make sense if not multiple arenas
-      donor_arena=random.randint(0, LAST_ARENA)
-      while (donor_arena==arena):
+    magic_number = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+    for i in range(0, WARLEN_LIST[arena]):
+      #first, pick an instruction from either parent, even if
+      #it will get overwritten by a nabbed or random instruction
+      if random.randint(1,CROSSOVERRATE_LIST[era])==1:
+        if pickingfrom==1:
+          pickingfrom=2
+        else:
+          pickingfrom=1
+
+      if pickingfrom==1:
+        templine=(winlines[i])
+      else:
+        templine=(ranlines[i])
+
+      chosen_marble=random.choice(bag)
+      if chosen_marble==Marble.MAJOR_MUTATION: #completely random
+        print("Major mutation")
+        num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+        num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+        templine=random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
+                 str(num1)+","+random.choice(INSTR_MODES)+str(num2)+"\n"
+      elif chosen_marble==Marble.NAB_INSTRUCTION and (LAST_ARENA!=0):
+        #nab instruction from another arena. Doesn't make sense if not multiple arenas
         donor_arena=random.randint(0, LAST_ARENA)
-      print("Nab instruction from arena " + str(donor_arena))
-      donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
-      templine = random.choice(list(open(donor_file)))
-    elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
-      print("Minor mutation")
-      splitline=re.split('[ \.,\n]', templine)
-      r=random.randint(1,6)
-      if r==1:
-        splitline[0]=random.choice(INSTR_SET)
-      elif r==2:
-        splitline[1]=random.choice(INSTR_MODIF)
-      elif r==3:
-        splitline[2]=random.choice(INSTR_MODES)+splitline[2][1:]
-      elif r==4:
-        num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-        splitline[2]=splitline[2][0:1]+str(num1)
-      elif r==5:  
-        splitline[3]=random.choice(INSTR_MODES)+splitline[3][1:]
-      elif r==6:
-        num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-        splitline[3]=splitline[3][0:1]+str(num1)
-      templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
-    elif chosen_marble==Marble.MICRO_MUTATION: #modifies one number by +1 or -1
-      print ("Micro mutation")
-      splitline=re.split('[ \.,\n]', templine)
-      r=random.randint(1,2)
-      if r==1:
-        num1=int(splitline[2][1:])
-        if random.randint(1,2)==1:
-          num1=num1+1
+        while (donor_arena==arena):
+          donor_arena=random.randint(0, LAST_ARENA)
+        print("Nab instruction from arena " + str(donor_arena))
+        donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
+        templine = random.choice(list(open(donor_file)))
+      elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
+        print("Minor mutation")
+        splitline=re.split('[ \.,\n]', templine)
+        r=random.randint(1,6)
+        if r==1:
+          splitline[0]=random.choice(INSTR_SET)
+        elif r==2:
+          splitline[1]=random.choice(INSTR_MODIF)
+        elif r==3:
+          splitline[2]=random.choice(INSTR_MODES)+splitline[2][1:]
+        elif r==4:
+          num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+          splitline[2]=splitline[2][0:1]+str(num1)
+        elif r==5:
+          splitline[3]=random.choice(INSTR_MODES)+splitline[3][1:]
+        elif r==6:
+          num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+          splitline[3]=splitline[3][0:1]+str(num1)
+        templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
+      elif chosen_marble==Marble.MICRO_MUTATION: #modifies one number by +1 or -1
+        print ("Micro mutation")
+        splitline=re.split('[ \.,\n]', templine)
+        r=random.randint(1,2)
+        if r==1:
+          num1=int(splitline[2][1:])
+          if random.randint(1,2)==1:
+            num1=num1+1
+          else:
+            num1=num1-1
+          splitline[2]=splitline[2][0:1]+str(num1)
         else:
-          num1=num1-1
-        splitline[2]=splitline[2][0:1]+str(num1)
-      else:
-        num1=int(splitline[3][1:])
-        if random.randint(1,2)==1:
-          num1=num1+1
+          num1=int(splitline[3][1:])
+          if random.randint(1,2)==1:
+            num1=num1+1
+          else:
+            num1=num1-1
+          splitline[3]=splitline[3][0:1]+str(num1)
+        templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
+      elif chosen_marble==Marble.INSTRUCTION_LIBRARY and LIBRARY_PATH and os.path.exists(LIBRARY_PATH):
+        print("Instruction library")
+        templine=random.choice(list(open(LIBRARY_PATH)))
+      elif chosen_marble==Marble.MAGIC_NUMBER_MUTATION:
+        print ("Magic number mutation")
+        splitline=re.split('[ \.,\n]', templine)
+        r=random.randint(1,2)
+        if r==1:
+          splitline[2]=splitline[2][0:1]+str(magic_number)
         else:
-          num1=num1-1
-        splitline[3]=splitline[3][0:1]+str(num1)
-      templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
-    elif chosen_marble==Marble.INSTRUCTION_LIBRARY and LIBRARY_PATH and os.path.exists(LIBRARY_PATH):
-      print("Instruction library")
-      templine=random.choice(list(open(LIBRARY_PATH)))
-    elif chosen_marble==Marble.MAGIC_NUMBER_MUTATION:
-      print ("Magic number mutation")
-      splitline=re.split('[ \.,\n]', templine)
-      r=random.randint(1,2)
-      if r==1:
-        splitline[2]=splitline[2][0:1]+str(magic_number)
-      else:
-        splitline[3]=splitline[3][0:1]+str(magic_number)
-      templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
-      
-    splitline=re.split('[ \.,\n]', templine)
-    templine=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
-             str(corenorm(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+ \
-             splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]), \
-             CORESIZE_LIST[arena]))+"\n"
-    fl.write(templine)      
-    magic_number=magic_number-1  
+          splitline[3]=splitline[3][0:1]+str(magic_number)
+        templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
 
-  fl.close()
+      splitline=re.split('[ \.,\n]', templine)
+      templine=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
+               str(corenorm(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+ \
+               splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]), \
+               CORESIZE_LIST[arena]))+"\n"
+      fl.write(templine)
+      magic_number=magic_number-1
+
+    fl.close()
   data_logger.log_data(era=era, arena=arena, winner=winner, loser=loser, score1=scores[0], score2=scores[1], \
                        bred_with=randomwarrior)
 
