@@ -17,10 +17,10 @@ from config import (
     _CONFIG_PARSERS,
     BenchmarkWarrior,
     EvolverConfig,
-    get_active_config as _config_get_active_config,
-    load_configuration as _config_load_configuration,
+    get_active_config,
+    load_configuration,
     set_active_config as _config_set_active_config,
-    validate_config as _config_validate_config,
+    validate_config,
 )
 from ui import (
     BattleStatisticsTracker,
@@ -135,18 +135,6 @@ def set_active_config(new_config: EvolverConfig) -> None:
     _config_set_active_config(new_config)
     globals()["config"] = _config_module.config
     set_engine_config(new_config)
-
-
-def get_active_config() -> EvolverConfig:
-    return _config_get_active_config()
-
-
-def load_configuration(path: str) -> EvolverConfig:
-    return _config_load_configuration(path)
-
-
-def validate_config(active_config: EvolverConfig, config_path: Optional[str] = None) -> None:
-    _config_validate_config(active_config, config_path=config_path)
 
 
 
