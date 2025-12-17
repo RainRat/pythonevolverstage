@@ -11,3 +11,6 @@ nano.txt
 both.txt
 std.txt
 tiny.txt
+__pycache__/
+*.py[cod]
+*$py.class
