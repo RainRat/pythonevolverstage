@@ -153,28 +153,13 @@ def get_arena_spec(arena: int) -> str:
     return "1994"
 
 
-def _require_worker_limits() -> Tuple[int, int, int, int, int, int, int]:
-    return (
-        CPP_WORKER_MIN_CORE_SIZE,
-        CPP_WORKER_MAX_CORE_SIZE,
-        CPP_WORKER_MAX_CYCLES,
-        CPP_WORKER_MAX_PROCESSES,
-        CPP_WORKER_MAX_WARRIOR_LENGTH,
-        CPP_WORKER_MAX_ROUNDS,
-        CPP_WORKER_MIN_DISTANCE,
-    )
-
-
 def _validate_arena_parameters(idx: int, active_config: EvolverConfig) -> None:
-    (
-        min_core_size,
-        max_core_size,
-        max_cycles,
-        max_processes,
-        max_warrior_length,
-        _max_rounds,
-        min_distance,
-    ) = _require_worker_limits()
+    min_core_size = CPP_WORKER_MIN_CORE_SIZE
+    max_core_size = CPP_WORKER_MAX_CORE_SIZE
+    max_cycles = CPP_WORKER_MAX_CYCLES
+    max_processes = CPP_WORKER_MAX_PROCESSES
+    max_warrior_length = CPP_WORKER_MAX_WARRIOR_LENGTH
+    min_distance = CPP_WORKER_MIN_DISTANCE
 
     core_size = active_config.coresize_list[idx]
     sanitize_limit = active_config.sanitize_list[idx]
