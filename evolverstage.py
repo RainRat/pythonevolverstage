@@ -208,10 +208,10 @@ def _run_benchmark_battle(
     )
 
 
-class DataLogger:
-    def __init__(self, filename: Optional[str]):
+class BaseCSVLogger:
+    def __init__(self, filename: Optional[str], fieldnames: list[str]):
         self.filename = filename
-        self.fieldnames = ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with']
+        self.fieldnames = fieldnames
         self.file_handle: Optional[TextIO] = None
         self.writer: Optional[csv.DictWriter] = None
 
@@ -233,7 +233,7 @@ class DataLogger:
             self.file_handle = None
             self.writer = None
 
-    def log_data(self, **kwargs):
+    def _log_row(self, row: dict) -> None:
         if not self.filename:
             return
 
@@ -241,47 +241,40 @@ class DataLogger:
             self.open()
 
         if self.writer is not None:
-            self.writer.writerow(kwargs)
+            self.writer.writerow(row)
             if self.file_handle is not None:
                 self.file_handle.flush()
 
 
-class BenchmarkLogger:
+class DataLogger(BaseCSVLogger):
     def __init__(self, filename: Optional[str]):
-        self.filename = filename
-        self.fieldnames = [
-            "era",
-            "generation",
-            "arena",
-            "champion",
-            "benchmark",
-            "score",
-            "benchmark_path",
-        ]
-        self.file_handle: Optional[TextIO] = None
-        self.writer: Optional[csv.DictWriter] = None
+        super().__init__(
+            filename,
+            ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with']
+        )
+
+    def log_data(self, **kwargs):
+        self._log_row(kwargs)
+
+
+class BenchmarkLogger(BaseCSVLogger):
+    def __init__(self, filename: Optional[str]):
+        super().__init__(
+            filename,
+            [
+                "era",
+                "generation",
+                "arena",
+                "champion",
+                "benchmark",
+                "score",
+                "benchmark_path",
+            ],
+        )
 
     @property
     def enabled(self) -> bool:
         return bool(self.filename)
-
-    def open(self) -> None:
-        if not self.filename or self.file_handle is not None:
-            return
-
-        file_handle = open(self.filename, "a", newline="")
-        writer = csv.DictWriter(file_handle, fieldnames=self.fieldnames)
-        if file_handle.tell() == 0:
-            writer.writeheader()
-
-        self.file_handle = file_handle
-        self.writer = writer
-
-    def close(self) -> None:
-        if self.file_handle is not None:
-            self.file_handle.close()
-            self.file_handle = None
-            self.writer = None
 
     def log_score(
         self,
@@ -294,26 +287,17 @@ class BenchmarkLogger:
         score: int,
         benchmark_path: Optional[str],
     ) -> None:
-        if not self.filename:
-            return
-
-        if self.writer is None:
-            self.open()
-
-        if self.writer is not None:
-            self.writer.writerow(
-                {
-                    "era": era,
-                    "generation": generation,
-                    "arena": arena,
-                    "champion": champion,
-                    "benchmark": benchmark,
-                    "score": score,
-                    "benchmark_path": benchmark_path or "",
-                }
-            )
-            if self.file_handle is not None:
-                self.file_handle.flush()
+        self._log_row(
+            {
+                "era": era,
+                "generation": generation,
+                "arena": arena,
+                "champion": champion,
+                "benchmark": benchmark,
+                "score": score,
+                "benchmark_path": benchmark_path or "",
+            }
+        )
 
 
 def _score_warrior_against_benchmarks(
