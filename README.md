@@ -1,93 +1,62 @@
 # Python Core War Evolver
 
-An Evolver for Core War, written in Python. You don't need to know Redcode (the language used in Core War).
+An Evolver for Core War, written in Python. You don't need to know Redcode (the language used in Core War) to use this tool.
 
-A genetic algorithm will pit the warriors against each other, then breed the winner, with some random mutation.
+This project uses a genetic algorithm to pit warriors against each other, breed the winners, and introduce mutations to evolve superior strategies over time.
 
-If you have a suggestion, submit a pull request. I put it on Github to encourage contributions.
+Contributions are welcome! If you have a suggestion or improvement, please submit a pull request.
 
-## Usage:
+## Prerequisites
 
-For all of these, modify the constants in settings.ini.
+Before running the evolver, ensure you have the following:
 
-1. Edit the ARENA lists to contain the parameters of the competitions you want to compete in. If you just want to compete in one arena, you have lists of length 1.
-2. Set ALREADYSEEDED to False. If you interrupt it and want to resume, set it to True.
-3. Choose how much actual wall clock time (in hours) you plan to run the project for and modify CLOCK_TIME
-4. python evolverstage.py
-5. When done, out of the warriors in each arena, you will need to pick which is actually the best. CoreWin in round robin mode can find the best ones, or use a benchmarking tool.
+*   **Python 3.x**: This project is written in Python.
+*   **nMars**: The `nmars` Core War simulator must be installed and accessible.
+    *   The executable (`nmars.exe` on Windows, `nmars` on Linux/macOS) should be in your system's PATH or placed in the root directory of this project.
 
-## Special Features:
+## Configuration
 
-1. Evolve warriors to compete in multiple arenas at once. This is beneficial because useful instructions can be nabbed by warriors for use in other arenas.
-	- A Sanitizer will chop the numerical values down to something that makes sense in the smaller core if needed. This was also used in Round 3 of the Global Masters Tournament.
-2. Bias towards picking more useful instructions. (MOV, SPL, DJN most likely)
-3. Bias towards picking small numbers (likely inside the warrior) (3 out of 4 chance).
-4. Eras and wall clock time. Before you start, you decide how long you want to run the evolver for. Let's say 24 hours. It'll divide this time into 3 eras.
-	- Exploration (single cell analogy)
-		The primary activity of this phase is warriors reproducing themselves with mutation. One round of battle determines the winner. Single-celled organisms die easily but there will be many near-clones. A random mate is still selected but the offspring will start with instructions from the winner and there's a lower chance of switching to getting instructions from the other warrior.
-	- Breeding (multicellular analogy)
-		The primary activity of this phase is to use breeding to combine features of different warriors. They will fight for more rounds before declaring the winner. How breeding works: The winner, and a random warrior, are loaded side by side. Starting from a random warrior from those two, instructions are copied into the new warrior. Each instruction, there's a chance of switching to reading instructions from the other warrior. So the goal is alternating sections of instructions from each parent.
-	- Optimization (complex life analogy)
-		The primary activity of this phase is to fine tune constants and other behaviour. Warriors fight for even more rounds to determine the winner. Mutation is lower, and while breeding, larger chunks are copied into the new warrior.
+All settings are managed in `settings.ini`. Open this file to customize the evolution parameters.
 
-	The cellular analogy is just to understand why different parameters were chosen in each era. Warriors are the same size in each era.
-5. Progress tracker. Example:
-```
-8.00 hours remaining (0.01% complete) Era: 1
-```
-6. Finished the cycle you originally planned and want to optimize some more? Set:
-```
-FINAL_ERA_ONLY=True
-ALREADYSEEDED=True #Make sure to set this True as well.
-```
+1.  **Arenas**: Edit the list-based parameters (e.g., `CORESIZE_LIST`, `CYCLES_LIST`) to define the environments. All lists must be the same length, corresponding to the number of arenas.
+2.  **Duration**: Set `CLOCK_TIME` to the number of hours you want the evolution to run.
+3.  **Seeding**:
+    *   **First Run**: Set `ALREADYSEEDED = False`. This generates a new random population of warriors.
+    *   **Resuming**: Set `ALREADYSEEDED = True`. This preserves the existing warriors and continues evolution from where it left off.
+4.  **Optimization Mode**: Set `FINAL_ERA_ONLY = True` (and `ALREADYSEEDED = True`) to skip directly to the optimization phase. This is useful for fine-tuning an existing population.
 
-7. Two new evolution strategies.
-    First, the single instruction modification strategies are now all under a "bag of marbles" analogy, to get them all under the same framework and even use fewer variables. Imagine a bag with six different-coloured marbles. One for each of the five modification strategies, plus one for "do nothing". The lists now tell how many marbles of each type to put in the bag for each era. A single random number decides which strategy is used. They are:
-	- Do Nothing
-	- Completely new random instruction
-	- Nab instruction from another arena
-	- Mini-mutation (change one thing about instruction)
-	- Micro mutation. Increment or decrement a constant by one. Most prominent in the Optimization era.
-	- Pull single instruction from instruction library. Maybe a previous evolution run, maybe one or more hand-written warriors. One text file. One instruction per line. Just assembled instructions, nothing else. If multiple warriors, just concatenated with no breaks. (Not needed and not included with distribution.)
-8. Evolution strategy - Magic Number
-	Let's look at the classic warrior, MICE (it's written in the old format, but that's ok, it's just for example):
-```
-jmp 2
-dat 0
-mov #12, **-1**
-mov **@-2**, <5
-djn -1, **-3**
-spl @3
-add #653, 2
-jmz -5, **-6**
-dat 833
-```
-All of the bold values end up pointing to the same address, but if it were advantageous for the address to be different, the odds of all those numbers changing to point to the same address in unison would be astronomically low. So, at the beginning of the warrior, the evolver will choose a magic number, and decrement it each instruction(because core war uses relative addressing) and if this mutation strategy is chosen, the evolver will replace either the A-field or B-field with that number. 
+## Usage
 
-9. Value Normalizer.
-	In the Nano Arena (size 80), for instance:
-```
-DJN.F $79,{-74
-```
-while legal, doesn't look so readable. It means the same thing as:
-```
-DJN.F $-1,{6
-```
-Evolver output will now rewrite numbers either negative or positive, whichever is closer to 0.
+1.  Configure `settings.ini` as described above.
+2.  Run the script:
+    ```bash
+    python evolverstage.py
+    ```
+3.  Monitor the output. The script will display progress, including the current Era and time remaining.
+    ```text
+    8.00 hours remaining (0.01% complete) Era: 1
+    ```
+4.  **Results**: When the process finishes (or is stopped), you can find the evolved warriors in the `arenaX` directories.
+5.  **Selection**: Use a benchmarking tool (like CoreWin in round-robin mode) to test the final population and identify the best warriors.
 
-10. Archive and unarchive
-	Create "archive" folder. After a battle, there is a chance of archiving the winner, or replacing the loser with something from the archive.
-	- Keep clues as to how things evolved
-	- Combat hyper-specialization
-	- Transfer whole warriors between arenas
-	- Easy way to insert warriors from
-		- Previous evolution runs
-		- Other evolved warriors
-		- Other handwritten warriors
-	- Collaborate with other instances (will need to edit source code to use absolute path)
-		- Other instances on same machine
-		- Over a LAN
-		- Over the Internet with Google Drive, etc.
+## Special Features
 
-11. (New) Optional log file
-Results of battles saved so you can analyse your progress. Current fields are 'era', 'arena', 'winner', 'loser', 'score1', 'score2', and 'bred_with'. Edit BATTLE_LOG_FILE setting to choose a file name; comment out or leave blank for no log.
+*   **Multi-Arena Evolution**: Warriors can compete in multiple arenas simultaneously. Successful instructions from one environment can be adapted ("sanitized") and transferred to another.
+*   **Smart Selection Bias**:
+    *   Preference for useful instructions (MOV, SPL, DJN).
+    *   Preference for small numbers (keeping references inside the warrior).
+*   **Eras**: The evolution is divided into three phases based on `CLOCK_TIME`:
+    1.  **Exploration (Era 1)**: High mutation, distinct winners. Focus on reproducing viable code.
+    2.  **Breeding (Era 2)**: Winners breed with other warriors. Instructions are mixed to combine features.
+    3.  **Optimization (Era 3)**: Fine-tuning of constants. Larger code chunks are preserved during breeding.
+*   **Evolution Strategies ("Bag of Marbles")**: The probability of different mutation types changes over time. Strategies include:
+    *   **Do Nothing**: Keep instruction as is.
+    *   **Major Mutation**: New random instruction.
+    *   **Nab Instruction**: Steal an instruction from another arena.
+    *   **Mini Mutation**: Change one part of an instruction.
+    *   **Micro Mutation**: Increment/decrement a value (fine-tuning).
+    *   **Instruction Library**: Insert a predefined effective instruction (requires an external library file).
+    *   **Magic Number**: Replace a value with a pre-selected "magic number" that optimizes relative addressing.
+*   **Archiving**: Winners are occasionally archived. Losers can be replaced by unarchived warriors to reintroduce genetic diversity and prevent stagnation.
+*   **Value Normalizer**: Rewrites instruction modifiers to be more readable (e.g., converting large offsets to their negative equivalents).
+*   **Logging**: Set `BATTLE_LOG_FILE` in `settings.ini` to save match results to a CSV file for analysis.
