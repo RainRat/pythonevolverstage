@@ -139,6 +139,45 @@ def create_directory_if_not_exists(directory):
     if not os.path.exists(directory):
         os.mkdir(directory)
 
+def parse_nmars_output(raw_output):
+    if raw_output is None:
+        return [], []
+    scores = []
+    warriors = []
+    #note nMars will sort by score regardless of the order in the command-line, so match up score with warrior
+    output = raw_output.splitlines()
+    numline=0
+    for line in output:
+        numline=numline+1
+        if "scores" in line:
+            print(line.strip())
+            splittedline=line.split()
+            # Ensure line has enough parts to avoid IndexError
+            if len(splittedline) > 4:
+                scores.append(int(splittedline[4]))
+                warriors.append(int(splittedline[0]))
+    print(numline)
+    return scores, warriors
+
+def determine_winner(scores, warriors):
+    winner = None
+    loser = None
+    if scores[1] == scores[0]:
+        print("draw") #in case of a draw, destroy one at random. we want attacking.
+        if random.randint(1, 2) == 1:
+            winner = warriors[1]
+            loser = warriors[0]
+        else:
+            winner = warriors[0]
+            loser = warriors[1]
+    elif scores[1] > scores[0]:
+        winner = warriors[1]
+        loser = warriors[0]
+    else:
+        winner = warriors[0]
+        loser = warriors[1]
+    return winner, loser
+
 if __name__ == "__main__":
   if ALREADYSEEDED==False:
     print("Seeding")
@@ -195,40 +234,13 @@ if __name__ == "__main__":
     raw_output = run_nmars_command(arena, cont1, cont2, CORESIZE_LIST[arena], CYCLES_LIST[arena], \
                                    PROCESSES_LIST[arena], WARLEN_LIST[arena], \
                                    WARDISTANCE_LIST[arena], BATTLEROUNDS_LIST[era])
-    scores=[]
-    warriors=[]
-    #note nMars will sort by score regardless of the order in the command-line, so match up score with warrior
-    numline=0
-    if raw_output is None:
-        continue
-    output = raw_output.splitlines()
 
-    for line in output:
-      numline=numline+1
-      if "scores" in line:
-        print(line.strip())
-        splittedline=line.split()
-        scores.append( int(splittedline [4]))
-        warriors.append( int(splittedline [0]))
-    print(numline)
+    scores, warriors = parse_nmars_output(raw_output)
 
     if len(scores) < 2:
       continue
 
-    if scores[1]==scores[0]:
-      print("draw") #in case of a draw, destroy one at random. we want attacking.
-      if random.randint(1,2)==1:
-        winner=warriors[1]
-        loser=warriors[0]
-      else:
-        winner=warriors[0]
-        loser=warriors[1]
-    elif scores[1]>scores[0]:
-      winner=warriors[1]
-      loser=warriors[0]
-    else:
-      winner=warriors[0]
-      loser=warriors[1]
+    winner, loser = determine_winner(scores, warriors)
 
     if ARCHIVE_LIST[era]!=0 and random.randint(1,ARCHIVE_LIST[era])==1:
       #archive winner
