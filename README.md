@@ -39,6 +39,26 @@ All settings are managed in `settings.ini`. Open this file to customize the evol
 4.  **Results**: When the process finishes (or is stopped), you can find the evolved warriors in the `arenaX` directories.
 5.  **Selection**: Use a benchmarking tool (like CoreWin in round-robin mode) to test the final population and identify the best warriors.
 
+## Output and Analysis
+
+As the evolver runs, it generates several types of output:
+
+### Warrior Files
+
+*   **Arenas (`arena0/`, `arena1/`, ...)**: These directories contain the active population of warriors. Each warrior is a `.red` file (Redcode source), named by its ID (e.g., `15.red`).
+*   **Archive (`archive/`)**: Successful warriors (winners) are occasionally copied here. This preserves a history of effective strategies and allows for re-introduction of genetic material later.
+
+### Battle Log
+
+If `BATTLE_LOG_FILE` is set in `settings.ini`, a CSV file is created to track every match. This is useful for analyzing evolution progress. The columns are:
+
+*   **era**: The current phase of evolution (0, 1, or 2).
+*   **arena**: The arena number where the battle took place.
+*   **winner**: The ID of the winning warrior.
+*   **loser**: The ID of the losing warrior (this warrior is subsequently overwritten).
+*   **score1 / score2**: The scores returned by `nmars`.
+*   **bred_with**: The ID of the warrior chosen to breed with the winner. The offspring of this pair replaces the loser.
+
 ## Special Features
 
 *   **Multi-Arena Evolution**: Warriors can compete in multiple arenas simultaneously. Successful instructions from one environment can be adapted ("sanitized") and transferred to another.
