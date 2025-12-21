@@ -118,16 +118,7 @@ def _select_arena_index(active_config: EvolverConfig) -> int:
     if not weighted_indices:
         return get_random_int(0, active_config.last_arena)
 
-    total_weight = sum(weight for _, weight in weighted_indices)
-    roll = get_random_int(1, total_weight)
-    cumulative = 0
-    for index, weight in weighted_indices:
-        cumulative += weight
-        if roll <= cumulative:
-            return index
-
-    # Fallback; should not occur but protects against rounding mistakes.
-    return weighted_indices[-1][0]
+    return weighted_choice(weighted_indices, rng=get_random_int)
 
 
 

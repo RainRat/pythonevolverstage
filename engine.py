@@ -13,6 +13,7 @@ from typing import (
     Callable,
     Optional,
     Sequence,
+    Tuple,
     TypeVar,
     Union,
     cast,
@@ -169,6 +170,25 @@ def _require_config() -> "EvolverConfig":
             "Engine configuration has not been set. Call set_active_config() first."
         )
     return config
+
+
+def weighted_choice(
+    items: Sequence[Tuple[T, int]], rng: Optional[Callable[[int, int], int]] = None
+) -> T:
+    """Select an item from a list of (item, weight) tuples."""
+    total_weight = sum(weight for _, weight in items)
+    if total_weight <= 0:
+        raise ValueError("Total weight must be positive")
+
+    effective_rng = rng or _rng_int
+    roll = effective_rng(1, total_weight)
+    cumulative = 0
+    for item, weight in items:
+        cumulative += weight
+        if roll <= cumulative:
+            return item
+
+    return items[-1][0]
 
 
 _rng_int: Callable[[int, int], int] = random.randint
@@ -479,16 +499,7 @@ def choose_battle_type(
     if not positive:
         raise ValueError("At least one battle weight must be positive.")
 
-    total_weight = sum(weight for _, weight in positive)
-    roll = _rng_int(1, total_weight)
-    cumulative = 0
-    for battle_type, weight in positive:
-        cumulative += weight
-        if roll <= cumulative:
-            return battle_type
-
-    # Fallback; should be unreachable but protects against rounding mistakes.
-    return positive[-1][0]
+    return weighted_choice(positive, rng=_rng_int)
 
 
 def select_opponents(
@@ -605,5 +616,6 @@ __all__ = [
     "breed_offspring",
     "determine_winner_and_loser",
     "select_opponents",
+    "weighted_choice",
 ]
 
