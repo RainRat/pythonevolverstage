@@ -118,7 +118,7 @@ def _select_arena_index(active_config: EvolverConfig) -> int:
     if not weighted_indices:
         return get_random_int(0, active_config.last_arena)
 
-    return weighted_choice(weighted_indices, rng=get_random_int)
+    return weighted_choice(weighted_indices)
 
 
 
