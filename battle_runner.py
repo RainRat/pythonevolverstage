@@ -517,8 +517,8 @@ def _parse_battle_output(
     pmars_scores: dict[int, int] = {}
 
     for numline in raw_output.split("\n"):
-        if numline.startswith("ERROR:"):
-            raise RuntimeError(f"Battle engine reported an error: {numline}")
+        if numline.strip().startswith("ERROR:"):
+            raise RuntimeError(f"Battle engine reported an error: {numline.strip()}")
         match = _PMARS_SCORE_RE.search(numline)
         if match or (not is_pmars and "scores" in numline.lower()):
             score_lines_found += 1
@@ -607,9 +607,6 @@ def _process_battle_output(
         raise RuntimeError("Battle engine returned no output")
     if isinstance(raw_output, bytes):
         raw_output = raw_output.decode("utf-8")
-    raw_output_stripped = raw_output.strip()
-    if raw_output_stripped.startswith("ERROR:"):
-        raise RuntimeError(f"Battle engine reported an error: {raw_output_stripped}")
     return _parse_battle_output(raw_output, engine_name, verbose, expected_warriors)
 
 
