@@ -135,6 +135,13 @@ def coremod(x, y):
 def corenorm(x, y):
     return -(y - x) if x > y // 2 else (y + x) if x <= -(y // 2) else x
 
+def normalize_instruction(instruction, coresize, sanitize_limit):
+    splitline = re.split('[ \.,\n]', instruction.strip())
+    return splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
+           str(corenorm(coremod(int(splitline[2][1:]),sanitize_limit),coresize))+","+ \
+           splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),sanitize_limit), \
+           coresize))+"\n"
+
 def create_directory_if_not_exists(directory):
     if not os.path.exists(directory):
         os.mkdir(directory)
@@ -270,10 +277,7 @@ if __name__ == "__main__":
         if countoflines>WARLEN_LIST[arena]:
           break
         line=line.replace('  ',' ').replace('START','').replace(', ',',').strip()
-        splitline=re.split('[ \.,\n]', line)
-        line=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+str(corenorm(coremod(int(splitline[2][1:]), \
-             SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+splitline[3][0:1]+ \
-             str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+"\n"
+        line = normalize_instruction(line, CORESIZE_LIST[arena], SANITIZE_LIST[arena])
         fl.write(line)
       while countoflines<WARLEN_LIST[arena]:
         countoflines=countoflines+1
@@ -389,11 +393,7 @@ if __name__ == "__main__":
           splitline[3]=splitline[3][0:1]+str(magic_number)
         templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
 
-      splitline=re.split('[ \.,\n]', templine)
-      templine=splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
-               str(corenorm(coremod(int(splitline[2][1:]),SANITIZE_LIST[arena]),CORESIZE_LIST[arena]))+","+ \
-               splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),SANITIZE_LIST[arena]), \
-               CORESIZE_LIST[arena]))+"\n"
+      templine = normalize_instruction(templine, CORESIZE_LIST[arena], SANITIZE_LIST[arena])
       fl.write(templine)
       magic_number=magic_number-1
 
