@@ -19,10 +19,17 @@ from enum import Enum
 import csv
 
 class DataLogger:
+    """
+    Logs battle results to a CSV file.
+    """
     def __init__(self, filename):
         self.filename = filename
         self.fieldnames = ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with']
     def log_data(self, **kwargs):
+        """
+        Writes a single row of data to the CSV file.
+        Creates the file with a header row if it doesn't exist.
+        """
         if self.filename:
             with open(self.filename, 'a', newline='') as file:
                 writer = csv.DictWriter(file, fieldnames=self.fieldnames)
@@ -40,20 +47,13 @@ class Marble(Enum):
   MAGIC_NUMBER_MUTATION = 6
 
 def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
+  """
+  Runs the nMars simulator to battle two warriors.
+
+  Constructs the command line arguments for nMars based on the arena settings
+  and returns the output from the simulator.
+  """
   try:
-    '''
-nMars reference
-Rules:
-  -r #      Rounds to play [1]
-  -s #      Size of core [8000]
-  -c #      Cycle until tie [80000]
-  -p #      Max. processes [8000]
-  -l #      Max. warrior length [100]
-  -d #      Min. warriors distance
-  -S #      Size of P-space [500]
-  -f #      Fixed position series
-  -xp       Disable P-space
-    '''
     nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
     cmd = [
         nmars_cmd,
@@ -122,6 +122,13 @@ INSTR_MODES = read_config('INSTR_MODES', data_type='string_list')
 INSTR_MODIF = read_config('INSTR_MODIF', data_type='string_list')
 
 def weighted_random_number(size, length):
+    """
+    Returns a random number to use in an instruction field.
+
+    Most of the time (75%), it returns a small number useful for
+    self-references (within the warrior's length). Occasionally (25%),
+    it returns a larger number to reach across the core.
+    """
     if random.randint(1,4)==1:
         return random.randint(-size, size)
     else:
@@ -129,17 +136,36 @@ def weighted_random_number(size, length):
 
 #custom function, Python modulo doesn't work how we want with negative numbers
 def coremod(x, y):
+    """
+    Calculates the remainder of division, keeping the sign of the number.
+
+    Standard Python modulo always returns a result with the same sign as the divisor.
+    In Core War, we often want -5 % 10 to be -5, not 5.
+    """
     numsign = -1 if x < 0 else 1
     return (abs(x) % y) * numsign
 
 def corenorm(x, y):
+    """
+    Normalizes an address to be the shortest distance in the core.
+
+    In a circular memory, an address can be represented as a positive
+    or negative offset. This function returns the value with the
+    smallest absolute value (e.g., in a core of size 80, 70 becomes -10).
+    """
     return -(y - x) if x > y // 2 else (y + x) if x <= -(y // 2) else x
 
 def create_directory_if_not_exists(directory):
+    """
+    Creates a folder if it does not already exist.
+    """
     if not os.path.exists(directory):
         os.mkdir(directory)
 
 def parse_nmars_output(raw_output):
+    """
+    Reads the text output from nMars to find the scores and warrior IDs.
+    """
     if raw_output is None:
         return [], []
     scores = []
@@ -160,6 +186,12 @@ def parse_nmars_output(raw_output):
     return scores, warriors
 
 def determine_winner(scores, warriors):
+    """
+    Decides who won the battle based on scores.
+
+    If it's a draw (scores are equal), a winner is picked randomly.
+    This prevents stagnation by removing one warrior anyway.
+    """
     winner = None
     loser = None
     if scores[1] == scores[0]:
