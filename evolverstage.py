@@ -134,6 +134,19 @@ def weighted_random_number(size, length):
     else:
         return random.randint(-length, length)
 
+def construct_marble_bag(era):
+    """
+    Constructs the probability bag for mutations based on the current era.
+    Uses the global configuration lists to determine the count of each marble type.
+    """
+    return [Marble.DO_NOTHING]*NOTHING_LIST[era] + \
+           [Marble.MAJOR_MUTATION]*RANDOM_LIST[era] + \
+           [Marble.NAB_INSTRUCTION]*NAB_LIST[era] + \
+           [Marble.MINOR_MUTATION]*MINI_MUT_LIST[era] + \
+           [Marble.MICRO_MUTATION]*MICRO_MUT_LIST[era] + \
+           [Marble.INSTRUCTION_LIBRARY]*LIBRARY_LIST[era] + \
+           [Marble.MAGIC_NUMBER_MUTATION]*MAGIC_NUMBER_LIST[era]
+
 #custom function, Python modulo doesn't work how we want with negative numbers
 def coremod(x, y):
     """
@@ -255,10 +268,7 @@ if __name__ == "__main__":
       era=2
     if era!=prevera:
       print(f"************** Switching from era {prevera + 1} to {era + 1} *******************")
-      bag = [Marble.DO_NOTHING]*NOTHING_LIST[era] + [Marble.MAJOR_MUTATION]*RANDOM_LIST[era] + \
-            [Marble.NAB_INSTRUCTION]*NAB_LIST[era] + [Marble.MINOR_MUTATION]*MINI_MUT_LIST[era] + \
-            [Marble.MICRO_MUTATION]*MICRO_MUT_LIST[era] + [Marble.INSTRUCTION_LIBRARY]*LIBRARY_LIST[era] + \
-            [Marble.MAGIC_NUMBER_MUTATION]*MAGIC_NUMBER_LIST[era]
+      bag = construct_marble_bag(era)
 
     print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) + \
            " hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+" complete) Era: "+str(era+1))
