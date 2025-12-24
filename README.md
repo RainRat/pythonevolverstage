@@ -59,6 +59,20 @@ If you set a filename for `BATTLE_LOG_FILE` in `settings.ini`, the script saves 
 *   **score1/score2**: The score from nMars.
 *   **bred_with**: The ID of the partner warrior used to make the new warrior.
 
+## Running Tests
+
+To ensure the code is working correctly, you can run the included test suite. This is recommended if you plan to modify the code.
+
+1.  **Install pytest**:
+    ```bash
+    pip install pytest
+    ```
+2.  **Run the tests**:
+    ```bash
+    pytest
+    ```
+    The tests verify the logic for evolution, parsing, and battle execution (using a mock simulator), so you don't need `nmars` installed just to run them.
+
 ## Features
 
 *   **Multi-Arena**: Warriors can fight in different environments at the same time. Code that works well in one arena can be "sanitized" (adjusted) and moved to another.
