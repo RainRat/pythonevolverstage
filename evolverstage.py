@@ -13,6 +13,7 @@ import os
 import re
 import time
 #import psutil #Not currently active. See bottom of code for how it could be used.
+import argparse
 import configparser
 import subprocess
 from enum import Enum
@@ -230,7 +231,22 @@ def determine_winner(scores, warriors):
         loser = warriors[1]
     return winner, loser
 
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Core War Evolver")
+    parser.add_argument('-n', '--numwarriors', type=int, help='Number of warriors per arena (overrides settings.ini)')
+    parser.add_argument('-t', '--clock-time', type=float, help='Runtime in hours (overrides settings.ini)')
+    parser.add_argument('-r', '--reseed', action='store_true', help='Force re-seeding (sets ALREADYSEEDED=False)')
+    return parser.parse_args()
+
 if __name__ == "__main__":
+  args = parse_arguments()
+  if args.numwarriors is not None:
+      NUMWARRIORS = args.numwarriors
+  if args.clock_time is not None:
+      CLOCK_TIME = args.clock_time
+  if args.reseed:
+      ALREADYSEEDED = False
+
   if ALREADYSEEDED==False:
     print("Seeding")
     create_directory_if_not_exists("archive")
