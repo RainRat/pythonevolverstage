@@ -85,7 +85,6 @@ from redcode import (
     parse_redcode_instruction,
     _ensure_int,
     _parse_operand,
-    _safe_int,
     rebuild_instruction_tables,
     sanitize_instruction,
     weighted_random_number,

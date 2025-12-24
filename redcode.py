@@ -279,21 +279,12 @@ def rebuild_instruction_tables(active_config) -> InstructionTables:
     return tables
 
 
-def _safe_int(value: str) -> int:
-    try:
-        return int(value)
-    except ValueError:
-        if not value.strip():
-            raise ValueError("Empty integer literal")
-        raise ValueError(f"Invalid integer literal: '{value}'")
-
-
 def _ensure_int(value) -> int:
     if isinstance(value, int):
         return value
     if isinstance(value, float) and value.is_integer():
         return int(value)
-    return _safe_int(str(value))
+    return int(str(value))
 
 
 def coremod(num: int, modulus: int) -> int:
@@ -322,7 +313,7 @@ def _parse_operand(operand: str, operand_name: str) -> Tuple[str, int]:
     if not value_part.strip():
         raise ValueError(f"Missing value for {operand_name}-field operand")
     try:
-        value = _safe_int(value_part)
+        value = int(value_part)
     except ValueError as exc:
         raise ValueError(
             f"Invalid {operand_name}-field operand '{operand}': {exc}"
