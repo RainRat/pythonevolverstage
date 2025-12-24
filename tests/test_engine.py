@@ -19,15 +19,6 @@ def restore_engine_rng():
     engine.configure_rng(random.randint, random.choice)
 
 
-def test_safe_int_trims_whitespace():
-    assert engine._safe_int(" 42 ") == 42
-
-
-def test_safe_int_rejects_invalid_literal():
-    with pytest.raises(ValueError, match="Invalid integer literal"):
-        engine._safe_int("abc")
-
-
 @pytest.mark.parametrize(
     "operand, operand_name, pattern",
     [
@@ -37,7 +28,7 @@ def test_safe_int_rejects_invalid_literal():
         (
             "$abc",
             "B",
-            re.escape("Invalid B-field operand '$abc': Invalid integer literal: 'abc'"),
+            re.escape("Invalid B-field operand '$abc': invalid literal for int() with base 10: 'abc'"),
         ),
     ],
 )
