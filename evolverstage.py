@@ -127,6 +127,7 @@ PREFER_WINNER_LIST = read_config('PREFER_WINNER_LIST', data_type='bool_list')
 INSTR_SET = read_config('INSTR_SET', data_type='string_list')
 INSTR_MODES = read_config('INSTR_MODES', data_type='string_list')
 INSTR_MODIF = read_config('INSTR_MODIF', data_type='string_list')
+VERBOSE = read_config('VERBOSE', data_type='bool', default=False)
 
 def weighted_random_number(size, length):
     """
@@ -176,7 +177,7 @@ def corenorm(x, y):
     return -(y - x) if x > y // 2 else (y + x) if x <= -(y // 2) else x
 
 def normalize_instruction(instruction, coresize, sanitize_limit):
-    splitline = re.split('[ \.,\n]', instruction.strip())
+    splitline = re.split(r'[ \.,\n]', instruction.strip())
     return splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
            str(corenorm(coremod(int(splitline[2][1:]),sanitize_limit),coresize))+","+ \
            splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),sanitize_limit), \
@@ -203,13 +204,15 @@ def parse_nmars_output(raw_output):
     for line in output:
         numline=numline+1
         if "scores" in line:
-            print(line.strip())
+            if VERBOSE:
+                print(line.strip())
             splittedline=line.split()
             # Ensure line has enough parts to avoid IndexError
             if len(splittedline) > 4:
                 scores.append(int(splittedline[4]))
                 warriors.append(int(splittedline[0]))
-    print(numline)
+    if VERBOSE:
+        print(numline)
     return scores, warriors
 
 def determine_winner(scores, warriors):
@@ -222,7 +225,8 @@ def determine_winner(scores, warriors):
     winner = None
     loser = None
     if scores[1] == scores[0]:
-        print("draw") #in case of a draw, destroy one at random. we want attacking.
+        if VERBOSE:
+            print("draw") #in case of a draw, destroy one at random. we want attacking.
         if random.randint(1, 2) == 1:
             winner = warriors[1]
             loser = warriors[0]
@@ -294,11 +298,11 @@ if __name__ == "__main__":
     if FINAL_ERA_ONLY==True:
       era=2
     if era!=prevera:
-      print(f"************** Switching from era {prevera + 1} to {era + 1} *******************")
+      print(f"\n************** Switching from era {prevera + 1} to {era + 1} *******************")
       bag = construct_marble_bag(era)
 
     print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) + \
-           " hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+" complete) Era: "+str(era+1))
+           " hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+f" complete) Era: {era+1}    ", end='\r')
 
     #in a random arena
     arena=random.randint(0, LAST_ARENA)
@@ -320,7 +324,8 @@ if __name__ == "__main__":
 
     if ARCHIVE_LIST[era]!=0 and random.randint(1,ARCHIVE_LIST[era])==1:
       #archive winner
-      print("storing in archive")
+      if VERBOSE:
+          print("storing in archive")
       with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
         winlines = fw.readlines()
       with open(os.path.join("archive", f"{random.randint(1,9999)}.red"), "w") as fd:
@@ -328,7 +333,8 @@ if __name__ == "__main__":
           fd.write(line)
 
     if UNARCHIVE_LIST[era]!=0 and random.randint(1,UNARCHIVE_LIST[era])==1:
-      print("unarchiving")
+      if VERBOSE:
+          print("unarchiving")
       #replace loser with something from archive
       with open(os.path.join("archive", random.choice(os.listdir("archive")))) as fs:
         sourcelines = fs.readlines()
@@ -358,13 +364,15 @@ if __name__ == "__main__":
     with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
       winlines = fw.readlines()
     randomwarrior=str(random.randint(1, NUMWARRIORS))
-    print("winner will breed with "+randomwarrior)
+    if VERBOSE:
+        print("winner will breed with "+randomwarrior)
     fr = open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r")  # winner mates with random warrior
     ranlines = fr.readlines()
     fr.close()
     fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # winner destroys loser
     if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1: #shuffle a warrior
-      print("Transposition")
+      if VERBOSE:
+          print("Transposition")
       for i in range(1, random.randint(1, int((WARLEN_LIST[arena]+1)/2))):
         fromline=random.randint(0,WARLEN_LIST[arena]-1)
         toline=random.randint(0,WARLEN_LIST[arena]-1)
@@ -398,7 +406,8 @@ if __name__ == "__main__":
 
       chosen_marble=random.choice(bag)
       if chosen_marble==Marble.MAJOR_MUTATION: #completely random
-        print("Major mutation")
+        if VERBOSE:
+            print("Major mutation")
         num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
         num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
         templine=random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
@@ -408,12 +417,14 @@ if __name__ == "__main__":
         donor_arena=random.randint(0, LAST_ARENA)
         while (donor_arena==arena):
           donor_arena=random.randint(0, LAST_ARENA)
-        print("Nab instruction from arena " + str(donor_arena))
+        if VERBOSE:
+            print("Nab instruction from arena " + str(donor_arena))
         donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
         templine = random.choice(list(open(donor_file)))
       elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
-        print("Minor mutation")
-        splitline=re.split('[ \.,\n]', templine)
+        if VERBOSE:
+            print("Minor mutation")
+        splitline=re.split(r'[ \.,\n]', templine)
         r=random.randint(1,6)
         if r==1:
           splitline[0]=random.choice(INSTR_SET)
@@ -431,8 +442,9 @@ if __name__ == "__main__":
           splitline[3]=splitline[3][0:1]+str(num1)
         templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
       elif chosen_marble==Marble.MICRO_MUTATION: #modifies one number by +1 or -1
-        print ("Micro mutation")
-        splitline=re.split('[ \.,\n]', templine)
+        if VERBOSE:
+            print ("Micro mutation")
+        splitline=re.split(r'[ \.,\n]', templine)
         r=random.randint(1,2)
         if r==1:
           num1=int(splitline[2][1:])
@@ -450,11 +462,13 @@ if __name__ == "__main__":
           splitline[3]=splitline[3][0:1]+str(num1)
         templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
       elif chosen_marble==Marble.INSTRUCTION_LIBRARY and LIBRARY_PATH and os.path.exists(LIBRARY_PATH):
-        print("Instruction library")
+        if VERBOSE:
+            print("Instruction library")
         templine=random.choice(list(open(LIBRARY_PATH)))
       elif chosen_marble==Marble.MAGIC_NUMBER_MUTATION:
-        print ("Magic number mutation")
-        splitline=re.split('[ \.,\n]', templine)
+        if VERBOSE:
+            print ("Magic number mutation")
+        splitline=re.split(r'[ \.,\n]', templine)
         r=random.randint(1,2)
         if r==1:
           splitline[2]=splitline[2][0:1]+str(magic_number)
