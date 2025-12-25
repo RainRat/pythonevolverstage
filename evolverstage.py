@@ -6,12 +6,19 @@ This program is free software: you can redistribute it and/or modify it under th
 This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+Usage:
+  python evolverstage.py [--dump-config]
+
+Options:
+  --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
 '''
 
 import random
 import os
 import re
 import time
+import sys
 #import psutil #Not currently active. See bottom of code for how it could be used.
 import configparser
 import subprocess
@@ -231,6 +238,26 @@ def determine_winner(scores, warriors):
     return winner, loser
 
 if __name__ == "__main__":
+  if "--dump-config" in sys.argv:
+    print("Current Configuration:")
+    # Retrieve all global variables that look like configuration settings (UPPERCASE)
+    # and were likely populated from settings.ini
+    config_keys = [
+        "LAST_ARENA", "CORESIZE_LIST", "SANITIZE_LIST", "CYCLES_LIST",
+        "PROCESSES_LIST", "WARLEN_LIST", "WARDISTANCE_LIST", "NUMWARRIORS",
+        "ALREADYSEEDED", "CLOCK_TIME", "BATTLE_LOG_FILE", "FINAL_ERA_ONLY",
+        "NOTHING_LIST", "RANDOM_LIST", "NAB_LIST", "MINI_MUT_LIST",
+        "MICRO_MUT_LIST", "LIBRARY_LIST", "MAGIC_NUMBER_LIST", "ARCHIVE_LIST",
+        "UNARCHIVE_LIST", "LIBRARY_PATH", "CROSSOVERRATE_LIST",
+        "TRANSPOSITIONRATE_LIST", "BATTLEROUNDS_LIST", "PREFER_WINNER_LIST",
+        "INSTR_SET", "INSTR_MODES", "INSTR_MODIF"
+    ]
+
+    for key in config_keys:
+        if key in globals():
+            print(f"{key}={globals()[key]}")
+    sys.exit(0)
+
   if ALREADYSEEDED==False:
     print("Seeding")
     create_directory_if_not_exists("archive")
