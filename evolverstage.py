@@ -1,4 +1,13 @@
-#For programmers familiar with Core War and Python. You will probably have to modify the code to do what you want.
+"""
+Core War Evolver
+
+A genetic algorithm framework for evolving Redcode warriors for the game of Core War.
+It manages a population of warriors across multiple 'arenas', running battles using
+an external simulator (nMars), and evolving the population through selection,
+breeding, and mutation.
+
+Note: This tool is designed for users familiar with Core War and Python.
+"""
 
 '''
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -75,6 +84,17 @@ def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, 
   return None
 
 def read_config(key, data_type='int', default=None):
+    """
+    Retrieves a configuration value from the global config object and converts it to the specified type.
+
+    Args:
+        key (str): The name of the configuration option to read.
+        data_type (str): The expected type ('int', 'bool', 'float', 'int_list', etc.).
+        default: The value to return if the key is missing or empty.
+
+    Returns:
+        The configuration value converted to the appropriate Python type, or the default value.
+    """
     value = config['DEFAULT'].get(key, fallback=default)
     if not value:
         return default
@@ -169,6 +189,21 @@ def corenorm(x, y):
     return -(y - x) if x > y // 2 else (y + x) if x <= -(y // 2) else x
 
 def normalize_instruction(instruction, coresize, sanitize_limit):
+    """
+    Parses and standardizes a Redcode instruction line.
+
+    Splits the instruction into its components (opcode, modifier, operands),
+    normalizes the numeric values to be within the core size using the shortest distance,
+    and reassembles the line in a standard format.
+
+    Args:
+        instruction (str): The raw instruction line (e.g., "MOV.I $0, $1").
+        coresize (int): The size of the memory core.
+        sanitize_limit (int): The modulo limit for operand values.
+
+    Returns:
+        str: The normalized instruction string.
+    """
     splitline = re.split('[ \.,\n]', instruction.strip())
     return splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
            str(corenorm(coremod(int(splitline[2][1:]),sanitize_limit),coresize))+","+ \
