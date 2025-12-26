@@ -8,10 +8,11 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Usage:
-  python evolverstage.py [--dump-config]
+  python evolverstage.py [--dump-config] [--check]
 
 Options:
   --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
+  --check          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
 '''
 
 import random
@@ -19,6 +20,7 @@ import os
 import re
 import time
 import sys
+import shutil
 #import psutil #Not currently active. See bottom of code for how it could be used.
 import configparser
 import subprocess
@@ -241,7 +243,91 @@ def determine_winner(scores, warriors):
         loser = warriors[1]
     return winner, loser
 
+def validate_configuration():
+    """
+    Validates the current configuration and environment.
+    Returns True if valid, False otherwise.
+    """
+    errors = []
+    warnings = []
+
+    # Check Arena Lists
+    expected_length = LAST_ARENA + 1
+    arena_lists = {
+        "CORESIZE_LIST": CORESIZE_LIST,
+        "SANITIZE_LIST": SANITIZE_LIST,
+        "CYCLES_LIST": CYCLES_LIST,
+        "PROCESSES_LIST": PROCESSES_LIST,
+        "WARLEN_LIST": WARLEN_LIST,
+        "WARDISTANCE_LIST": WARDISTANCE_LIST
+    }
+
+    for name, lst in arena_lists.items():
+        if len(lst) < expected_length:
+            errors.append(f"{name} has {len(lst)} elements, expected at least {expected_length} (LAST_ARENA={LAST_ARENA})")
+
+    # Check Era Lists (Expect 3 eras: 0, 1, 2)
+    era_lists = {
+        "NOTHING_LIST": NOTHING_LIST,
+        "RANDOM_LIST": RANDOM_LIST,
+        "NAB_LIST": NAB_LIST,
+        "MINI_MUT_LIST": MINI_MUT_LIST,
+        "MICRO_MUT_LIST": MICRO_MUT_LIST,
+        "LIBRARY_LIST": LIBRARY_LIST,
+        "MAGIC_NUMBER_LIST": MAGIC_NUMBER_LIST,
+        "ARCHIVE_LIST": ARCHIVE_LIST,
+        "UNARCHIVE_LIST": UNARCHIVE_LIST,
+        "CROSSOVERRATE_LIST": CROSSOVERRATE_LIST,
+        "TRANSPOSITIONRATE_LIST": TRANSPOSITIONRATE_LIST,
+        "BATTLEROUNDS_LIST": BATTLEROUNDS_LIST,
+    }
+
+    # PREFER_WINNER_LIST might be bool_list, handled differently? No, it's a list.
+    era_lists["PREFER_WINNER_LIST"] = PREFER_WINNER_LIST
+
+    for name, lst in era_lists.items():
+        if len(lst) < 3:
+            errors.append(f"{name} has {len(lst)} elements, expected at least 3 (for eras 0, 1, 2)")
+
+    # Check Executables
+    nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
+    if not shutil.which(nmars_cmd) and not os.path.exists(nmars_cmd):
+        errors.append(f"Executable '{nmars_cmd}' not found in PATH or current directory.")
+
+    # Check Library
+    if LIBRARY_PATH and not os.path.exists(LIBRARY_PATH):
+        # Check if any era actually uses the library
+        if any(x > 0 for x in LIBRARY_LIST):
+            warnings.append(f"LIBRARY_PATH '{LIBRARY_PATH}' does not exist, but LIBRARY_LIST has non-zero values.")
+
+    # Check Seeding
+    if not ALREADYSEEDED:
+        # Check if arenas already exist
+        if any(os.path.exists(f"arena{i}") for i in range(LAST_ARENA + 1)):
+            warnings.append("ALREADYSEEDED is False, but arena directories exist. They will be overwritten.")
+
+    # Print results
+    if warnings:
+        print("Warnings:")
+        for w in warnings:
+            print(f"  - {w}")
+
+    if errors:
+        print("Errors:")
+        for e in errors:
+            print(f"  - {e}")
+        return False
+
+    print("Configuration and environment are valid.")
+    return True
+
 if __name__ == "__main__":
+  if "--check" in sys.argv:
+    if validate_configuration():
+        sys.exit(0)
+    else:
+        sys.exit(1)
+
   if "--dump-config" in sys.argv:
     print("Current Configuration:")
     # Retrieve all global variables that look like configuration settings (UPPERCASE)
