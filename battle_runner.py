@@ -390,10 +390,7 @@ _PMARS_MAX_SEED = 1_073_741_824
 
 def _normalize_pmars_seed(seed: int) -> int:
     modulus = _PMARS_MAX_SEED + 1
-    normalized = seed % modulus
-    if normalized < 0:
-        normalized += modulus
-    return normalized
+    return seed % modulus
 
 
 def _normalize_internal_seed(seed: int) -> int:
