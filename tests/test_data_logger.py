@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import evolverstage
+from evolver.logger import DataLogger, BaseCSVLogger
 
 class TestDataLogger:
     @pytest.fixture
@@ -16,13 +17,20 @@ class TestDataLogger:
 
     def test_init(self, log_file):
         """Test DataLogger initialization."""
-        logger = evolverstage.DataLogger(str(log_file))
+        logger = DataLogger(str(log_file))
         assert logger.filename == str(log_file)
         assert logger.fieldnames == ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with']
 
+    def test_base_csv_logger_init(self, log_file):
+        """Test BaseCSVLogger initialization."""
+        fields = ['a', 'b']
+        logger = BaseCSVLogger(str(log_file), fields)
+        assert logger.filename == str(log_file)
+        assert logger.fieldnames == fields
+
     def test_log_data_creates_new_file(self, log_file):
         """Test that log_data creates a new file with header if it doesn't exist."""
-        logger = evolverstage.DataLogger(str(log_file))
+        logger = DataLogger(str(log_file))
         data = {
             'era': 1,
             'arena': 0,
@@ -52,7 +60,7 @@ class TestDataLogger:
     def test_log_data_appends_to_existing_file(self, log_file):
         """Test that log_data appends to an existing file without rewriting header."""
         # Create file with header and one row manually or via logger
-        logger = evolverstage.DataLogger(str(log_file))
+        logger = DataLogger(str(log_file))
         data1 = {
             'era': 1,
             'arena': 0,
@@ -91,16 +99,16 @@ class TestDataLogger:
 
     def test_log_data_no_filename(self):
         """Test that log_data does nothing if filename is None or empty."""
-        logger = evolverstage.DataLogger(None)
+        logger = DataLogger(None)
         # Should not raise error
         logger.log_data(era=1)
 
-        logger = evolverstage.DataLogger("")
+        logger = DataLogger("")
         logger.log_data(era=1)
 
     def test_log_data_missing_fields(self, log_file):
         """Test log_data with missing fields (should be empty strings or similar in CSV)."""
-        logger = evolverstage.DataLogger(str(log_file))
+        logger = DataLogger(str(log_file))
         # Missing 'score2'
         data = {
             'era': 1,
@@ -124,7 +132,7 @@ class TestDataLogger:
 
     def test_log_data_extra_fields(self, log_file):
         """Test log_data with extra fields (should raise ValueError by default)."""
-        logger = evolverstage.DataLogger(str(log_file))
+        logger = DataLogger(str(log_file))
         data = {
             'era': 1,
             'extra_field': 'oops'
