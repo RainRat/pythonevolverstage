@@ -27,24 +27,7 @@ import subprocess
 from enum import Enum
 import csv
 
-class DataLogger:
-    """
-    Logs battle results to a CSV file.
-    """
-    def __init__(self, filename):
-        self.filename = filename
-        self.fieldnames = ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with']
-    def log_data(self, **kwargs):
-        """
-        Writes a single row of data to the CSV file.
-        Creates the file with a header row if it doesn't exist.
-        """
-        if self.filename:
-            with open(self.filename, 'a', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=self.fieldnames)
-                if file.tell() == 0:
-                    writer.writeheader()
-                writer.writerow(kwargs)
+from evolver.logger import DataLogger
 
 class Marble(Enum):
   DO_NOTHING = 0
