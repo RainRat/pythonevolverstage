@@ -8,11 +8,13 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Usage:
-  python evolverstage.py [--dump-config] [--check]
+  python evolverstage.py [--dump-config] [--check] [--restart] [--resume]
 
 Options:
   --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
   --check          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
+  --restart        Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
+  --resume         Force resumption of evolution (ALREADYSEEDED = True) from existing files.
 '''
 
 import random
@@ -305,6 +307,11 @@ def validate_configuration():
     return True
 
 if __name__ == "__main__":
+  if "--restart" in sys.argv:
+    ALREADYSEEDED = False
+  elif "--resume" in sys.argv:
+    ALREADYSEEDED = True
+
   if "--check" in sys.argv:
     if validate_configuration():
         sys.exit(0)
