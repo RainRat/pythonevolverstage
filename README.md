@@ -33,7 +33,13 @@ Settings are in `settings.ini`. Open this file to change how the evolution works
 
 1.  Check `settings.ini` to make sure it's set up how you want.
 2.  Open your terminal or command prompt in the project folder.
-3.  Run the script:
+3.  **Validate your setup**: Before starting a long run, check that everything is correct (settings, file paths, simulator).
+    ```bash
+    python evolverstage.py --check
+    ```
+    If it says "Configuration and environment are valid," you are good to go.
+
+4.  **Run the script**:
     ```bash
     python evolverstage.py
     ```
@@ -42,12 +48,12 @@ Settings are in `settings.ini`. Open this file to change how the evolution works
         python evolverstage.py --dump-config
         ```
 
-4.  **Watch the Progress**: You will see output like this:
+5.  **Watch the Progress**: You will see output like this:
     ```text
     8.00 hours remaining (0.01% complete) Era: 1
     ```
-5.  **Get Results**: When it's done (or if you stop it), look in the `arenaX` folders (like `arena0`) for the `.red` files. These are your evolved warriors.
-6.  **Find the Best**: Use a benchmark tool (like CoreWin) to test the final warriors against each other to find the champion.
+6.  **Get Results**: When it's done (or if you stop it), look in the `arenaX` folders (like `arena0`) for the `.red` files. These are your evolved warriors.
+7.  **Find the Best**: Use a benchmark tool (like CoreWin) to test the final warriors against each other to find the champion.
 
 ## Output Explained
 
