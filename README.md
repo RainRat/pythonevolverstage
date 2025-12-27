@@ -12,6 +12,7 @@ Before running the evolver, you need:
 
 *   **Python 3.x**: This project requires Python 3 to run.
 *   **nMars**: This is the simulator that runs the battles.
+    *   **Download**: Get the latest version from [SourceForge](https://sourceforge.net/projects/nmars/files/).
     *   **Windows**: Download `nmars.exe` and put it in the same folder as this project.
     *   **Linux/macOS**: Download `nmars` and put it in the same folder, or install it so it runs from your terminal.
 
@@ -36,6 +37,11 @@ Settings are in `settings.ini`. Open this file to change how the evolution works
     ```bash
     python evolverstage.py
     ```
+    *   **Tip**: To see the exact settings the script is using (including defaults), run:
+        ```bash
+        python evolverstage.py --dump-config
+        ```
+
 4.  **Watch the Progress**: You will see output like this:
     ```text
     8.00 hours remaining (0.01% complete) Era: 1
