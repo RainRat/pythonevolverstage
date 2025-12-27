@@ -38,6 +38,21 @@ class Marble(Enum):
   INSTRUCTION_LIBRARY = 5
   MAGIC_NUMBER_MUTATION = 6
 
+def format_time_remaining(seconds):
+    """Formats seconds into HH:MM:SS."""
+    if seconds < 0: seconds = 0
+    m, s = divmod(seconds, 60)
+    h, m = divmod(m, 60)
+    return "{:02d}:{:02d}:{:02d}".format(int(h), int(m), int(s))
+
+def draw_progress_bar(percent, width=30):
+    """Returns a string representing a progress bar."""
+    if percent < 0: percent = 0
+    if percent > 100: percent = 100
+    filled_length = int(width * percent // 100)
+    bar = '=' * filled_length + '-' * (width - filled_length)
+    return f"[{bar}] {percent:6.2f}%"
+
 def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
   """
   Runs the nMars simulator to battle two warriors.
@@ -370,8 +385,12 @@ if __name__ == "__main__":
       print(f"\n************** Switching from era {prevera + 1} to {era + 1} *******************")
       bag = construct_marble_bag(era)
 
-    print ("{0:.2f}".format(CLOCK_TIME-runtime_in_hours) + \
-           " hours remaining ({0:.2f}%".format(runtime_in_hours/CLOCK_TIME*100)+f" complete) Era: {era+1}    ", end='\r')
+    remaining_seconds = (CLOCK_TIME - runtime_in_hours) * 3600
+    remaining_str = format_time_remaining(remaining_seconds)
+    progress_percent = (runtime_in_hours / CLOCK_TIME) * 100
+    bar_str = draw_progress_bar(progress_percent)
+    status_line = f"{remaining_str} remaining {bar_str} Era: {era+1}"
+    print(f"{status_line:<80}", end='\r')
 
     #in a random arena
     arena=random.randint(0, LAST_ARENA)
