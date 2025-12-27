@@ -433,6 +433,42 @@ def _get_internal_worker_library():
     return worker_lib
 
 
+def _invoke_internal_worker(
+    worker_lib,
+    w1_code: str,
+    cont1: int,
+    w2_code: str,
+    cont2: int,
+    arena: int,
+    coresize: int,
+    cycles: int,
+    processes: int,
+    readlimit: int,
+    writelimit: int,
+    wardistance: int,
+    warlen: int,
+    battlerounds: int,
+    seed: int,
+):
+    use_1988_rules = 1 if get_arena_spec(arena) == SPEC_1988 else 0
+    return worker_lib.run_battle(
+        w1_code.encode("utf-8"),
+        cont1,
+        w2_code.encode("utf-8"),
+        cont2,
+        coresize,
+        cycles,
+        processes,
+        readlimit,
+        writelimit,
+        wardistance,
+        warlen,
+        battlerounds,
+        seed,
+        use_1988_rules,
+    )
+
+
 def run_internal_battle(
     arena,
     cont1,
@@ -478,12 +514,13 @@ def run_internal_battle(
             w1_code = _load_warrior_code_from_disk(cont1)
             w2_code = _load_warrior_code_from_disk(cont2)
 
-        use_1988_rules = 1 if get_arena_spec(arena) == SPEC_1988 else 0
-        result_ptr = worker_lib.run_battle(
-            w1_code.encode("utf-8"),
+        result_ptr = _invoke_internal_worker(
+            worker_lib,
+            w1_code,
             cont1,
-            w2_code.encode("utf-8"),
+            w2_code,
             cont2,
+            arena,
             coresize,
             cycles,
             processes,
@@ -493,7 +530,6 @@ def run_internal_battle(
             warlen,
             battlerounds,
             seed,
-            use_1988_rules,
         )
         if isinstance(result_ptr, bytes):
             return result_ptr.decode("utf-8")
@@ -690,12 +726,13 @@ def execute_battle_with_sources(
     if engine_name == "internal":
         worker_lib = _get_internal_worker_library()
         internal_seed = -1 if seed is None else _normalize_internal_seed(seed)
-        use_1988_rules = 1 if get_arena_spec(arena) == SPEC_1988 else 0
-        result_ptr = worker_lib.run_battle(
-            normalized_w1.encode("utf-8"),
+        raw_output = _invoke_internal_worker(
+            worker_lib,
+            normalized_w1,
             cont1,
-            normalized_w2.encode("utf-8"),
+            normalized_w2,
             cont2,
+            arena,
             config.coresize_list[arena],
             config.cycles_list[arena],
             config.processes_list[arena],
@@ -705,9 +742,7 @@ def execute_battle_with_sources(
             config.warlen_list[arena],
             battlerounds,
             internal_seed,
-            use_1988_rules,
         )
-        raw_output = result_ptr
     else:
         with tempfile.TemporaryDirectory() as tmp_dir:
             warrior1_path = os.path.join(tmp_dir, f"{cont1}.red")
