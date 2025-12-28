@@ -1534,9 +1534,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             storage = None
         if storage is not None:
             try:
-                should_flush = True
-                if should_flush:
-                    wrote_any = storage.flush_all()
+                storage.flush_all()
             except RuntimeError:
                 pass
         close_console()
