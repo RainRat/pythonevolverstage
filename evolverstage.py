@@ -322,18 +322,31 @@ def validate_configuration():
     return True
 
 if __name__ == "__main__":
-  if "--restart" in sys.argv:
+  import argparse
+  parser = argparse.ArgumentParser(description="Core War Evolver - A Python-based evolver for Redcode warriors.")
+
+  # Mutually exclusive group for restart/resume
+  group = parser.add_mutually_exclusive_group()
+  group.add_argument("--restart", action="store_true", help="Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.")
+  group.add_argument("--resume", action="store_true", help="Force resumption of evolution (ALREADYSEEDED = True) from existing files.")
+
+  parser.add_argument("--check", action="store_true", help="Validate the current configuration and environment.")
+  parser.add_argument("--dump-config", action="store_true", help="Print the current configuration values derived from settings.ini and defaults, then exit.")
+
+  args = parser.parse_args()
+
+  if args.restart:
     ALREADYSEEDED = False
-  elif "--resume" in sys.argv:
+  elif args.resume:
     ALREADYSEEDED = True
 
-  if "--check" in sys.argv:
+  if args.check:
     if validate_configuration():
         sys.exit(0)
     else:
         sys.exit(1)
 
-  if "--dump-config" in sys.argv:
+  if args.dump_config:
     print("Current Configuration:")
     # Retrieve all global variables that look like configuration settings (UPPERCASE)
     # and were likely populated from settings.ini
