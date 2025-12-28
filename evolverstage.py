@@ -1,4 +1,5 @@
-#For programmers familiar with Core War and Python. You will probably have to modify the code to do what you want.
+# A Python-based Genetic Evolver for Core War
+# This script manages the evolution, breeding, and battling of warriors across multiple arenas.
 
 '''
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
@@ -8,13 +9,13 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Usage:
-  python evolverstage.py [--dump-config] [--check] [--restart] [--resume]
+  python evolverstage.py [options]
 
 Options:
-  --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
-  --check          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
-  --restart        Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
-  --resume         Force resumption of evolution (ALREADYSEEDED = True) from existing files.
+  --check          Validates your setup (settings.ini, nMars executable, file paths). Run this first!
+  --dump-config    Prints the settings the script is using (great for debugging).
+  --restart        Starts a new evolution run from scratch (clears old warriors).
+  --resume         Continues a previous run from where it left off.
 '''
 
 import random
@@ -59,8 +60,8 @@ def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, 
   """
   Runs the nMars simulator to battle two warriors.
 
-  Constructs the command line arguments for nMars based on the arena settings
-  and returns the output from the simulator.
+  It builds the command string with all the rules for the specific arena (size, cycles, etc.)
+  and returns the raw output from nMars, which contains the scores.
   """
   try:
     nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
@@ -133,11 +134,11 @@ VERBOSE = read_config('VERBOSE', data_type='bool', default=False)
 
 def weighted_random_number(size, length):
     """
-    Returns a random number to use in an instruction field.
+    Returns a random number for an instruction's A or B field.
 
-    Most of the time (75%), it returns a small number useful for
-    self-references (within the warrior's length). Occasionally (25%),
-    it returns a larger number to reach across the core.
+    It biases the result: 75% of the time, it picks a small number (local to the warrior code),
+    which is good for loops and self-modification. 25% of the time, it picks a large number
+    to attack distant parts of the core memory.
     """
     if random.randint(1,4)==1:
         return random.randint(-size, size)
@@ -194,7 +195,8 @@ def create_directory_if_not_exists(directory):
 
 def parse_nmars_output(raw_output):
     """
-    Reads the text output from nMars to find the scores and warrior IDs.
+    Reads the text output from nMars to extract scores and warrior IDs.
+    It handles standard output formats where scores are listed after the battle.
     """
     if raw_output is None:
         return [], []
@@ -219,10 +221,11 @@ def parse_nmars_output(raw_output):
 
 def determine_winner(scores, warriors):
     """
-    Decides who won the battle based on scores.
+    Decides the winner based on battle scores.
 
-    If it's a draw (scores are equal), a winner is picked randomly.
-    This prevents stagnation by removing one warrior anyway.
+    In the event of a tie (draw), a winner is chosen randomly.
+    Intent: This forces turnover in the population, preventing stagnant pools of
+    identical warriors that just tie with each other endlessly.
     """
     winner = None
     loser = None
@@ -245,8 +248,15 @@ def determine_winner(scores, warriors):
 
 def validate_configuration():
     """
-    Validates the current configuration and environment.
-    Returns True if valid, False otherwise.
+    Checks if the project is ready to run.
+
+    Verifies:
+    1. Configuration lists (in settings.ini) match the number of arenas.
+    2. Configuration lists have enough entries for all 3 eras.
+    3. The nMars executable is installed and available.
+    4. Required file paths exist.
+
+    Returns True if everything looks good, False if there are critical errors.
     """
     errors = []
     warnings = []
