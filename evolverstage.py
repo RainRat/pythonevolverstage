@@ -9,7 +9,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Usage:
-  python evolverstage.py [--dump-config] [--check] [--restart] [--resume] [--battle file1 file2 [--arena N]]
+  python evolverstage.py [--dump-config] [--check] [--restart] [--resume] [--battle file1 file2 [--arena N]] [--tournament dir [--arena N]]
 
 Options:
   --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
@@ -18,9 +18,12 @@ Options:
   --resume         Force resumption of evolution (ALREADYSEEDED = True) from existing files.
   --battle         Run a single battle between two warrior files using the configuration of a specific arena.
                    Usage: --battle warrior1.red warrior2.red [--arena 0]
+  --tournament     Run a round-robin tournament between all .red files in a directory.
+                   Usage: --tournament warriors/ [--arena 0]
 '''
 
 import random
+import itertools
 import os
 import re
 import time
@@ -92,6 +95,26 @@ def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, 
     ]
   return run_nmars_subprocess(cmd)
 
+def construct_battle_command(file1, file2, arena_idx):
+    """
+    Constructs the nMars command for battling two specific files.
+    """
+    nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
+    # Use the battlerounds from the last era (Optimization) as default for manual battles
+    rounds = BATTLEROUNDS_LIST[-1] if BATTLEROUNDS_LIST else 100
+
+    return [
+        nmars_cmd,
+        file1,
+        file2,
+        "-s", str(CORESIZE_LIST[arena_idx]),
+        "-c", str(CYCLES_LIST[arena_idx]),
+        "-p", str(PROCESSES_LIST[arena_idx]),
+        "-l", str(WARLEN_LIST[arena_idx]),
+        "-d", str(WARDISTANCE_LIST[arena_idx]),
+        "-r", str(rounds)
+    ]
+
 def run_custom_battle(file1, file2, arena_idx):
     """
     Runs a single battle between two warrior files using the specified arena configuration.
@@ -107,21 +130,7 @@ def run_custom_battle(file1, file2, arena_idx):
         print(f"Error: File '{file2}' not found.")
         return
 
-    nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
-    # Use the battlerounds from the last era (Optimization) as default for manual battles
-    rounds = BATTLEROUNDS_LIST[-1] if BATTLEROUNDS_LIST else 100
-
-    cmd = [
-        nmars_cmd,
-        file1,
-        file2,
-        "-s", str(CORESIZE_LIST[arena_idx]),
-        "-c", str(CYCLES_LIST[arena_idx]),
-        "-p", str(PROCESSES_LIST[arena_idx]),
-        "-l", str(WARLEN_LIST[arena_idx]),
-        "-d", str(WARDISTANCE_LIST[arena_idx]),
-        "-r", str(rounds)
-    ]
+    cmd = construct_battle_command(file1, file2, arena_idx)
 
     print(f"Starting battle: {file1} vs {file2}")
     print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
@@ -134,6 +143,63 @@ def run_custom_battle(file1, file2, arena_idx):
         print("-" * 40)
     else:
         print("No output received from nMars.")
+
+def run_tournament(directory, arena_idx):
+    """
+    Runs a round-robin tournament between all .red files in the specified directory.
+    """
+    if arena_idx > LAST_ARENA:
+        print(f"Error: Arena {arena_idx} does not exist (LAST_ARENA={LAST_ARENA})")
+        return
+
+    if not os.path.exists(directory):
+        print(f"Error: Directory '{directory}' not found.")
+        return
+
+    files = [f for f in os.listdir(directory) if f.endswith('.red')]
+    if len(files) < 2:
+        print("Error: Need at least 2 .red files for a tournament.")
+        return
+
+    scores = {f: 0 for f in files}
+    # Create absolute paths
+    abs_files = [os.path.join(directory, f) for f in files]
+    file_map = {os.path.join(directory, f): f for f in files}
+
+    # Generate pairs
+    pairs = list(itertools.combinations(abs_files, 2))
+    total_battles = len(pairs)
+    print(f"Tournament: {len(files)} warriors, {total_battles} battles.")
+    print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
+
+    for i, (p1, p2) in enumerate(pairs, 1):
+        # Progress
+        print(f"Battle {i}/{total_battles}: {file_map[p1]} vs {file_map[p2]}", end='\r')
+
+        cmd = construct_battle_command(p1, p2, arena_idx)
+        output = run_nmars_subprocess(cmd)
+
+        s, warriors = parse_nmars_output(output)
+
+        # Mapping back scores to filenames
+        # parse_nmars_output returns [score1, score2] and [id1, id2]
+        # We assume nMars preserves order: ID 1 is first arg (p1), ID 2 is second arg (p2)
+        # However, parse_nmars_output's logic appends them in order of output.
+        # Usually output is: "1 scores X" then "2 scores Y".
+        # But we should rely on warrior ID returned in 'warriors' list.
+        # ID 1 -> p1, ID 2 -> p2
+
+        for idx, warrior_id in enumerate(warriors):
+            points = s[idx]
+            if warrior_id == 1:
+                scores[file_map[p1]] += points
+            elif warrior_id == 2:
+                scores[file_map[p2]] += points
+
+    print("\n\nTournament Results:")
+    sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    for rank, (name, score) in enumerate(sorted_scores, 1):
+        print(f"{rank}. {name}: {score}")
 
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
@@ -415,6 +481,27 @@ if __name__ == "__main__":
     except ValueError:
         print("Invalid arguments.")
         sys.exit(1)
+
+  if "--tournament" in sys.argv:
+      try:
+          idx = sys.argv.index("--tournament")
+          if len(sys.argv) < idx + 2:
+              print("Usage: --tournament <directory> [--arena <N>]")
+              sys.exit(1)
+
+          directory = sys.argv[idx+1]
+
+          arena_idx = 0
+          if "--arena" in sys.argv:
+              a_idx = sys.argv.index("--arena")
+              if len(sys.argv) > a_idx + 1:
+                  arena_idx = int(sys.argv[a_idx+1])
+
+          run_tournament(directory, arena_idx)
+          sys.exit(0)
+      except ValueError:
+          print("Invalid arguments.")
+          sys.exit(1)
 
   if "--dump-config" in sys.argv:
     print("Current Configuration:")
