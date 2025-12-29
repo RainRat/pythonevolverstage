@@ -31,6 +31,7 @@ import configparser
 import subprocess
 from enum import Enum
 import csv
+import argparse
 
 from evolver.logger import DataLogger
 
@@ -383,58 +384,64 @@ def validate_configuration():
     return True
 
 if __name__ == "__main__":
-  if "--restart" in sys.argv:
-    ALREADYSEEDED = False
-  elif "--resume" in sys.argv:
-    ALREADYSEEDED = True
+  parser = argparse.ArgumentParser(
+      description="A Python-based Genetic Evolver for Core War",
+      epilog="Examples:\n  python evolverstage.py --check\n  python evolverstage.py --battle warrior1.red warrior2.red -a 0",
+      formatter_class=argparse.RawDescriptionHelpFormatter
+  )
 
-  if "--check" in sys.argv:
-    if validate_configuration():
-        sys.exit(0)
-    else:
-        sys.exit(1)
+  # Action flags
+  parser.add_argument('-c', '--check', action='store_true', help='Validate the current configuration and environment.')
+  parser.add_argument('-d', '--dump-config', action='store_true', help='Print current configuration values and exit.')
 
-  if "--battle" in sys.argv:
-    try:
-        idx = sys.argv.index("--battle")
-        if len(sys.argv) < idx + 3:
-            print("Usage: --battle <warrior1> <warrior2> [--arena <N>]")
-            sys.exit(1)
+  # Modifiers
+  group = parser.add_mutually_exclusive_group()
+  group.add_argument('--restart', action='store_true', help='Force a fresh start (overwrite arenas).')
+  group.add_argument('--resume', action='store_true', help='Force resumption of evolution.')
 
-        w1 = sys.argv[idx+1]
-        w2 = sys.argv[idx+2]
+  # Battle command
+  parser.add_argument('-b', '--battle', nargs=2, metavar=('WARRIOR1', 'WARRIOR2'), help='Run a single battle between two warriors.')
+  parser.add_argument('-a', '--arena', type=int, default=0, help='Arena index to use for battle (default: 0).')
 
-        arena_idx = 0
-        if "--arena" in sys.argv:
-            a_idx = sys.argv.index("--arena")
-            if len(sys.argv) > a_idx + 1:
-                arena_idx = int(sys.argv[a_idx+1])
+  args = parser.parse_args()
 
-        run_custom_battle(w1, w2, arena_idx)
-        sys.exit(0)
-    except ValueError:
-        print("Invalid arguments.")
-        sys.exit(1)
+  # Apply modifiers
+  if args.restart:
+      ALREADYSEEDED = False
+  elif args.resume:
+      ALREADYSEEDED = True
 
-  if "--dump-config" in sys.argv:
-    print("Current Configuration:")
-    # Retrieve all global variables that look like configuration settings (UPPERCASE)
-    # and were likely populated from settings.ini
-    config_keys = [
-        "LAST_ARENA", "CORESIZE_LIST", "SANITIZE_LIST", "CYCLES_LIST",
-        "PROCESSES_LIST", "WARLEN_LIST", "WARDISTANCE_LIST", "NUMWARRIORS",
-        "ALREADYSEEDED", "CLOCK_TIME", "BATTLE_LOG_FILE", "FINAL_ERA_ONLY",
-        "NOTHING_LIST", "RANDOM_LIST", "NAB_LIST", "MINI_MUT_LIST",
-        "MICRO_MUT_LIST", "LIBRARY_LIST", "MAGIC_NUMBER_LIST", "ARCHIVE_LIST",
-        "UNARCHIVE_LIST", "LIBRARY_PATH", "CROSSOVERRATE_LIST",
-        "TRANSPOSITIONRATE_LIST", "BATTLEROUNDS_LIST", "PREFER_WINNER_LIST",
-        "INSTR_SET", "INSTR_MODES", "INSTR_MODIF"
-    ]
+  # Handle actions
+  if args.check:
+      if validate_configuration():
+          sys.exit(0)
+      else:
+          sys.exit(1)
 
-    for key in config_keys:
-        if key in globals():
-            print(f"{key}={globals()[key]}")
-    sys.exit(0)
+  if args.dump_config:
+      print("Current Configuration:")
+      # Retrieve all global variables that look like configuration settings (UPPERCASE)
+      # and were likely populated from settings.ini
+      config_keys = [
+          "LAST_ARENA", "CORESIZE_LIST", "SANITIZE_LIST", "CYCLES_LIST",
+          "PROCESSES_LIST", "WARLEN_LIST", "WARDISTANCE_LIST", "NUMWARRIORS",
+          "ALREADYSEEDED", "CLOCK_TIME", "BATTLE_LOG_FILE", "FINAL_ERA_ONLY",
+          "NOTHING_LIST", "RANDOM_LIST", "NAB_LIST", "MINI_MUT_LIST",
+          "MICRO_MUT_LIST", "LIBRARY_LIST", "MAGIC_NUMBER_LIST", "ARCHIVE_LIST",
+          "UNARCHIVE_LIST", "LIBRARY_PATH", "CROSSOVERRATE_LIST",
+          "TRANSPOSITIONRATE_LIST", "BATTLEROUNDS_LIST", "PREFER_WINNER_LIST",
+          "INSTR_SET", "INSTR_MODES", "INSTR_MODIF"
+      ]
+
+      for key in config_keys:
+          if key in globals():
+              print(f"{key}={globals()[key]}")
+      sys.exit(0)
+
+  if args.battle:
+      w1, w2 = args.battle
+      run_custom_battle(w1, w2, args.arena)
+      sys.exit(0)
 
   if ALREADYSEEDED==False:
     print("Seeding")
