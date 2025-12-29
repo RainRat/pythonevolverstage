@@ -9,13 +9,15 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Usage:
-  python evolverstage.py [options]
+  python evolverstage.py [--dump-config] [--check] [--restart] [--resume] [--battle file1 file2 [--arena N]]
 
 Options:
-  --check          Validates your setup (settings.ini, nMars executable, file paths). Run this first!
-  --dump-config    Prints the settings the script is using (great for debugging).
-  --restart        Starts a new evolution run from scratch (clears old warriors).
-  --resume         Continues a previous run from where it left off.
+  --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
+  --check          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
+  --restart        Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
+  --resume         Force resumption of evolution (ALREADYSEEDED = True) from existing files.
+  --battle         Run a single battle between two warrior files using the configuration of a specific arena.
+                   Usage: --battle warrior1.red warrior2.red [--arena 0]
 '''
 
 import random
@@ -56,6 +58,19 @@ def draw_progress_bar(percent, width=30):
     bar = '=' * filled_length + '-' * (width - filled_length)
     return f"[{bar}] {percent:6.2f}%"
 
+def run_nmars_subprocess(cmd):
+    """
+    Executes the nmars command with the given arguments.
+    """
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        return result.stdout
+    except FileNotFoundError as e:
+        print(f"Unable to run {cmd[0]}: {e}")
+    except subprocess.SubprocessError as e:
+        print(f"An error occurred: {e}")
+    return None
+
 def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
   """
   Runs the nMars simulator to battle two warriors.
@@ -63,26 +78,62 @@ def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, 
   It builds the command string with all the rules for the specific arena (size, cycles, etc.)
   and returns the raw output from nMars, which contains the scores.
   """
-  try:
+  nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
+  cmd = [
+      nmars_cmd,
+      os.path.join(f"arena{arena}", f"{cont1}.red"),
+      os.path.join(f"arena{arena}", f"{cont2}.red"),
+      "-s", str(coresize),
+      "-c", str(cycles),
+      "-p", str(processes),
+      "-l", str(warlen),
+      "-d", str(wardistance),
+      "-r", str(battlerounds)
+    ]
+  return run_nmars_subprocess(cmd)
+
+def run_custom_battle(file1, file2, arena_idx):
+    """
+    Runs a single battle between two warrior files using the specified arena configuration.
+    """
+    if arena_idx > LAST_ARENA:
+        print(f"Error: Arena {arena_idx} does not exist (LAST_ARENA={LAST_ARENA})")
+        return
+
+    if not os.path.exists(file1):
+        print(f"Error: File '{file1}' not found.")
+        return
+    if not os.path.exists(file2):
+        print(f"Error: File '{file2}' not found.")
+        return
+
     nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
+    # Use the battlerounds from the last era (Optimization) as default for manual battles
+    rounds = BATTLEROUNDS_LIST[-1] if BATTLEROUNDS_LIST else 100
+
     cmd = [
         nmars_cmd,
-        os.path.join(f"arena{arena}", f"{cont1}.red"),
-        os.path.join(f"arena{arena}", f"{cont2}.red"),
-        "-s", str(coresize),
-        "-c", str(cycles),
-        "-p", str(processes),
-        "-l", str(warlen),
-        "-d", str(wardistance),
-        "-r", str(battlerounds)
-      ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    return result.stdout
-  except FileNotFoundError as e:
-    print(f"Unable to run {nmars_cmd}: {e}")
-  except subprocess.SubprocessError as e:
-    print(f"An error occurred: {e}")
-  return None
+        file1,
+        file2,
+        "-s", str(CORESIZE_LIST[arena_idx]),
+        "-c", str(CYCLES_LIST[arena_idx]),
+        "-p", str(PROCESSES_LIST[arena_idx]),
+        "-l", str(WARLEN_LIST[arena_idx]),
+        "-d", str(WARDISTANCE_LIST[arena_idx]),
+        "-r", str(rounds)
+    ]
+
+    print(f"Starting battle: {file1} vs {file2}")
+    print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
+
+    output = run_nmars_subprocess(cmd)
+
+    if output:
+        print("-" * 40)
+        print(output.strip())
+        print("-" * 40)
+    else:
+        print("No output received from nMars.")
 
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
@@ -341,6 +392,28 @@ if __name__ == "__main__":
     if validate_configuration():
         sys.exit(0)
     else:
+        sys.exit(1)
+
+  if "--battle" in sys.argv:
+    try:
+        idx = sys.argv.index("--battle")
+        if len(sys.argv) < idx + 3:
+            print("Usage: --battle <warrior1> <warrior2> [--arena <N>]")
+            sys.exit(1)
+
+        w1 = sys.argv[idx+1]
+        w2 = sys.argv[idx+2]
+
+        arena_idx = 0
+        if "--arena" in sys.argv:
+            a_idx = sys.argv.index("--arena")
+            if len(sys.argv) > a_idx + 1:
+                arena_idx = int(sys.argv[a_idx+1])
+
+        run_custom_battle(w1, w2, arena_idx)
+        sys.exit(0)
+    except ValueError:
+        print("Invalid arguments.")
         sys.exit(1)
 
   if "--dump-config" in sys.argv:
