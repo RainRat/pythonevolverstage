@@ -494,9 +494,8 @@ def generate_random_instruction(arena: int) -> RedcodeInstruction:
     num1 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
     num2 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
     opcode = choose_random_opcode(arena)
-    canonical_opcode = OPCODE_ALIASES.get(opcode, opcode)
     return RedcodeInstruction(
-        opcode=canonical_opcode,
+        opcode=opcode,
         modifier=choose_random_modifier(arena),
         a_mode=choose_random_mode(arena),
         a_field=num1,
