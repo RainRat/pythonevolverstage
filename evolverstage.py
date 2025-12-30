@@ -449,6 +449,10 @@ def validate_configuration():
     return True
 
 if __name__ == "__main__":
+  if "--help" in sys.argv or "-h" in sys.argv:
+    print(__doc__)
+    sys.exit(0)
+
   if "--restart" in sys.argv:
     ALREADYSEEDED = False
   elif "--resume" in sys.argv:
