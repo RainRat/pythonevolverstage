@@ -20,6 +20,8 @@ Options:
                    Usage: --battle warrior1.red warrior2.red [--arena 0]
   --tournament     Run a round-robin tournament between all .red files in a directory.
                    Usage: --tournament warriors/ [--arena 0]
+  --benchmark      Run a benchmark of a single warrior against all .red files in a directory.
+                   Usage: --benchmark mywarrior.red warriors/ [--arena 0]
 '''
 
 import random
@@ -200,6 +202,84 @@ def run_tournament(directory, arena_idx):
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     for rank, (name, score) in enumerate(sorted_scores, 1):
         print(f"{rank}. {name}: {score}")
+
+def run_benchmark(warrior_file, directory, arena_idx):
+    """
+    Runs a benchmark of a specific warrior against all warriors in a directory.
+    """
+    if arena_idx > LAST_ARENA:
+        print(f"Error: Arena {arena_idx} does not exist (LAST_ARENA={LAST_ARENA})")
+        return
+
+    if not os.path.exists(warrior_file):
+        print(f"Error: File '{warrior_file}' not found.")
+        return
+    if not os.path.exists(directory):
+        print(f"Error: Directory '{directory}' not found.")
+        return
+
+    opponents = [f for f in os.listdir(directory) if f.endswith('.red')]
+    if not opponents:
+        print(f"Error: No .red files found in '{directory}'.")
+        return
+
+    print(f"Benchmarking {warrior_file} against {len(opponents)} warriors in {directory}")
+    print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
+
+    stats = {
+        'wins': 0,
+        'losses': 0,
+        'ties': 0,
+        'score': 0,
+        'total_rounds': 0
+    }
+
+    # Use absolute path for warrior_file to avoid issues if directory is different
+    abs_warrior_file = os.path.abspath(warrior_file)
+
+    for i, opp in enumerate(opponents, 1):
+        opp_path = os.path.join(directory, opp)
+        # Progress
+        print(f"Battle {i}/{len(opponents)}: vs {opp}", end='\r')
+
+        cmd = construct_battle_command(abs_warrior_file, opp_path, arena_idx)
+        output = run_nmars_subprocess(cmd)
+
+        scores, warriors = parse_nmars_output(output)
+
+        # Determine my score
+        my_score = 0
+        opp_score = 0
+
+        # We assume warrior_file (arg 1) corresponds to ID 1 in nMars output.
+        # parse_nmars_output returns [score1, score2, ...] and [id1, id2, ...]
+        # Map ID to score.
+        score_map = {}
+        for idx, warrior_id in enumerate(warriors):
+             if idx < len(scores):
+                 score_map[warrior_id] = scores[idx]
+
+        my_score = score_map.get(1, 0)
+        opp_score = score_map.get(2, 0) # Assuming opponent is ID 2
+
+        stats['score'] += my_score
+        stats['total_rounds'] += 1
+
+        if my_score > opp_score:
+            stats['wins'] += 1
+        elif my_score < opp_score:
+            stats['losses'] += 1
+        else:
+            stats['ties'] += 1
+
+    print(f"\n\nBenchmark Results for {warrior_file}:")
+    print(f"  Total Battles: {len(opponents)}")
+    if len(opponents) > 0:
+        print(f"  Wins:   {stats['wins']} ({stats['wins']/len(opponents)*100:.1f}%)")
+        print(f"  Losses: {stats['losses']} ({stats['losses']/len(opponents)*100:.1f}%)")
+        print(f"  Ties:   {stats['ties']} ({stats['ties']/len(opponents)*100:.1f}%)")
+        print(f"  Total Score: {stats['score']}")
+        print(f"  Average Score: {stats['score']/len(opponents):.2f}")
 
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
@@ -502,6 +582,28 @@ if __name__ == "__main__":
                   arena_idx = int(sys.argv[a_idx+1])
 
           run_tournament(directory, arena_idx)
+          sys.exit(0)
+      except ValueError:
+          print("Invalid arguments.")
+          sys.exit(1)
+
+  if "--benchmark" in sys.argv:
+      try:
+          idx = sys.argv.index("--benchmark")
+          if len(sys.argv) < idx + 3:
+              print("Usage: --benchmark <warrior_file> <directory> [--arena <N>]")
+              sys.exit(1)
+
+          warrior_file = sys.argv[idx+1]
+          directory = sys.argv[idx+2]
+
+          arena_idx = 0
+          if "--arena" in sys.argv:
+              a_idx = sys.argv.index("--arena")
+              if len(sys.argv) > a_idx + 1:
+                  arena_idx = int(sys.argv[a_idx+1])
+
+          run_benchmark(warrior_file, directory, arena_idx)
           sys.exit(0)
       except ValueError:
           print("Invalid arguments.")
