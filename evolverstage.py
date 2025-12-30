@@ -28,6 +28,7 @@ import os
 import re
 import time
 import sys
+import argparse
 import shutil
 #import psutil #Not currently active. See bottom of code for how it could be used.
 import configparser
@@ -449,83 +450,63 @@ def validate_configuration():
     return True
 
 if __name__ == "__main__":
-  if "--help" in sys.argv or "-h" in sys.argv:
-    print(__doc__)
-    sys.exit(0)
+  parser = argparse.ArgumentParser(
+      description=__doc__,
+      formatter_class=argparse.RawDescriptionHelpFormatter
+  )
 
-  if "--restart" in sys.argv:
-    ALREADYSEEDED = False
-  elif "--resume" in sys.argv:
-    ALREADYSEEDED = True
+  # Mutually exclusive action group
+  action_group = parser.add_mutually_exclusive_group()
+  action_group.add_argument("-b", "--battle", nargs=2, metavar=('WARRIOR1', 'WARRIOR2'), help="Run a single battle between two warrior files.")
+  action_group.add_argument("-t", "--tournament", metavar='DIRECTORY', help="Run a round-robin tournament in a directory.")
+  action_group.add_argument("-c", "--check", action="store_true", help="Validate configuration and environment.")
+  action_group.add_argument("-d", "--dump-config", action="store_true", help="Print current configuration.")
 
-  if "--check" in sys.argv:
-    if validate_configuration():
-        sys.exit(0)
-    else:
-        sys.exit(1)
+  # Evolution control
+  evo_group = parser.add_mutually_exclusive_group()
+  evo_group.add_argument("--restart", action="store_true", help="Force fresh start (reseed).")
+  evo_group.add_argument("--resume", action="store_true", help="Force resume (don't reseed).")
 
-  if "--battle" in sys.argv:
-    try:
-        idx = sys.argv.index("--battle")
-        if len(sys.argv) < idx + 3:
-            print("Usage: --battle <warrior1> <warrior2> [--arena <N>]")
-            sys.exit(1)
+  # Optional arguments
+  parser.add_argument("-a", "--arena", type=int, default=0, help="Specify arena index for battle or tournament (default: 0).")
 
-        w1 = sys.argv[idx+1]
-        w2 = sys.argv[idx+2]
+  args = parser.parse_args()
 
-        arena_idx = 0
-        if "--arena" in sys.argv:
-            a_idx = sys.argv.index("--arena")
-            if len(sys.argv) > a_idx + 1:
-                arena_idx = int(sys.argv[a_idx+1])
-
-        run_custom_battle(w1, w2, arena_idx)
-        sys.exit(0)
-    except ValueError:
-        print("Invalid arguments.")
-        sys.exit(1)
-
-  if "--tournament" in sys.argv:
-      try:
-          idx = sys.argv.index("--tournament")
-          if len(sys.argv) < idx + 2:
-              print("Usage: --tournament <directory> [--arena <N>]")
-              sys.exit(1)
-
-          directory = sys.argv[idx+1]
-
-          arena_idx = 0
-          if "--arena" in sys.argv:
-              a_idx = sys.argv.index("--arena")
-              if len(sys.argv) > a_idx + 1:
-                  arena_idx = int(sys.argv[a_idx+1])
-
-          run_tournament(directory, arena_idx)
+  if args.check:
+      if validate_configuration():
           sys.exit(0)
-      except ValueError:
-          print("Invalid arguments.")
+      else:
           sys.exit(1)
 
-  if "--dump-config" in sys.argv:
-    print("Current Configuration:")
-    # Retrieve all global variables that look like configuration settings (UPPERCASE)
-    # and were likely populated from settings.ini
-    config_keys = [
-        "LAST_ARENA", "CORESIZE_LIST", "SANITIZE_LIST", "CYCLES_LIST",
-        "PROCESSES_LIST", "WARLEN_LIST", "WARDISTANCE_LIST", "NUMWARRIORS",
-        "ALREADYSEEDED", "CLOCK_TIME", "BATTLE_LOG_FILE", "FINAL_ERA_ONLY",
-        "NOTHING_LIST", "RANDOM_LIST", "NAB_LIST", "MINI_MUT_LIST",
-        "MICRO_MUT_LIST", "LIBRARY_LIST", "MAGIC_NUMBER_LIST", "ARCHIVE_LIST",
-        "UNARCHIVE_LIST", "LIBRARY_PATH", "CROSSOVERRATE_LIST",
-        "TRANSPOSITIONRATE_LIST", "BATTLEROUNDS_LIST", "PREFER_WINNER_LIST",
-        "INSTR_SET", "INSTR_MODES", "INSTR_MODIF"
-    ]
+  if args.dump_config:
+      print("Current Configuration:")
+      config_keys = [
+          "LAST_ARENA", "CORESIZE_LIST", "SANITIZE_LIST", "CYCLES_LIST",
+          "PROCESSES_LIST", "WARLEN_LIST", "WARDISTANCE_LIST", "NUMWARRIORS",
+          "ALREADYSEEDED", "CLOCK_TIME", "BATTLE_LOG_FILE", "FINAL_ERA_ONLY",
+          "NOTHING_LIST", "RANDOM_LIST", "NAB_LIST", "MINI_MUT_LIST",
+          "MICRO_MUT_LIST", "LIBRARY_LIST", "MAGIC_NUMBER_LIST", "ARCHIVE_LIST",
+          "UNARCHIVE_LIST", "LIBRARY_PATH", "CROSSOVERRATE_LIST",
+          "TRANSPOSITIONRATE_LIST", "BATTLEROUNDS_LIST", "PREFER_WINNER_LIST",
+          "INSTR_SET", "INSTR_MODES", "INSTR_MODIF"
+      ]
+      for key in config_keys:
+          if key in globals():
+              print(f"{key}={globals()[key]}")
+      sys.exit(0)
 
-    for key in config_keys:
-        if key in globals():
-            print(f"{key}={globals()[key]}")
-    sys.exit(0)
+  if args.battle:
+      run_custom_battle(args.battle[0], args.battle[1], args.arena)
+      sys.exit(0)
+
+  if args.tournament:
+      run_tournament(args.tournament, args.arena)
+      sys.exit(0)
+
+  if args.restart:
+      ALREADYSEEDED = False
+  elif args.resume:
+      ALREADYSEEDED = True
 
   if ALREADYSEEDED==False:
     print("Seeding")
