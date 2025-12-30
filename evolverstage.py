@@ -2,24 +2,52 @@
 # This script manages the evolution, breeding, and battling of warriors across multiple arenas.
 
 '''
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+Core War Evolver - A Python-based Genetic Algorithm for Redcode.
 
 Usage:
-  python evolverstage.py [--dump-config] [--check] [--restart] [--resume] [--battle file1 file2 [--arena N]] [--tournament dir [--arena N]]
+  python evolverstage.py [OPTIONS]
 
-Options:
-  --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
-  --check          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
-  --restart        Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
-  --resume         Force resumption of evolution (ALREADYSEEDED = True) from existing files.
-  --battle         Run a single battle between two warrior files using the configuration of a specific arena.
-                   Usage: --battle warrior1.red warrior2.red [--arena 0]
-  --tournament     Run a round-robin tournament between all .red files in a directory.
-                   Usage: --tournament warriors/ [--arena 0]
+Commands:
+  (No arguments)   Start or continue the evolution based on settings.ini.
+
+  --check          Verify that settings.ini, file paths, and the nMars simulator
+                   are correctly configured. Run this first!
+
+  --dump-config    Show the current configuration settings (defaults + settings.ini).
+
+  --restart        Start a new evolution from scratch.
+                   WARNING: This deletes all existing warriors in the arenas.
+
+  --resume         Continue a previous evolution, even if 'ALREADYSEEDED' is False
+                   in settings.ini.
+
+  --battle <file1> <file2> [--arena N]
+                   Run a single battle between two warrior files.
+                   Default arena is 0.
+
+  --tournament <folder> [--arena N]
+                   Run a round-robin tournament for all .red files in a folder.
+                   Default arena is 0.
+
+Examples:
+  python evolverstage.py --check
+  python evolverstage.py --restart
+  python evolverstage.py --battle warriors/top.red warriors/challenger.red
+  python evolverstage.py --tournament archive/ --arena 2
+
+License:
+  This program is free software: you can redistribute it and/or modify it under
+  the terms of the GNU Lesser General Public License as published by the Free
+  Software Foundation, either version 3 of the License, or (at your option) any
+  later version.
+
+  This program is distributed in the hope that it will be useful, but WITHOUT
+  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+  FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+  details.
+
+  You should have received a copy of the GNU Lesser General Public License along
+  with this program. If not, see <https://www.gnu.org/licenses/>.
 '''
 
 import random
