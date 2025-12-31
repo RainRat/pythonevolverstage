@@ -9,7 +9,7 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Usage:
-  python evolverstage.py [--dump-config] [--check] [--restart] [--resume] [--battle file1 file2 [--arena N]] [--tournament dir [--arena N]]
+  python evolverstage.py [--dump-config] [--check] [--restart] [--resume] [--battle file1 file2 [--arena N]] [--tournament dir [--arena N]] [--benchmark warrior_file dir [--arena N]] [--normalize file [--arena N]]
 
 Options:
   --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
@@ -22,6 +22,8 @@ Options:
                    Usage: --tournament warriors/ [--arena 0]
   --benchmark      Run a benchmark of a single warrior against all .red files in a directory.
                    Usage: --benchmark mywarrior.red warriors/ [--arena 0]
+  --normalize      Read a warrior file, normalize its instructions to the arena's standards (core size, sanitize limit), and print to stdout.
+                   Usage: --normalize mywarrior.red [--arena 0]
 '''
 
 import random
@@ -280,6 +282,38 @@ def run_benchmark(warrior_file, directory, arena_idx):
         print(f"  Ties:   {stats['ties']} ({stats['ties']/len(opponents)*100:.1f}%)")
         print(f"  Total Score: {stats['score']}")
         print(f"  Average Score: {stats['score']/len(opponents):.2f}")
+
+def run_normalization(filepath, arena_idx):
+    """
+    Reads a warrior file and prints the normalized instructions to stdout.
+    """
+    if arena_idx > LAST_ARENA:
+        print(f"Error: Arena {arena_idx} does not exist (LAST_ARENA={LAST_ARENA})")
+        return
+
+    if not os.path.exists(filepath):
+        print(f"Error: File '{filepath}' not found.")
+        return
+
+    try:
+        with open(filepath, 'r') as f:
+            lines = f.readlines()
+
+        for line in lines:
+            # Cleanup logic mirrored from unarchiving logic
+            clean_line = line.replace('  ',' ').replace('START','').replace(', ',',').strip()
+            # Basic check to skip empty lines or comments
+            if not clean_line or clean_line.startswith(';'):
+                continue
+
+            try:
+                normalized = normalize_instruction(clean_line, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
+                print(normalized, end='')
+            except (ValueError, IndexError):
+                sys.stderr.write(f"Warning: Could not normalize line: {line.strip()}\n")
+
+    except Exception as e:
+        print(f"Error processing file: {e}")
 
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
@@ -604,6 +638,27 @@ if __name__ == "__main__":
                   arena_idx = int(sys.argv[a_idx+1])
 
           run_benchmark(warrior_file, directory, arena_idx)
+          sys.exit(0)
+      except ValueError:
+          print("Invalid arguments.")
+          sys.exit(1)
+
+  if "--normalize" in sys.argv:
+      try:
+          idx = sys.argv.index("--normalize")
+          if len(sys.argv) < idx + 2:
+              print("Usage: --normalize <warrior_file> [--arena <N>]")
+              sys.exit(1)
+
+          warrior_file = sys.argv[idx+1]
+
+          arena_idx = 0
+          if "--arena" in sys.argv:
+              a_idx = sys.argv.index("--arena")
+              if len(sys.argv) > a_idx + 1:
+                  arena_idx = int(sys.argv[a_idx+1])
+
+          run_normalization(warrior_file, arena_idx)
           sys.exit(0)
       except ValueError:
           print("Invalid arguments.")
