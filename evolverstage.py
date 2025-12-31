@@ -224,7 +224,7 @@ class BaseCSVLogger:
             self.file_handle = None
             self.writer = None
 
-    def _log_row(self, row: dict) -> None:
+    def log_row(self, row: dict) -> None:
         if not self.filename:
             return
 
@@ -243,9 +243,6 @@ class DataLogger(BaseCSVLogger):
             filename,
             ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with']
         )
-
-    def log_data(self, **kwargs):
-        self._log_row(kwargs)
 
 
 class BenchmarkLogger(BaseCSVLogger):
@@ -278,7 +275,7 @@ class BenchmarkLogger(BaseCSVLogger):
         score: int,
         benchmark_path: Optional[str],
     ) -> None:
-        self._log_row(
+        self.log_row(
             {
                 "era": era,
                 "generation": generation,

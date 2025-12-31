@@ -1429,8 +1429,28 @@ def test_data_logger_writes_header_once(tmp_path):
 
     log_path = tmp_path / "battle_log.csv"
     logger = DataLogger(str(log_path))
-    logger.log_data(era=1, arena=2, winner=3, loser=4, score1=5, score2=6, bred_with=7)
-    logger.log_data(era=2, arena=3, winner=4, loser=5, score1=6, score2=7, bred_with=8)
+    logger.log_row(
+        {
+            "era": 1,
+            "arena": 2,
+            "winner": 3,
+            "loser": 4,
+            "score1": 5,
+            "score2": 6,
+            "bred_with": 7,
+        }
+    )
+    logger.log_row(
+        {
+            "era": 2,
+            "arena": 3,
+            "winner": 4,
+            "loser": 5,
+            "score1": 6,
+            "score2": 7,
+            "bred_with": 8,
+        }
+    )
 
     content = log_path.read_text(encoding="utf-8").strip().splitlines()
     assert content[0] == "era,arena,winner,loser,score1,score2,bred_with"

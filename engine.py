@@ -450,14 +450,16 @@ def breed_offspring(
 
     storage.set_warrior_lines(arena, loser, new_lines)
 
-    data_logger.log_data(
-        era=era,
-        arena=arena,
-        winner=winner,
-        loser=loser,
-        score1=scores[0],
-        score2=scores[1],
-        bred_with=str(partner_id),
+    data_logger.log_row(
+        {
+            "era": era,
+            "arena": arena,
+            "winner": winner,
+            "loser": loser,
+            "score1": scores[0],
+            "score2": scores[1],
+            "bred_with": str(partner_id),
+        }
     )
     return partner_id
 
