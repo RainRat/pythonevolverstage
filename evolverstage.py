@@ -1,28 +1,31 @@
 # A Python-based Genetic Evolver for Core War
 # This script manages the evolution, breeding, and battling of warriors across multiple arenas.
 
-'''
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+"""
+Core War Evolver
 
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+A tool to evolve Redcode warriors using genetic algorithms.
 
 Usage:
-  python evolverstage.py [--dump-config] [--check] [--restart] [--resume] [--battle file1 file2 [--arena N]] [--tournament dir [--arena N]]
+  python evolverstage.py [options]
+
+Commands:
+  (No arguments)   Start or continue the evolution process based on settings.ini.
 
 Options:
-  --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
-  --check          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
-  --restart        Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
-  --resume         Force resumption of evolution (ALREADYSEEDED = True) from existing files.
-  --battle         Run a single battle between two warrior files using the configuration of a specific arena.
-                   Usage: --battle warrior1.red warrior2.red [--arena 0]
-  --tournament     Run a round-robin tournament between all .red files in a directory.
-                   Usage: --tournament warriors/ [--arena 0]
-  --benchmark      Run a benchmark of a single warrior against all .red files in a directory.
-                   Usage: --benchmark mywarrior.red warriors/ [--arena 0]
-'''
+  --check          Check if your setup (settings.ini, nmars) is correct.
+  --dump-config    Show the current configuration settings.
+  --restart        Start a new evolution run (erases existing arenas).
+  --resume         Continue the previous evolution run.
+  --battle         Run a fight between two warriors.
+                   Example: --battle warrior1.red warrior2.red --arena 0
+  --tournament     Run a tournament with all warriors in a folder.
+                   Example: --tournament my_warriors/ --arena 0
+  --benchmark      Test one warrior against a folder of opponents.
+                   Example: --benchmark champion.red my_warriors/ --arena 0
+
+For license information, see LICENSE.md.
+"""
 
 import random
 import itertools
