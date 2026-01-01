@@ -174,10 +174,7 @@ def _run_benchmark_battle(
                 verbose=False,
                 seed=match_seed,
             )
-            try:
-                warrior_pos = warriors.index(warrior_id)
-            except ValueError:
-                return None
+            warrior_pos = warriors.index(warrior_id)
             round_scores[warrior_id] = scores[warrior_pos]
 
         if len(round_scores) < 2:
@@ -325,10 +322,7 @@ def _score_warrior_against_benchmarks(
             verbose=False,
             seed=match_seed,
         )
-        try:
-            warrior_pos = warriors.index(warrior_id)
-        except ValueError:
-            continue
+        warrior_pos = warriors.index(warrior_id)
         results.append((benchmark, scores[warrior_pos]))
 
     return results
@@ -582,15 +576,8 @@ def _run_benchmark_tournament(
                 seed=match_seed,
             )
 
-            try:
-                warrior_pos = warriors.index(warrior_id)
-                benchmark_pos = warriors.index(bench_identifier)
-            except ValueError:
-                console_log(
-                    "Benchmark battle returned unexpected warrior identifiers; ignoring result.",
-                    minimum_level=VerbosityLevel.TERSE,
-                )
-                continue
+            warrior_pos = warriors.index(warrior_id)
+            benchmark_pos = warriors.index(bench_identifier)
 
             warrior_score = scores[warrior_pos]
             benchmark_score = scores[benchmark_pos]
