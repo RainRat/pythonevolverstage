@@ -57,6 +57,13 @@ _BENCHMARK_WARRIOR_ID_BASE = MAX_WARRIOR_FILENAME_ID - 10_000
 _FINAL_STANDINGS_DISPLAY_LIMIT = 20
 _PER_WARRIOR_SUMMARY_LIMIT = 20
 
+
+def _get_benchmark_id(arena_index: int, bench_index: int) -> int:
+    return max(
+        1, _BENCHMARK_WARRIOR_ID_BASE - (arena_index * 1000 + bench_index)
+    )
+
+
 def set_rng_sequence(sequence: list[int]) -> None:
     """Set a deterministic RNG sequence for tests."""
 
@@ -156,9 +163,7 @@ def _run_benchmark_battle(
     benchmarks_played = 0
 
     for bench_index, benchmark in enumerate(benchmark_warriors):
-        bench_identifier = max(
-            1, _BENCHMARK_WARRIOR_ID_BASE - (arena_index * 1000 + bench_index)
-        )
+        bench_identifier = _get_benchmark_id(arena_index, bench_index)
         round_scores: dict[int, int] = {}
         for warrior_id, warrior_code in ((cont1, cont1_code), (cont2, cont2_code)):
             match_seed = _stable_internal_battle_seed(
@@ -306,9 +311,7 @@ def _score_warrior_against_benchmarks(
 
     results: list[tuple[BenchmarkWarrior, int]] = []
     for bench_index, benchmark in enumerate(benchmark_warriors):
-        bench_identifier = max(
-            1, _BENCHMARK_WARRIOR_ID_BASE - (arena_index * 1000 + bench_index)
-        )
+        bench_identifier = _get_benchmark_id(arena_index, bench_index)
         match_seed = _stable_internal_battle_seed(
             arena_index, warrior_id, bench_identifier, era
         )
@@ -537,10 +540,7 @@ def _run_benchmark_tournament(
     for bench_index, benchmark in enumerate(benchmark_warriors):
         benchmark_totals.setdefault(bench_index, 0.0)
         benchmark_counts.setdefault(bench_index, 0)
-        bench_identifier = max(
-            1,
-            _BENCHMARK_WARRIOR_ID_BASE - (arena * 1000 + bench_index),
-        )
+        bench_identifier = _get_benchmark_id(arena, bench_index)
 
         for warrior_id in warrior_ids:
             warrior_lines = storage.get_warrior_lines(arena, warrior_id)
