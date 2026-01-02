@@ -9,22 +9,21 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Usage:
-  python evolverstage.py [--status] [--dump-config] [--check] [--restart] [--resume] [--battle file1 file2 [--arena N]] [--tournament dir [--arena N]] [--benchmark warrior_file dir [--arena N]] [--normalize file [--arena N]]
+  python evolverstage.py [--dump-config|-d] [--check|-c] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]]
 
 Options:
-  --status         Print the current status of all arenas (population, avg length) and the archive, then exit.
-  --dump-config    Print the current configuration values derived from settings.ini and defaults, then exit.
-  --check          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
-  --restart        Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
-  --resume         Force resumption of evolution (ALREADYSEEDED = True) from existing files.
-  --battle         Run a single battle between two warrior files using the configuration of a specific arena.
-                   Usage: --battle warrior1.red warrior2.red [--arena 0]
-  --tournament     Run a round-robin tournament between all .red files in a directory.
-                   Usage: --tournament warriors/ [--arena 0]
-  --benchmark      Run a benchmark of a single warrior against all .red files in a directory.
-                   Usage: --benchmark mywarrior.red warriors/ [--arena 0]
-  --normalize      Read a warrior file, normalize its instructions to the arena's standards (core size, sanitize limit), and print to stdout.
-                   Usage: --normalize mywarrior.red [--arena 0]
+  --dump-config, -d    Print the current configuration values derived from settings.ini and defaults, then exit.
+  --check, -c          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
+  --restart            Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
+  --resume             Force resumption of evolution (ALREADYSEEDED = True) from existing files.
+  --battle, -b         Run a single battle between two warrior files using the configuration of a specific arena.
+                       Usage: --battle warrior1.red warrior2.red [--arena 0]
+  --tournament, -t     Run a round-robin tournament between all .red files in a directory.
+                       Usage: --tournament warriors/ [--arena 0]
+  --benchmark, -m      Run a benchmark of a single warrior against all .red files in a directory.
+                       Usage: --benchmark mywarrior.red warriors/ [--arena 0]
+  --normalize, -n      Read a warrior file, normalize its instructions to the arena's standards (core size, sanitize limit), and print to stdout.
+                       Usage: --normalize mywarrior.red [--arena 0]
 '''
 
 import random
@@ -647,25 +646,33 @@ if __name__ == "__main__":
   elif "--resume" in sys.argv:
     ALREADYSEEDED = True
 
-  if "--check" in sys.argv:
+  if "--check" in sys.argv or "-c" in sys.argv:
     if validate_configuration():
         sys.exit(0)
     else:
         sys.exit(1)
 
-  if "--battle" in sys.argv:
+  if "--battle" in sys.argv or "-b" in sys.argv:
     try:
-        idx = sys.argv.index("--battle")
+        if "--battle" in sys.argv:
+            idx = sys.argv.index("--battle")
+        else:
+            idx = sys.argv.index("-b")
+
         if len(sys.argv) < idx + 3:
-            print("Usage: --battle <warrior1> <warrior2> [--arena <N>]")
+            print("Usage: --battle|-b <warrior1> <warrior2> [--arena|-a <N>]")
             sys.exit(1)
 
         w1 = sys.argv[idx+1]
         w2 = sys.argv[idx+2]
 
         arena_idx = 0
-        if "--arena" in sys.argv:
-            a_idx = sys.argv.index("--arena")
+        if "--arena" in sys.argv or "-a" in sys.argv:
+            if "--arena" in sys.argv:
+                a_idx = sys.argv.index("--arena")
+            else:
+                a_idx = sys.argv.index("-a")
+
             if len(sys.argv) > a_idx + 1:
                 arena_idx = int(sys.argv[a_idx+1])
 
@@ -675,18 +682,26 @@ if __name__ == "__main__":
         print("Invalid arguments.")
         sys.exit(1)
 
-  if "--tournament" in sys.argv:
+  if "--tournament" in sys.argv or "-t" in sys.argv:
       try:
-          idx = sys.argv.index("--tournament")
+          if "--tournament" in sys.argv:
+              idx = sys.argv.index("--tournament")
+          else:
+              idx = sys.argv.index("-t")
+
           if len(sys.argv) < idx + 2:
-              print("Usage: --tournament <directory> [--arena <N>]")
+              print("Usage: --tournament|-t <directory> [--arena|-a <N>]")
               sys.exit(1)
 
           directory = sys.argv[idx+1]
 
           arena_idx = 0
-          if "--arena" in sys.argv:
-              a_idx = sys.argv.index("--arena")
+          if "--arena" in sys.argv or "-a" in sys.argv:
+              if "--arena" in sys.argv:
+                  a_idx = sys.argv.index("--arena")
+              else:
+                  a_idx = sys.argv.index("-a")
+
               if len(sys.argv) > a_idx + 1:
                   arena_idx = int(sys.argv[a_idx+1])
 
@@ -696,19 +711,27 @@ if __name__ == "__main__":
           print("Invalid arguments.")
           sys.exit(1)
 
-  if "--benchmark" in sys.argv:
+  if "--benchmark" in sys.argv or "-m" in sys.argv:
       try:
-          idx = sys.argv.index("--benchmark")
+          if "--benchmark" in sys.argv:
+              idx = sys.argv.index("--benchmark")
+          else:
+              idx = sys.argv.index("-m")
+
           if len(sys.argv) < idx + 3:
-              print("Usage: --benchmark <warrior_file> <directory> [--arena <N>]")
+              print("Usage: --benchmark|-m <warrior_file> <directory> [--arena|-a <N>]")
               sys.exit(1)
 
           warrior_file = sys.argv[idx+1]
           directory = sys.argv[idx+2]
 
           arena_idx = 0
-          if "--arena" in sys.argv:
-              a_idx = sys.argv.index("--arena")
+          if "--arena" in sys.argv or "-a" in sys.argv:
+              if "--arena" in sys.argv:
+                  a_idx = sys.argv.index("--arena")
+              else:
+                  a_idx = sys.argv.index("-a")
+
               if len(sys.argv) > a_idx + 1:
                   arena_idx = int(sys.argv[a_idx+1])
 
@@ -718,18 +741,26 @@ if __name__ == "__main__":
           print("Invalid arguments.")
           sys.exit(1)
 
-  if "--normalize" in sys.argv:
+  if "--normalize" in sys.argv or "-n" in sys.argv:
       try:
-          idx = sys.argv.index("--normalize")
+          if "--normalize" in sys.argv:
+              idx = sys.argv.index("--normalize")
+          else:
+              idx = sys.argv.index("-n")
+
           if len(sys.argv) < idx + 2:
-              print("Usage: --normalize <warrior_file> [--arena <N>]")
+              print("Usage: --normalize|-n <warrior_file> [--arena|-a <N>]")
               sys.exit(1)
 
           warrior_file = sys.argv[idx+1]
 
           arena_idx = 0
-          if "--arena" in sys.argv:
-              a_idx = sys.argv.index("--arena")
+          if "--arena" in sys.argv or "-a" in sys.argv:
+              if "--arena" in sys.argv:
+                  a_idx = sys.argv.index("--arena")
+              else:
+                  a_idx = sys.argv.index("-a")
+
               if len(sys.argv) > a_idx + 1:
                   arena_idx = int(sys.argv[a_idx+1])
 
@@ -739,11 +770,7 @@ if __name__ == "__main__":
           print("Invalid arguments.")
           sys.exit(1)
 
-  if "--status" in sys.argv:
-    print_status()
-    sys.exit(0)
-
-  if "--dump-config" in sys.argv:
+  if "--dump-config" in sys.argv or "-d" in sys.argv:
     print("Current Configuration:")
     # Retrieve all global variables that look like configuration settings (UPPERCASE)
     # and were likely populated from settings.ini
