@@ -9,11 +9,12 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]]
+  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]]
 
 Options:
   --dump-config, -d    Print the current configuration values derived from settings.ini and defaults, then exit.
   --check, -c          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
+  --status, -s         Print the current status of the evolution (arenas, population counts, log activity) and exit.
   --restart            Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
   --resume             Force resumption of evolution (ALREADYSEEDED = True) from existing files.
   --battle, -b         Run a single battle between two warrior files using the configuration of a specific arena.
@@ -651,6 +652,10 @@ if __name__ == "__main__":
         sys.exit(0)
     else:
         sys.exit(1)
+
+  if "--status" in sys.argv or "-s" in sys.argv:
+    print_status()
+    sys.exit(0)
 
   if "--battle" in sys.argv or "-b" in sys.argv:
     try:
