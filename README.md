@@ -53,7 +53,37 @@ Settings are in `settings.ini`. Open this file to change how the evolution works
     8.00 hours remaining (0.01% complete) Era: 1
     ```
 6.  **Get Results**: When it's done (or if you stop it), look in the `arenaX` folders (like `arena0`) for the `.red` files. These are your evolved warriors.
-7.  **Find the Best**: Use a benchmark tool (like CoreWin) to test the final warriors against each other to find the champion.
+7.  **Find the Best**: Use the built-in benchmark tool (see **Command Line Tools**) to test the final warriors against each other to find the champion.
+
+## Command Line Tools
+
+You can do more than just evolve warriors. The script includes tools to run battles, tournaments, and benchmarks.
+
+### Manage Evolution
+*   **Force Restart**: `python evolverstage.py --restart`
+    *   Starts from scratch (Era 1), overwriting any existing warriors in the arenas.
+*   **Resume**: `python evolverstage.py --resume`
+    *   Continues from where you left off, even if `settings.ini` says otherwise.
+
+### Run Battles
+*   **Single Battle**: Run one fight between two warriors.
+    ```bash
+    python evolverstage.py --battle warriors/warrior1.red warriors/warrior2.red
+    ```
+*   **Tournament**: Run a round-robin tournament between all warriors in a folder.
+    ```bash
+    python evolverstage.py --tournament warriors/
+    ```
+*   **Benchmark**: Test one warrior against a folder of opponents to see how good it is.
+    ```bash
+    python evolverstage.py --benchmark my_warrior.red warriors/
+    ```
+*   **Normalize**: Clean up a warrior's code to match the arena's standards.
+    ```bash
+    python evolverstage.py --normalize my_warrior.red
+    ```
+
+**Note**: You can add `--arena N` (e.g., `--arena 1`) to any command to use the rules of a specific arena. Default is Arena 0.
 
 ## Output Explained
 
