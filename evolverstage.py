@@ -38,6 +38,7 @@ import configparser
 import subprocess
 from enum import Enum
 import csv
+from collections import deque
 
 from evolver.logger import DataLogger
 
@@ -476,6 +477,79 @@ def determine_winner(scores, warriors):
         winner = warriors[0]
         loser = warriors[1]
     return winner, loser
+
+def get_latest_log_entry():
+    """
+    Retrieves the last entry from the battle log file.
+    """
+    if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
+        return "No battle log found."
+    try:
+        with open(BATTLE_LOG_FILE, 'r') as f:
+            last_line = deque(f, maxlen=1)
+            if last_line:
+                return last_line[0].strip()
+            else:
+                return "Log file is empty."
+    except Exception as e:
+        return f"Error reading log: {e}"
+
+def print_status():
+    """
+    Prints the current status of all arenas and the archive.
+    """
+    print("="*60)
+    print(f"Evolver Status Report")
+    print("="*60)
+
+    # Latest Activity
+    print(f"Latest Battle Log: {get_latest_log_entry()}")
+    print("-" * 60)
+
+    total_warriors = 0
+
+    for i in range(LAST_ARENA + 1):
+        dir_name = f"arena{i}"
+        print(f"Arena {i}:")
+        print(f"  Configuration: Size={CORESIZE_LIST[i]}, Cycles={CYCLES_LIST[i]}, Processes={PROCESSES_LIST[i]}")
+
+        if not os.path.exists(dir_name):
+            print(f"  Status: Directory '{dir_name}' not found (Unseeded?)")
+            print("-" * 40)
+            continue
+
+        files = [f for f in os.listdir(dir_name) if f.endswith('.red')]
+        count = len(files)
+        total_warriors += count
+
+        avg_len = 0
+        if count > 0:
+            total_lines = 0
+            # Sample up to 50 files for speed
+            sample_files = files[:50]
+            for f in sample_files:
+                try:
+                    with open(os.path.join(dir_name, f), 'r') as fh:
+                        # Count non-empty lines
+                        total_lines += sum(1 for line in fh if line.strip())
+                except:
+                    pass
+            avg_len = total_lines / len(sample_files)
+
+        print(f"  Population:    {count} warriors")
+        if count > 0:
+            print(f"  Avg Length:    {avg_len:.1f} instructions (sampled)")
+        print("-" * 40)
+
+    # Archive
+    print("Archive:")
+    if os.path.exists("archive"):
+        afiles = [f for f in os.listdir("archive") if f.endswith('.red')]
+        print(f"  Contains {len(afiles)} warriors.")
+    else:
+        print("  Directory 'archive' not found.")
+
+    print("="*60)
 
 def validate_configuration():
     """
