@@ -15,6 +15,7 @@ Options:
   --dump-config, -d    Print the current configuration values derived from settings.ini and defaults, then exit.
   --check, -c          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
   --status, -s         Print the current status of the evolution (arenas, population counts, log activity) and exit.
+                       Add --json to output in JSON format.
   --restart            Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
   --resume             Force resumption of evolution (ALREADYSEEDED = True) from existing files.
   --battle, -b         Run a single battle between two warrior files using the configuration of a specific arena.
@@ -34,6 +35,7 @@ import re
 import time
 import sys
 import shutil
+import json
 #import psutil #Not currently active. See bottom of code for how it could be used.
 import configparser
 import subprocess
@@ -495,58 +497,102 @@ def get_latest_log_entry():
     except Exception as e:
         return f"Error reading log: {e}"
 
+def get_evolution_status():
+    """
+    Gathers the current status of the evolution system into a dictionary.
+    """
+    status = {
+        "latest_log": get_latest_log_entry(),
+        "arenas": [],
+        "archive": None
+    }
+
+    for i in range(LAST_ARENA + 1):
+        arena_info = {
+            "id": i,
+            "config": {
+                "size": CORESIZE_LIST[i],
+                "cycles": CYCLES_LIST[i],
+                "processes": PROCESSES_LIST[i]
+            },
+            "directory": f"arena{i}",
+            "exists": False,
+            "population": 0,
+            "avg_length": 0.0
+        }
+
+        dir_name = f"arena{i}"
+        if os.path.exists(dir_name):
+            arena_info["exists"] = True
+            files = [f for f in os.listdir(dir_name) if f.endswith('.red')]
+            count = len(files)
+            arena_info["population"] = count
+
+            if count > 0:
+                total_lines = 0
+                sample_files = files[:50]
+                for f in sample_files:
+                    try:
+                        with open(os.path.join(dir_name, f), 'r') as fh:
+                            total_lines += sum(1 for line in fh if line.strip())
+                    except:
+                        pass
+                arena_info["avg_length"] = total_lines / len(sample_files)
+
+        status["arenas"].append(arena_info)
+
+    if os.path.exists("archive"):
+        afiles = [f for f in os.listdir("archive") if f.endswith('.red')]
+        status["archive"] = {"exists": True, "count": len(afiles)}
+    else:
+        status["archive"] = {"exists": False, "count": 0}
+
+    return status
+
+def print_status_json(status_data):
+    """
+    Prints the status data as a JSON object.
+    """
+    print(json.dumps(status_data, indent=2))
+
 def print_status():
     """
-    Prints the current status of all arenas and the archive.
+    Prints the current status of all arenas and the archive in a human-readable format.
     """
+    data = get_evolution_status()
+
     print("="*60)
     print(f"Evolver Status Report")
     print("="*60)
 
     # Latest Activity
-    print(f"Latest Battle Log: {get_latest_log_entry()}")
+    print(f"Latest Battle Log: {data['latest_log']}")
     print("-" * 60)
 
     total_warriors = 0
 
-    for i in range(LAST_ARENA + 1):
-        dir_name = f"arena{i}"
+    for arena in data['arenas']:
+        i = arena['id']
         print(f"Arena {i}:")
-        print(f"  Configuration: Size={CORESIZE_LIST[i]}, Cycles={CYCLES_LIST[i]}, Processes={PROCESSES_LIST[i]}")
+        print(f"  Configuration: Size={arena['config']['size']}, Cycles={arena['config']['cycles']}, Processes={arena['config']['processes']}")
 
-        if not os.path.exists(dir_name):
-            print(f"  Status: Directory '{dir_name}' not found (Unseeded?)")
+        if not arena['exists']:
+            print(f"  Status: Directory '{arena['directory']}' not found (Unseeded?)")
             print("-" * 40)
             continue
 
-        files = [f for f in os.listdir(dir_name) if f.endswith('.red')]
-        count = len(files)
+        count = arena['population']
         total_warriors += count
-
-        avg_len = 0
-        if count > 0:
-            total_lines = 0
-            # Sample up to 50 files for speed
-            sample_files = files[:50]
-            for f in sample_files:
-                try:
-                    with open(os.path.join(dir_name, f), 'r') as fh:
-                        # Count non-empty lines
-                        total_lines += sum(1 for line in fh if line.strip())
-                except:
-                    pass
-            avg_len = total_lines / len(sample_files)
 
         print(f"  Population:    {count} warriors")
         if count > 0:
-            print(f"  Avg Length:    {avg_len:.1f} instructions (sampled)")
+            print(f"  Avg Length:    {arena['avg_length']:.1f} instructions (sampled)")
         print("-" * 40)
 
     # Archive
     print("Archive:")
-    if os.path.exists("archive"):
-        afiles = [f for f in os.listdir("archive") if f.endswith('.red')]
-        print(f"  Contains {len(afiles)} warriors.")
+    if data['archive']['exists']:
+        print(f"  Contains {data['archive']['count']} warriors.")
     else:
         print("  Directory 'archive' not found.")
 
@@ -654,7 +700,10 @@ if __name__ == "__main__":
         sys.exit(1)
 
   if "--status" in sys.argv or "-s" in sys.argv:
-    print_status()
+    if "--json" in sys.argv:
+        print_status_json(get_evolution_status())
+    else:
+        print_status()
     sys.exit(0)
 
   if "--battle" in sys.argv or "-b" in sys.argv:
