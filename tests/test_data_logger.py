@@ -1,7 +1,9 @@
+import unittest
 import os
 import sys
 import csv
-import pytest
+import tempfile
+import shutil
 
 # Add the root directory to sys.path so we can import evolverstage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -9,28 +11,30 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import evolverstage
 from evolver.logger import DataLogger, BaseCSVLogger
 
-class TestDataLogger:
-    @pytest.fixture
-    def log_file(self, tmp_path):
-        """Fixture to provide a path to a log file in a temporary directory."""
-        return tmp_path / "test_log.csv"
+class TestDataLogger(unittest.TestCase):
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+        self.log_file = os.path.join(self.test_dir, "test_log.csv")
 
-    def test_init(self, log_file):
+    def tearDown(self):
+        shutil.rmtree(self.test_dir)
+
+    def test_init(self):
         """Test DataLogger initialization."""
-        logger = DataLogger(str(log_file))
-        assert logger.filename == str(log_file)
-        assert logger.fieldnames == ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with']
+        logger = DataLogger(self.log_file)
+        self.assertEqual(logger.filename, self.log_file)
+        self.assertEqual(logger.fieldnames, ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with'])
 
-    def test_base_csv_logger_init(self, log_file):
+    def test_base_csv_logger_init(self):
         """Test BaseCSVLogger initialization."""
         fields = ['a', 'b']
-        logger = BaseCSVLogger(str(log_file), fields)
-        assert logger.filename == str(log_file)
-        assert logger.fieldnames == fields
+        logger = BaseCSVLogger(self.log_file, fields)
+        self.assertEqual(logger.filename, self.log_file)
+        self.assertEqual(logger.fieldnames, fields)
 
-    def test_log_data_creates_new_file(self, log_file):
+    def test_log_data_creates_new_file(self):
         """Test that log_data creates a new file with header if it doesn't exist."""
-        logger = DataLogger(str(log_file))
+        logger = DataLogger(self.log_file)
         data = {
             'era': 1,
             'arena': 0,
@@ -42,25 +46,25 @@ class TestDataLogger:
         }
         logger.log_data(**data)
 
-        assert log_file.exists()
-        with open(log_file, 'r', newline='') as f:
+        self.assertTrue(os.path.exists(self.log_file))
+        with open(self.log_file, 'r', newline='') as f:
             reader = csv.DictReader(f)
-            assert reader.fieldnames == logger.fieldnames
+            self.assertEqual(reader.fieldnames, logger.fieldnames)
             rows = list(reader)
-            assert len(rows) == 1
+            self.assertEqual(len(rows), 1)
             row = rows[0]
-            assert int(row['era']) == 1
-            assert int(row['arena']) == 0
-            assert int(row['winner']) == 10
-            assert int(row['loser']) == 5
-            assert int(row['score1']) == 100
-            assert int(row['score2']) == 50
-            assert row['bred_with'] == 'random'
+            self.assertEqual(int(row['era']), 1)
+            self.assertEqual(int(row['arena']), 0)
+            self.assertEqual(int(row['winner']), 10)
+            self.assertEqual(int(row['loser']), 5)
+            self.assertEqual(int(row['score1']), 100)
+            self.assertEqual(int(row['score2']), 50)
+            self.assertEqual(row['bred_with'], 'random')
 
-    def test_log_data_appends_to_existing_file(self, log_file):
+    def test_log_data_appends_to_existing_file(self):
         """Test that log_data appends to an existing file without rewriting header."""
         # Create file with header and one row manually or via logger
-        logger = DataLogger(str(log_file))
+        logger = DataLogger(self.log_file)
         data1 = {
             'era': 1,
             'arena': 0,
@@ -83,19 +87,18 @@ class TestDataLogger:
         }
         logger.log_data(**data2)
 
-        with open(log_file, 'r', newline='') as f:
+        with open(self.log_file, 'r', newline='') as f:
             reader = csv.DictReader(f)
             rows = list(reader)
-            assert len(rows) == 2
-            assert rows[0]['bred_with'] == 'random1'
-            assert rows[1]['bred_with'] == 'random2'
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]['bred_with'], 'random1')
+            self.assertEqual(rows[1]['bred_with'], 'random2')
 
             # Verify header didn't get written again in the middle
             f.seek(0)
             content = f.read()
             # Count occurrences of a field name to ensure header appears only once
-            assert content.count('bred_with') == 1
-            # (once in header. data values are distinct)
+            self.assertEqual(content.count('bred_with'), 1)
 
     def test_log_data_no_filename(self):
         """Test that log_data does nothing if filename is None or empty."""
@@ -106,9 +109,9 @@ class TestDataLogger:
         logger = DataLogger("")
         logger.log_data(era=1)
 
-    def test_log_data_missing_fields(self, log_file):
+    def test_log_data_missing_fields(self):
         """Test log_data with missing fields (should be empty strings or similar in CSV)."""
-        logger = DataLogger(str(log_file))
+        logger = DataLogger(self.log_file)
         # Missing 'score2'
         data = {
             'era': 1,
@@ -125,17 +128,23 @@ class TestDataLogger:
 
         logger.log_data(**data)
 
-        with open(log_file, 'r', newline='') as f:
+        with open(self.log_file, 'r', newline='') as f:
             reader = csv.DictReader(f)
             rows = list(reader)
-            assert rows[0]['score2'] == ''
+            # csv.DictWriter behavior on missing keys depends on 'restval' arg, default is ""
+            # But let's check what DataLogger actually does.
+            # Assuming it uses default DictWriter.
+            self.assertEqual(rows[0]['score2'], '')
 
-    def test_log_data_extra_fields(self, log_file):
+    def test_log_data_extra_fields(self):
         """Test log_data with extra fields (should raise ValueError by default)."""
-        logger = DataLogger(str(log_file))
+        logger = DataLogger(self.log_file)
         data = {
             'era': 1,
             'extra_field': 'oops'
         }
-        with pytest.raises(ValueError):
+        with self.assertRaises(ValueError):
             logger.log_data(**data)
+
+if __name__ == '__main__':
+    unittest.main()
