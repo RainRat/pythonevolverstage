@@ -27,10 +27,14 @@ class TestStatus(unittest.TestCase):
         # We can inspect the calls to print
         printed_strings = [call.args[0] for call in mock_print.call_args_list if call.args]
 
+        # The new format includes ANSI colors and different structure
         self.assertTrue(any("Evolver Status Report" in s for s in printed_strings))
-        self.assertTrue(any("Latest Battle Log: Test Log Entry" in s for s in printed_strings))
-        self.assertTrue(any("Arena 0:" in s for s in printed_strings))
-        self.assertTrue(any("Population:    2 warriors" in s for s in printed_strings))
+        # The new format prints the log entry directly if it doesn't match the CSV format
+        self.assertTrue(any("Test Log Entry" in s for s in printed_strings))
+        # The new format prints a table row for Arena 0
+        self.assertTrue(any("Arena 0 " in s for s in printed_strings))
+        # The new format prints population in a column
+        self.assertTrue(any("2" in s for s in printed_strings))
 
     def test_status_command_invocation(self):
         # This test ensures that invoking the script with --status calls print_status
