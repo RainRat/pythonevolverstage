@@ -43,6 +43,17 @@ from collections import deque
 
 from evolver.logger import DataLogger
 
+class Colors:
+    """ANSI color codes for CLI output."""
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    WHITE = "\033[97m"
+
 class Marble(Enum):
   DO_NOTHING = 0
   MAJOR_MUTATION = 1
@@ -497,60 +508,93 @@ def get_latest_log_entry():
 
 def print_status():
     """
-    Prints the current status of all arenas and the archive.
+    Prints the current status of all arenas and the archive using formatted, colored output.
     """
-    print("="*60)
-    print(f"Evolver Status Report")
-    print("="*60)
+    print(f"\n{Colors.BOLD}Evolver Status Report{Colors.RESET}")
+    print("=" * 60)
 
-    # Latest Activity
-    print(f"Latest Battle Log: {get_latest_log_entry()}")
-    print("-" * 60)
+    # Latest Activity parsing
+    log_entry = get_latest_log_entry()
+    print(f"\n{Colors.BOLD}Latest Activity{Colors.RESET}")
+
+    parsed_log = False
+    if log_entry and "," in log_entry and not log_entry.startswith("Error"):
+        try:
+            # Expected format: era, arena, winner, loser, score1, score2, bred_with
+            parts = log_entry.split(',')
+            if len(parts) >= 6:
+                era_val = int(parts[0]) + 1 # 0-indexed internally
+                arena_val = parts[1]
+                winner = parts[2]
+                loser = parts[3]
+                s1 = parts[4]
+                s2 = parts[5]
+
+                print(f"  {Colors.GREEN}Era {era_val}{Colors.RESET} | Arena {arena_val}")
+                print(f"  Winner: {Colors.CYAN}#{winner}{Colors.RESET} ({s1}) vs Loser: {Colors.RED}#{loser}{Colors.RESET} ({s2})")
+                parsed_log = True
+        except ValueError:
+            pass
+
+    if not parsed_log:
+        print(f"  {log_entry}")
+
+    print(f"\n{Colors.BOLD}Arena Status{Colors.RESET}")
+    print(f" {'Arena':<9} | {'Status':<10} | {'Pop':<10} | {'Avg Len':<10} | {'Config (Size/Cyc/Proc)'}")
+    print("-" * 75)
 
     total_warriors = 0
 
     for i in range(LAST_ARENA + 1):
         dir_name = f"arena{i}"
-        print(f"Arena {i}:")
-        print(f"  Configuration: Size={CORESIZE_LIST[i]}, Cycles={CYCLES_LIST[i]}, Processes={PROCESSES_LIST[i]}")
 
-        if not os.path.exists(dir_name):
-            print(f"  Status: Directory '{dir_name}' not found (Unseeded?)")
-            print("-" * 40)
-            continue
+        config_str = f"{CORESIZE_LIST[i]}/{CYCLES_LIST[i]}/{PROCESSES_LIST[i]}"
 
-        files = [f for f in os.listdir(dir_name) if f.endswith('.red')]
-        count = len(files)
-        total_warriors += count
+        status_str = f"{Colors.RED}Missing{Colors.RESET}"
+        pop_str = "-"
+        avg_len_str = "-"
 
-        avg_len = 0
-        if count > 0:
-            total_lines = 0
-            # Sample up to 50 files for speed
-            sample_files = files[:50]
-            for f in sample_files:
-                try:
-                    with open(os.path.join(dir_name, f), 'r') as fh:
-                        # Count non-empty lines
-                        total_lines += sum(1 for line in fh if line.strip())
-                except:
-                    pass
-            avg_len = total_lines / len(sample_files)
+        if os.path.exists(dir_name):
+            files = [f for f in os.listdir(dir_name) if f.endswith('.red')]
+            count = len(files)
+            total_warriors += count
 
-        print(f"  Population:    {count} warriors")
-        if count > 0:
-            print(f"  Avg Length:    {avg_len:.1f} instructions (sampled)")
-        print("-" * 40)
+            if count > 0:
+                status_str = f"{Colors.GREEN}Active{Colors.RESET}"
+                pop_str = f"{count}"
+
+                # Sample length calculation
+                total_lines = 0
+                sample_files = files[:20] # Reduce sample size for responsiveness
+                valid_samples = 0
+                for f in sample_files:
+                    try:
+                        with open(os.path.join(dir_name, f), 'r') as fh:
+                            # Count non-empty lines
+                            lines = sum(1 for line in fh if line.strip())
+                            total_lines += lines
+                            valid_samples += 1
+                    except:
+                        pass
+
+                if valid_samples > 0:
+                    avg_len = total_lines / valid_samples
+                    avg_len_str = f"{avg_len:.1f}"
+            else:
+                 status_str = f"{Colors.YELLOW}Empty{Colors.RESET}"
+                 pop_str = "0"
+
+        print(f" Arena {i:<3}   | {status_str:<19} | {pop_str:<10} | {avg_len_str:<10} | {config_str}")
 
     # Archive
-    print("Archive:")
+    print(f"\n{Colors.BOLD}Archive{Colors.RESET}")
     if os.path.exists("archive"):
         afiles = [f for f in os.listdir("archive") if f.endswith('.red')]
-        print(f"  Contains {len(afiles)} warriors.")
+        print(f"  Contains {Colors.CYAN}{len(afiles)}{Colors.RESET} warriors.")
     else:
-        print("  Directory 'archive' not found.")
+        print(f"  {Colors.RED}Directory 'archive' not found.{Colors.RESET}")
 
-    print("="*60)
+    print("=" * 60 + "\n")
 
 def validate_configuration():
     """
