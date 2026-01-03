@@ -279,14 +279,6 @@ def rebuild_instruction_tables(active_config) -> InstructionTables:
     return tables
 
 
-def _ensure_int(value) -> int:
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    return int(str(value))
-
-
 def coremod(num: int, modulus: int) -> int:
     if modulus == 0:
         raise ValueError("Modulus cannot be zero")
@@ -412,11 +404,11 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
     if allowed_modes and sanitized.b_mode not in allowed_modes:
         return default_instruction()
     sanitized.a_field = corenorm(
-        coremod(_ensure_int(sanitized.a_field), config.sanitize_list[arena]),
+        coremod(int(sanitized.a_field), config.sanitize_list[arena]),
         config.coresize_list[arena],
     )
     sanitized.b_field = corenorm(
-        coremod(_ensure_int(sanitized.b_field), config.sanitize_list[arena]),
+        coremod(int(sanitized.b_field), config.sanitize_list[arena]),
         config.coresize_list[arena],
     )
     sanitized.label = None

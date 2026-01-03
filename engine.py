@@ -83,7 +83,6 @@ from redcode import (
     instruction_to_line,
     parse_instruction_or_default,
     parse_redcode_instruction,
-    _ensure_int,
     _parse_operand,
     rebuild_instruction_tables,
     sanitize_instruction,
@@ -335,7 +334,7 @@ class MicroMutation(BaseMutationStrategy):
         magic_number: int,
     ) -> RedcodeInstruction:
         target_field = "a_field" if _rng_int(1, 2) == 1 else "b_field"
-        current_value = _ensure_int(getattr(instruction, target_field))
+        current_value = int(getattr(instruction, target_field))
         if _rng_int(1, 2) == 1:
             current_value += 1
         else:
