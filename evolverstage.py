@@ -8,23 +8,34 @@ This program is distributed in the hope that it will be useful, but WITHOUT ANY 
 
 You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]]
+Core War Evolver - A genetic algorithm for evolving Redcode warriors.
+
+Usage: python evolverstage.py [COMMAND] [OPTIONS]
+
+General Commands:
+  --check, -c       Check if everything is set up correctly (settings, paths, simulator).
+  --status, -s      Show the current progress, arena populations, and latest activity.
+  --dump-config, -d Show the active configuration settings.
+
+Evolution Controls:
+  (No arguments)    Run the evolver loop.
+  --restart         Start a fresh evolution (clears existing arenas).
+  --resume          Continue evolution from where you left off.
+
+Battle Tools:
+  --battle, -b      Run a single fight between two warriors.
+                    Usage: python evolverstage.py --battle file1.red file2.red [--arena N]
+  --tournament, -t  Run a round-robin tournament for all warriors in a folder.
+                    Usage: python evolverstage.py --tournament folder/ [--arena N]
+  --benchmark, -m   Test one warrior against a folder of opponents.
+                    Usage: python evolverstage.py --benchmark my_warrior.red folder/ [--arena N]
+
+Utilities:
+  --normalize, -n   Clean up a warrior file to match an arena's rules.
+                    Usage: python evolverstage.py --normalize warrior.red [--arena N]
 
 Options:
-  --dump-config, -d    Print the current configuration values derived from settings.ini and defaults, then exit.
-  --check, -c          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
-  --status, -s         Print the current status of the evolution (arenas, population counts, log activity) and exit.
-  --restart            Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
-  --resume             Force resumption of evolution (ALREADYSEEDED = True) from existing files.
-  --battle, -b         Run a single battle between two warrior files using the configuration of a specific arena.
-                       Usage: --battle warrior1.red warrior2.red [--arena 0]
-  --tournament, -t     Run a round-robin tournament between all .red files in a directory.
-                       Usage: --tournament warriors/ [--arena 0]
-  --benchmark, -m      Run a benchmark of a single warrior against all .red files in a directory.
-                       Usage: --benchmark mywarrior.red warriors/ [--arena 0]
-  --normalize, -n      Read a warrior file, normalize its instructions to the arena's standards (core size, sanitize limit), and print to stdout.
-                       Usage: --normalize mywarrior.red [--arena 0]
+  --arena, -a N     Specify which arena's rules to use (default: 0).
 '''
 
 import random
