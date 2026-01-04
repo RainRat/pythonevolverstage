@@ -45,6 +45,17 @@ from collections import deque
 
 from evolver.logger import DataLogger
 
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
 class Marble(Enum):
   DO_NOTHING = 0
   MAJOR_MUTATION = 1
@@ -67,7 +78,7 @@ def draw_progress_bar(percent, width=30):
     if percent > 100: percent = 100
     filled_length = int(width * percent // 100)
     bar = '=' * filled_length + '-' * (width - filled_length)
-    return f"[{bar}] {percent:6.2f}%"
+    return f"[{Colors.GREEN}{bar}{Colors.ENDC}] {percent:6.2f}%"
 
 def run_nmars_subprocess(cmd):
     """
@@ -140,7 +151,7 @@ def run_custom_battle(file1, file2, arena_idx):
 
     cmd = construct_battle_command(file1, file2, arena_idx)
 
-    print(f"Starting battle: {file1} vs {file2}")
+    print(f"{Colors.BOLD}Starting battle: {file1} vs {file2}{Colors.ENDC}")
     print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
 
     output = run_nmars_subprocess(cmd)
@@ -150,7 +161,7 @@ def run_custom_battle(file1, file2, arena_idx):
         print(output.strip())
         print("-" * 40)
     else:
-        print("No output received from nMars.")
+        print(f"{Colors.RED}No output received from nMars.{Colors.ENDC}")
 
 def run_tournament(directory, arena_idx):
     """
@@ -204,10 +215,11 @@ def run_tournament(directory, arena_idx):
             elif warrior_id == 2:
                 scores[file_map[p2]] += points
 
-    print("\n\nTournament Results:")
+    print(f"\n\n{Colors.BOLD}Tournament Results:{Colors.ENDC}")
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     for rank, (name, score) in enumerate(sorted_scores, 1):
-        print(f"{rank}. {name}: {score}")
+        color = Colors.GREEN if rank == 1 else Colors.ENDC
+        print(f"{color}{rank}. {name}: {score}{Colors.ENDC}")
 
 def run_benchmark(warrior_file, directory, arena_idx):
     """
@@ -278,12 +290,12 @@ def run_benchmark(warrior_file, directory, arena_idx):
         else:
             stats['ties'] += 1
 
-    print(f"\n\nBenchmark Results for {warrior_file}:")
+    print(f"\n\n{Colors.BOLD}Benchmark Results for {warrior_file}:{Colors.ENDC}")
     print(f"  Total Battles: {len(opponents)}")
     if len(opponents) > 0:
-        print(f"  Wins:   {stats['wins']} ({stats['wins']/len(opponents)*100:.1f}%)")
-        print(f"  Losses: {stats['losses']} ({stats['losses']/len(opponents)*100:.1f}%)")
-        print(f"  Ties:   {stats['ties']} ({stats['ties']/len(opponents)*100:.1f}%)")
+        print(f"  {Colors.GREEN}Wins:   {stats['wins']} ({stats['wins']/len(opponents)*100:.1f}%){Colors.ENDC}")
+        print(f"  {Colors.RED}Losses: {stats['losses']} ({stats['losses']/len(opponents)*100:.1f}%){Colors.ENDC}")
+        print(f"  {Colors.YELLOW}Ties:   {stats['ties']} ({stats['ties']/len(opponents)*100:.1f}%){Colors.ENDC}")
         print(f"  Total Score: {stats['score']}")
         print(f"  Average Score: {stats['score']/len(opponents):.2f}")
 
@@ -561,40 +573,39 @@ def print_status():
     """
     data = get_evolution_status()
 
-    print("="*60)
-    print(f"Evolver Status Report")
+    print(f"{Colors.BOLD}{Colors.HEADER}Evolver Status Report{Colors.ENDC}")
     print("="*60)
 
     # Latest Activity
-    print(f"Latest Battle Log: {data['latest_log']}")
+    print(f"{Colors.BOLD}Latest Battle Log:{Colors.ENDC} {data['latest_log']}")
     print("-" * 60)
 
     total_warriors = 0
 
     for arena in data['arenas']:
         i = arena['id']
-        print(f"Arena {i}:")
+        print(f"{Colors.BOLD}Arena {i}:{Colors.ENDC}")
         print(f"  Configuration: Size={arena['config']['size']}, Cycles={arena['config']['cycles']}, Processes={arena['config']['processes']}")
 
         if not arena['exists']:
-            print(f"  Status: Directory '{arena['directory']}' not found (Unseeded?)")
+            print(f"  {Colors.YELLOW}Status: Directory '{arena['directory']}' not found (Unseeded?){Colors.ENDC}")
             print("-" * 40)
             continue
 
         count = arena['population']
         total_warriors += count
 
-        print(f"  Population:    {count} warriors")
+        print(f"  Population:    {Colors.GREEN}{count} warriors{Colors.ENDC}")
         if count > 0:
             print(f"  Avg Length:    {arena['avg_length']:.1f} instructions (sampled)")
         print("-" * 40)
 
     # Archive
-    print("Archive:")
+    print(f"{Colors.BOLD}Archive:{Colors.ENDC}")
     if data['archive']['exists']:
-        print(f"  Contains {data['archive']['count']} warriors.")
+        print(f"  Contains {Colors.GREEN}{data['archive']['count']} warriors{Colors.ENDC}.")
     else:
-        print("  Directory 'archive' not found.")
+        print(f"  {Colors.YELLOW}Directory 'archive' not found.{Colors.ENDC}")
 
     print("="*60)
 
@@ -670,17 +681,17 @@ def validate_configuration():
 
     # Print results
     if warnings:
-        print("Warnings:")
+        print(f"{Colors.YELLOW}Warnings:{Colors.ENDC}")
         for w in warnings:
             print(f"  - {w}")
 
     if errors:
-        print("Errors:")
+        print(f"{Colors.RED}Errors:{Colors.ENDC}")
         for e in errors:
             print(f"  - {e}")
         return False
 
-    print("Configuration and environment are valid.")
+    print(f"{Colors.GREEN}Configuration and environment are valid.{Colors.ENDC}")
     return True
 
 if __name__ == "__main__":
@@ -880,7 +891,7 @@ if __name__ == "__main__":
     if FINAL_ERA_ONLY==True:
       era=2
     if era!=prevera:
-      print(f"\n************** Switching from era {prevera + 1} to {era + 1} *******************")
+      print(f"\n{Colors.YELLOW}************** Switching from era {prevera + 1} to {era + 1} *******************{Colors.ENDC}")
       bag = construct_marble_bag(era)
 
     remaining_seconds = (CLOCK_TIME - runtime_in_hours) * 3600
