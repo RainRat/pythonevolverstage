@@ -2,30 +2,40 @@
 # This script manages the evolution, breeding, and battling of warriors across multiple arenas.
 
 '''
-This program is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+Core War Evolver
 
-This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+A tool to evolve Redcode warriors using a genetic algorithm.
+For license information, see LICENSE.md.
 
 Usage:
   python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]]
 
-Options:
-  --dump-config, -d    Print the current configuration values derived from settings.ini and defaults, then exit.
-  --check, -c          Validate the current configuration and environment (settings.ini, executables, paths), then exit.
-  --status, -s         Print the current status of the evolution (arenas, population counts, log activity) and exit.
-                       Add --json to output in JSON format.
-  --restart            Force a fresh start (ALREADYSEEDED = False), overwriting existing arenas.
-  --resume             Force resumption of evolution (ALREADYSEEDED = True) from existing files.
-  --battle, -b         Run a single battle between two warrior files using the configuration of a specific arena.
-                       Usage: --battle warrior1.red warrior2.red [--arena 0]
-  --tournament, -t     Run a round-robin tournament between all .red files in a directory.
-                       Usage: --tournament warriors/ [--arena 0]
-  --benchmark, -m      Run a benchmark of a single warrior against all .red files in a directory.
-                       Usage: --benchmark mywarrior.red warriors/ [--arena 0]
-  --normalize, -n      Read a warrior file, normalize its instructions to the arena's standards (core size, sanitize limit), and print to stdout.
-                       Usage: --normalize mywarrior.red [--arena 0]
+General Commands:
+  --check, -c          Validate configuration and environment (settings.ini, nMars).
+  --status, -s         Show evolution status (arenas, population, logs).
+                       Add --json for JSON output.
+  --dump-config, -d    Print current configuration settings and exit.
+
+Evolution Controls:
+  --restart            Start fresh (overwrites existing arenas).
+  --resume             Continue evolution from existing files.
+
+Battle Tools:
+  --battle, -b         Run a single battle between two warriors.
+                       Usage: --battle <warrior1> <warrior2> [--arena <N>]
+  --tournament, -t     Run a round-robin tournament for all warriors in a folder.
+                       Usage: --tournament <directory> [--arena <N>]
+  --benchmark, -m      Test a warrior against a folder of opponents.
+                       Usage: --benchmark <warrior> <directory> [--arena <N>]
+
+Utilities:
+  --normalize, -n      Clean up a warrior's code (standardize format).
+                       Usage: --normalize <warrior> [--arena <N>]
+
+Examples:
+  python evolverstage.py --check
+  python evolverstage.py --battle mywarrior.red enemy.red --arena 1
+  python evolverstage.py --benchmark champion.red arena0/
 '''
 
 import random
