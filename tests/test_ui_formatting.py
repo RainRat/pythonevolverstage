@@ -55,40 +55,50 @@ class TestDrawProgressBar(unittest.TestCase):
         # Default width 30
         result = evolverstage.draw_progress_bar(0)
         expected_bar = '-' * 30
-        self.assertIn(f"[{expected_bar}]", result)
-        self.assertIn("0.00%", result)
+        # Check for color codes in result
+        self.assertIn(evolverstage.Colors.GREEN, result)
+        self.assertIn(evolverstage.Colors.ENDC, result)
+        # Check content ignoring color codes for bar part logic
+        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        self.assertIn(f"[{expected_bar}]", clean_result)
+        self.assertIn("0.00%", clean_result)
 
     def test_hundred_percent(self):
         """Test 100% progress."""
         result = evolverstage.draw_progress_bar(100)
         expected_bar = '=' * 30
-        self.assertIn(f"[{expected_bar}]", result)
-        self.assertIn("100.00%", result)
+        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        self.assertIn(f"[{expected_bar}]", clean_result)
+        self.assertIn("100.00%", clean_result)
 
     def test_fifty_percent(self):
         """Test 50% progress."""
         result = evolverstage.draw_progress_bar(50)
         expected_bar = '=' * 15 + '-' * 15
-        self.assertIn(f"[{expected_bar}]", result)
-        self.assertIn("50.00%", result)
+        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        self.assertIn(f"[{expected_bar}]", clean_result)
+        self.assertIn("50.00%", clean_result)
 
     def test_custom_width(self):
         """Test with custom width."""
         result = evolverstage.draw_progress_bar(50, width=10)
         expected_bar = '=' * 5 + '-' * 5
-        self.assertIn(f"[{expected_bar}]", result)
-        self.assertIn("50.00%", result)
+        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        self.assertIn(f"[{expected_bar}]", clean_result)
+        self.assertIn("50.00%", clean_result)
 
     def test_negative_percent(self):
         """Test negative percentage is clamped to 0%."""
         result = evolverstage.draw_progress_bar(-10)
         expected_bar = '-' * 30
-        self.assertIn(f"[{expected_bar}]", result)
-        self.assertIn("0.00%", result) # Note: function modifies percent variable locally
+        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        self.assertIn(f"[{expected_bar}]", clean_result)
+        self.assertIn("0.00%", clean_result)
 
     def test_over_hundred_percent(self):
         """Test >100% is clamped to 100%."""
         result = evolverstage.draw_progress_bar(150)
         expected_bar = '=' * 30
-        self.assertIn(f"[{expected_bar}]", result)
-        self.assertIn("100.00%", result)
+        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        self.assertIn(f"[{expected_bar}]", clean_result)
+        self.assertIn("100.00%", clean_result)
