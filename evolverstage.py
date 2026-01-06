@@ -24,8 +24,9 @@ Options:
                        Usage: --tournament warriors/ [--arena 0]
   --benchmark, -m      Run a benchmark of a single warrior against all .red files in a directory.
                        Usage: --benchmark mywarrior.red warriors/ [--arena 0]
-  --normalize, -n      Read a warrior file, normalize its instructions to the arena's standards (core size, sanitize limit), and print to stdout.
-                       Usage: --normalize mywarrior.red [--arena 0]
+  --normalize, -n      Normalize instructions to the arena's standards (core size, sanitize limit).
+                       Supports single file (stdout or file output) or batch processing (directory to directory).
+                       Usage: --normalize <file|dir> [-o <output_path>] [--arena 0]
 '''
 
 import random
@@ -287,17 +288,55 @@ def run_benchmark(warrior_file, directory, arena_idx):
         print(f"  Total Score: {stats['score']}")
         print(f"  Average Score: {stats['score']/len(opponents):.2f}")
 
-def run_normalization(filepath, arena_idx):
+def run_normalization(filepath, arena_idx, output_path=None):
     """
-    Reads a warrior file and prints the normalized instructions to stdout.
+    Reads a warrior file (or directory) and outputs the normalized instructions.
+
+    If filepath is a directory, output_path must be a directory.
+    If filepath is a file:
+      - if output_path is set, writes to that file.
+      - if output_path is None, prints to stdout.
     """
     if arena_idx > LAST_ARENA:
         print(f"Error: Arena {arena_idx} does not exist (LAST_ARENA={LAST_ARENA})")
         return
 
     if not os.path.exists(filepath):
-        print(f"Error: File '{filepath}' not found.")
+        print(f"Error: Path '{filepath}' not found.")
         return
+
+    # Directory Mode
+    if os.path.isdir(filepath):
+        if not output_path:
+            print("Error: Output directory must be specified when normalizing a directory.")
+            return
+
+        os.makedirs(output_path, exist_ok=True)
+
+        files = [f for f in os.listdir(filepath) if f.endswith('.red')]
+        if not files:
+            print(f"No .red files found in {filepath}")
+            return
+
+        print(f"Normalizing {len(files)} files from {filepath} to {output_path}...")
+        for f in files:
+            in_f = os.path.join(filepath, f)
+            out_f = os.path.join(output_path, f)
+            # Recursive call for single file
+            run_normalization(in_f, arena_idx, output_path=out_f)
+        return
+
+    # Single File Mode
+    out_stream = sys.stdout
+    file_handle = None
+
+    if output_path:
+        try:
+            file_handle = open(output_path, 'w')
+            out_stream = file_handle
+        except OSError as e:
+            print(f"Error opening output file {output_path}: {e}")
+            return
 
     try:
         with open(filepath, 'r') as f:
@@ -312,12 +351,15 @@ def run_normalization(filepath, arena_idx):
 
             try:
                 normalized = normalize_instruction(clean_line, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
-                print(normalized, end='')
+                out_stream.write(normalized)
             except (ValueError, IndexError):
                 sys.stderr.write(f"Warning: Could not normalize line: {line.strip()}\n")
 
     except Exception as e:
         print(f"Error processing file: {e}")
+    finally:
+        if file_handle:
+            file_handle.close()
 
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
@@ -803,7 +845,7 @@ if __name__ == "__main__":
               idx = sys.argv.index("-n")
 
           if len(sys.argv) < idx + 2:
-              print("Usage: --normalize|-n <warrior_file> [--arena|-a <N>]")
+              print("Usage: --normalize|-n <warrior_file|dir> [-o <output_path>] [--arena|-a <N>]")
               sys.exit(1)
 
           warrior_file = sys.argv[idx+1]
@@ -818,7 +860,17 @@ if __name__ == "__main__":
               if len(sys.argv) > a_idx + 1:
                   arena_idx = int(sys.argv[a_idx+1])
 
-          run_normalization(warrior_file, arena_idx)
+          output_path = None
+          if "--output" in sys.argv or "-o" in sys.argv:
+              if "--output" in sys.argv:
+                  o_idx = sys.argv.index("--output")
+              else:
+                  o_idx = sys.argv.index("-o")
+
+              if len(sys.argv) > o_idx + 1:
+                  output_path = sys.argv[o_idx+1]
+
+          run_normalization(warrior_file, arena_idx, output_path=output_path)
           sys.exit(0)
       except ValueError:
           print("Invalid arguments.")
