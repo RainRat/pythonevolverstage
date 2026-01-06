@@ -280,8 +280,6 @@ def rebuild_instruction_tables(active_config) -> InstructionTables:
 
 
 def coremod(num: int, modulus: int) -> int:
-    if modulus == 0:
-        raise ValueError("Modulus cannot be zero")
     return num % modulus
 
 
