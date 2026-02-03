@@ -15,7 +15,9 @@ class TestStatus(unittest.TestCase):
     @patch('os.listdir')
     def test_print_status_structure(self, mock_listdir, mock_exists, mock_get_log, mock_print):
         # Setup mocks
-        mock_get_log.return_value = "Test Log Entry"
+        mock_get_log.return_value = {
+            'era': '0', 'arena': '0', 'winner': '5', 'loser': '10', 'score1': '150', 'score2': '50'
+        }
         mock_exists.return_value = True
         mock_listdir.return_value = ['1.red', '2.red']
 
@@ -25,10 +27,14 @@ class TestStatus(unittest.TestCase):
 
         # Check if key headers were printed
         # We can inspect the calls to print
-        printed_strings = [call.args[0] for call in mock_print.call_args_list if call.args]
+        import re
+        def strip_ansi(text):
+            return re.sub(r'\033\[[0-9;]*m', '', text)
+
+        printed_strings = [strip_ansi(call.args[0]) for call in mock_print.call_args_list if call.args]
 
         self.assertTrue(any("Evolver Status Report" in s for s in printed_strings))
-        self.assertTrue(any("Latest Battle Log: Test Log Entry" in s for s in printed_strings))
+        self.assertTrue(any("Latest Activity: Era 1, Arena 0: Warrior 5 beat 10 (150-50)" in s for s in printed_strings))
         self.assertTrue(any("Arena 0:" in s for s in printed_strings))
         self.assertTrue(any("Population:    2 warriors" in s for s in printed_strings))
 

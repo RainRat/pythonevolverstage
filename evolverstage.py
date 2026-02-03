@@ -8,12 +8,14 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]]
+  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]]
 
 General Commands:
   --check, -c          Validate configuration and environment (settings.ini, nMars).
   --status, -s         Show evolution status (arenas, population, logs).
                        Add --json for JSON output.
+  --leaderboard, -l    Show top performing warriors based on log history.
+                       Usage: --leaderboard [--arena <N>] [--json]
   --dump-config, -d    Print current configuration settings and exit.
 
 Evolution Controls:
@@ -323,7 +325,7 @@ def run_normalization(filepath, arena_idx, output_path=None):
         return
 
     if not os.path.exists(filepath):
-        print(f"Error: Path '{filepath}' not found.")
+        print(f"Error: File '{filepath}' not found.")
         return
 
     # Directory Mode
@@ -372,7 +374,10 @@ def run_normalization(filepath, arena_idx, output_path=None):
 
             try:
                 normalized = normalize_instruction(clean_line, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
-                out_stream.write(normalized)
+                if out_stream == sys.stdout:
+                    print(normalized, end='')
+                else:
+                    out_stream.write(normalized)
             except (ValueError, IndexError):
                 sys.stderr.write(f"Warning: Could not normalize line: {line.strip()}\n")
 
@@ -546,19 +551,35 @@ def determine_winner(scores, warriors):
 
 def get_latest_log_entry():
     """
-    Retrieves the last entry from the battle log file.
+    Retrieves and parses the last entry from the battle log file.
     """
     if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
-        return "No battle log found."
+        return None
     try:
         with open(BATTLE_LOG_FILE, 'r') as f:
-            last_line = deque(f, maxlen=1)
-            if last_line:
-                return last_line[0].strip()
-            else:
-                return "Log file is empty."
-    except Exception as e:
-        return f"Error reading log: {e}"
+            lines = deque(f, maxlen=1)
+            if not lines:
+                return None
+
+            last_line = lines[0].strip()
+            if not last_line or "winner,loser" in last_line:
+                return None
+
+            # Manually parse the CSV line to avoid reading the whole file
+            # era,arena,winner,loser,score1,score2,bred_with
+            parts = last_line.split(',')
+            if len(parts) >= 6:
+                return {
+                    'era': parts[0],
+                    'arena': parts[1],
+                    'winner': parts[2],
+                    'loser': parts[3],
+                    'score1': parts[4],
+                    'score2': parts[5]
+                }
+            return None
+    except Exception:
+        return None
 
 def get_evolution_status():
     """
@@ -612,6 +633,53 @@ def get_evolution_status():
 
     return status
 
+def get_leaderboard(arena_idx=None, limit=10):
+    """
+    Parses the battle log to find the top performing warriors.
+    Tracks consecutive wins for each warrior ID, resetting when they lose.
+    """
+    if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
+        return {}
+
+    # arena -> warrior_id -> wins_since_last_loss
+    stats = {}
+
+    try:
+        with open(BATTLE_LOG_FILE, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    a = int(row['arena'])
+                    if arena_idx is not None and a != arena_idx:
+                        continue
+
+                    if a not in stats:
+                        stats[a] = {}
+
+                    winner = row['winner']
+                    loser = row['loser']
+
+                    # Increment winner
+                    stats[a][winner] = stats[a].get(winner, 0) + 1
+                    # Reset loser
+                    stats[a][loser] = 0
+                except (ValueError, KeyError):
+                    continue
+
+        # Sort and filter
+        results = {}
+        for a in sorted(stats.keys()):
+            # filter out those with 0 wins (they just lost or never won)
+            ranked = [(w, c) for w, c in stats[a].items() if c > 0]
+            ranked.sort(key=lambda x: x[1], reverse=True)
+            if ranked:
+                results[a] = ranked[:limit]
+
+        return results
+    except Exception as e:
+        sys.stderr.write(f"Error generating leaderboard: {e}\n")
+        return {}
+
 def print_status_json(status_data):
     """
     Prints the status data as a JSON object.
@@ -628,7 +696,15 @@ def print_status():
     print("="*60)
 
     # Latest Activity
-    print(f"{Colors.BOLD}Latest Battle Log:{Colors.ENDC} {data['latest_log']}")
+    log = data['latest_log']
+    if log:
+        try:
+            summary = f"Era {int(log['era'])+1}, Arena {log['arena']}: Warrior {log['winner']} beat {log['loser']} ({log['score1']}-{log['score2']})"
+            print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} {summary}")
+        except (ValueError, KeyError):
+            print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} {log}")
+    else:
+        print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} No battles recorded yet.")
     print("-" * 60)
 
     total_warriors = 0
@@ -766,6 +842,33 @@ if __name__ == "__main__":
         print_status_json(get_evolution_status())
     else:
         print_status()
+    sys.exit(0)
+
+  if "--leaderboard" in sys.argv or "-l" in sys.argv:
+    arena_idx = None
+    if "--arena" in sys.argv or "-a" in sys.argv:
+        try:
+            a_idx = sys.argv.index("--arena") if "--arena" in sys.argv else sys.argv.index("-a")
+            if len(sys.argv) > a_idx + 1:
+                arena_idx = int(sys.argv[a_idx+1])
+        except ValueError:
+            pass
+
+    results = get_leaderboard(arena_idx=arena_idx)
+
+    if "--json" in sys.argv:
+        print(json.dumps(results, indent=2))
+    else:
+        if not results:
+            print(f"{Colors.YELLOW}No leaderboard data available.{Colors.ENDC}")
+        else:
+            print(f"\n{Colors.BOLD}{Colors.HEADER}--- Current Champions (Wins since last loss) ---{Colors.ENDC}")
+            for arena, top in results.items():
+                print(f"{Colors.BOLD}Arena {arena}:{Colors.ENDC}")
+                for i, (warrior, wins) in enumerate(top, 1):
+                    color = Colors.GREEN if i == 1 else Colors.ENDC
+                    print(f"  {i}. Warrior {warrior:3}: {color}{wins} wins{Colors.ENDC}")
+                print("-" * 30)
     sys.exit(0)
 
   if "--battle" in sys.argv or "-b" in sys.argv:
@@ -978,7 +1081,9 @@ if __name__ == "__main__":
     if len(scores) < 2:
       continue
 
-    winner, loser = determine_winner(scores, warriors)
+    res_winner, res_loser = determine_winner(scores, warriors)
+    winner = cont1 if res_winner == 1 else cont2
+    loser = cont1 if res_loser == 1 else cont2
 
     if ARCHIVE_LIST[era]!=0 and random.randint(1,ARCHIVE_LIST[era])==1:
       #archive winner

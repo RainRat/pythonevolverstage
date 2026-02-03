@@ -112,6 +112,6 @@ class TestRunTournament(unittest.TestCase):
         # scores = {f: 0 for f in files}
         # In loop: scores[file_map[p1]] += ...
 
-        mock_print.assert_any_call("1. warrior1.red: 200")
-        mock_print.assert_any_call("2. warrior2.red: 100")
-        mock_print.assert_any_call("3. warrior3.red: 0")
+        mock_print.assert_any_call(f"{evolverstage.Colors.GREEN}1. warrior1.red: 200{evolverstage.Colors.ENDC}")
+        mock_print.assert_any_call(f"{evolverstage.Colors.ENDC}2. warrior2.red: 100{evolverstage.Colors.ENDC}")
+        mock_print.assert_any_call(f"{evolverstage.Colors.ENDC}3. warrior3.red: 0{evolverstage.Colors.ENDC}")
