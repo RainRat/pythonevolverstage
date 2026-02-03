@@ -60,6 +60,8 @@ Settings are in `settings.ini`. Open this file to change how the evolution works
 You can do more than just evolve warriors. The script includes tools to run battles, tournaments, and benchmarks.
 
 ### Manage Evolution
+*   **Status**: `python evolverstage.py --status`
+    *   Shows the current state of evolution, including population size and average warrior length for each arena. Add `--json` for machine-readable output.
 *   **Force Restart**: `python evolverstage.py --restart`
     *   Starts from scratch (Era 1), overwriting any existing warriors in the arenas.
 *   **Resume**: `python evolverstage.py --resume`
@@ -78,12 +80,14 @@ You can do more than just evolve warriors. The script includes tools to run batt
     ```bash
     python evolverstage.py --benchmark my_warrior.red warriors/
     ```
-*   **Normalize**: Clean up a warrior's code to match the arena's standards.
+*   **Normalize**: Clean up a warrior's code or an entire directory to match the arena's standards.
     ```bash
     python evolverstage.py --normalize my_warrior.red
+    # Normalize a whole directory to an output folder
+    python evolverstage.py --normalize warriors/ -o cleaned_warriors/
     ```
 
-**Note**: You can add `--arena N` (e.g., `--arena 1`) to any command to use the rules of a specific arena. Default is Arena 0.
+**Note**: You can add `--arena N` (e.g., `--arena 1`) to most commands to use the rules of a specific arena. The default is Arena 0.
 
 ## Output Explained
 
@@ -105,6 +109,14 @@ If you set a filename for `BATTLE_LOG_FILE` in `settings.ini`, the script saves 
 
 To ensure the code is working correctly, you can run the included test suite. This is recommended if you plan to modify the code.
 
+### Using unittest (Standard Library)
+Most tests can be run using Python's built-in testing framework without installing additional packages:
+```bash
+python -m unittest discover tests
+```
+
+### Using pytest (Recommended)
+For full coverage (including tests that require external fixtures), we recommend using `pytest`:
 1.  **Install pytest**:
     ```bash
     pip install pytest
@@ -113,7 +125,7 @@ To ensure the code is working correctly, you can run the included test suite. Th
     ```bash
     pytest
     ```
-    The tests verify the logic for evolution, parsing, and battle execution (using a mock simulator), so you don't need `nmars` installed just to run them.
+The tests verify the logic for evolution, parsing, and battle execution (using a mock simulator), so you don't need `nMars` installed to run them.
 
 ## Features
 
