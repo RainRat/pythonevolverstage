@@ -1,6 +1,7 @@
 import sys
 import os
 import unittest
+import re
 from unittest import mock
 
 # Add the root directory to sys.path so we can import evolverstage
@@ -103,15 +104,10 @@ class TestRunTournament(unittest.TestCase):
         # W2 was second in (1,2) [0 pts] and first in (2,3) [100 pts] -> 100 pts
         # W3 was second in (1,3) [0 pts] and second in (2,3) [0 pts] -> 0 pts
 
-        # Check that results are printed
-        # Note: The function prints "1. warrior1.red: 200", etc.
-        # The key in scores dict is just filename (from file_map which maps abs path to filename)
+        # Check that results are printed (ignoring colors)
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        printed_strings = [ansi_escape.sub('', call.args[0]) for call in mock_print.call_args_list if call.args]
 
-        # We need to be careful about file_map logic in source:
-        # file_map = {os.path.join(directory, f): f for f in files}
-        # scores = {f: 0 for f in files}
-        # In loop: scores[file_map[p1]] += ...
-
-        mock_print.assert_any_call("1. warrior1.red: 200")
-        mock_print.assert_any_call("2. warrior2.red: 100")
-        mock_print.assert_any_call("3. warrior3.red: 0")
+        self.assertTrue(any("1. warrior1.red: 200" in s for s in printed_strings))
+        self.assertTrue(any("2. warrior2.red: 100" in s for s in printed_strings))
+        self.assertTrue(any("3. warrior3.red: 0" in s for s in printed_strings))

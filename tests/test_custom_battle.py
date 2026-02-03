@@ -1,6 +1,7 @@
 import sys
 import os
 import unittest
+import re
 from unittest import mock
 
 # Add the root directory to sys.path so we can import evolverstage
@@ -154,4 +155,6 @@ class TestRunCustomBattle(unittest.TestCase):
              with mock.patch('evolverstage.os.name', 'posix'):
                 evolverstage.run_custom_battle(self.file1, self.file2, self.arena_idx)
 
-        mock_print.assert_any_call("No output received from nMars.")
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        printed_strings = [ansi_escape.sub('', call.args[0]) for call in mock_print.call_args_list if call.args]
+        self.assertTrue(any("No output received from nMars." in s for s in printed_strings))
