@@ -660,6 +660,21 @@ def print_status():
 
     print("="*60)
 
+def _get_arena_idx():
+    """
+    Helper to extract arena index from command line arguments.
+    """
+    arena_idx = 0
+    if "--arena" in sys.argv or "-a" in sys.argv:
+        if "--arena" in sys.argv:
+            a_idx = sys.argv.index("--arena")
+        else:
+            a_idx = sys.argv.index("-a")
+
+        if len(sys.argv) > a_idx + 1:
+            arena_idx = int(sys.argv[a_idx+1])
+    return arena_idx
+
 def validate_configuration():
     """
     Checks if the project is ready to run.
@@ -782,16 +797,7 @@ if __name__ == "__main__":
         w1 = sys.argv[idx+1]
         w2 = sys.argv[idx+2]
 
-        arena_idx = 0
-        if "--arena" in sys.argv or "-a" in sys.argv:
-            if "--arena" in sys.argv:
-                a_idx = sys.argv.index("--arena")
-            else:
-                a_idx = sys.argv.index("-a")
-
-            if len(sys.argv) > a_idx + 1:
-                arena_idx = int(sys.argv[a_idx+1])
-
+        arena_idx = _get_arena_idx()
         run_custom_battle(w1, w2, arena_idx)
         sys.exit(0)
     except ValueError:
@@ -811,16 +817,7 @@ if __name__ == "__main__":
 
           directory = sys.argv[idx+1]
 
-          arena_idx = 0
-          if "--arena" in sys.argv or "-a" in sys.argv:
-              if "--arena" in sys.argv:
-                  a_idx = sys.argv.index("--arena")
-              else:
-                  a_idx = sys.argv.index("-a")
-
-              if len(sys.argv) > a_idx + 1:
-                  arena_idx = int(sys.argv[a_idx+1])
-
+          arena_idx = _get_arena_idx()
           run_tournament(directory, arena_idx)
           sys.exit(0)
       except ValueError:
@@ -841,16 +838,7 @@ if __name__ == "__main__":
           warrior_file = sys.argv[idx+1]
           directory = sys.argv[idx+2]
 
-          arena_idx = 0
-          if "--arena" in sys.argv or "-a" in sys.argv:
-              if "--arena" in sys.argv:
-                  a_idx = sys.argv.index("--arena")
-              else:
-                  a_idx = sys.argv.index("-a")
-
-              if len(sys.argv) > a_idx + 1:
-                  arena_idx = int(sys.argv[a_idx+1])
-
+          arena_idx = _get_arena_idx()
           run_benchmark(warrior_file, directory, arena_idx)
           sys.exit(0)
       except ValueError:
@@ -870,16 +858,7 @@ if __name__ == "__main__":
 
           warrior_file = sys.argv[idx+1]
 
-          arena_idx = 0
-          if "--arena" in sys.argv or "-a" in sys.argv:
-              if "--arena" in sys.argv:
-                  a_idx = sys.argv.index("--arena")
-              else:
-                  a_idx = sys.argv.index("-a")
-
-              if len(sys.argv) > a_idx + 1:
-                  arena_idx = int(sys.argv[a_idx+1])
-
+          arena_idx = _get_arena_idx()
           output_path = None
           if "--output" in sys.argv or "-o" in sys.argv:
               if "--output" in sys.argv:
