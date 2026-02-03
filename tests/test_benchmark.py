@@ -1,6 +1,7 @@
 import sys
 import os
 import unittest
+import re
 from unittest import mock
 
 # Add the root directory to sys.path so we can import evolverstage
@@ -117,15 +118,13 @@ class TestRunBenchmark(unittest.TestCase):
         # Check printed output
         # Use str() for partial matching if needed, or exact calls
 
-        # Check Win stats
-        # "  Wins:   1 (33.3%)"
-        mock_print.assert_any_call("  Wins:   1 (33.3%)")
+        # Check Win, Loss, Tie stats (ignoring colors)
+        ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+        printed_strings = [ansi_escape.sub('', call.args[0]) for call in mock_print.call_args_list if call.args]
 
-        # Check Loss stats
-        mock_print.assert_any_call("  Losses: 1 (33.3%)")
-
-        # Check Tie stats
-        mock_print.assert_any_call("  Ties:   1 (33.3%)")
+        self.assertTrue(any("Wins:   1 (33.3%)" in s for s in printed_strings))
+        self.assertTrue(any("Losses: 1 (33.3%)" in s for s in printed_strings))
+        self.assertTrue(any("Ties:   1 (33.3%)" in s for s in printed_strings))
 
         # Check Total Score
         mock_print.assert_any_call("  Total Score: 170")

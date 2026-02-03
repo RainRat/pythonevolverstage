@@ -546,17 +546,32 @@ def determine_winner(scores, warriors):
 
 def get_latest_log_entry():
     """
-    Retrieves the last entry from the battle log file.
+    Retrieves and parses the last entry from the battle log file.
+    Returns a dictionary if the entry is a valid battle log, or a string for messages/errors.
     """
     if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
         return "No battle log found."
     try:
         with open(BATTLE_LOG_FILE, 'r') as f:
             last_line = deque(f, maxlen=1)
-            if last_line:
-                return last_line[0].strip()
-            else:
+            if not last_line:
                 return "Log file is empty."
+
+            entry = last_line[0].strip()
+            if ',' in entry:
+                parts = entry.split(',')
+                # Check if it's a valid log line (not header)
+                if len(parts) >= 7 and parts[0] != 'era':
+                    return {
+                        'era': parts[0],
+                        'arena': parts[1],
+                        'winner': parts[2],
+                        'loser': parts[3],
+                        'score1': parts[4],
+                        'score2': parts[5],
+                        'bred_with': parts[6]
+                    }
+            return entry
     except Exception as e:
         return f"Error reading log: {e}"
 
@@ -625,40 +640,52 @@ def print_status():
     data = get_evolution_status()
 
     print(f"{Colors.BOLD}{Colors.HEADER}Evolver Status Report{Colors.ENDC}")
-    print("="*60)
+    print("="*75)
 
     # Latest Activity
-    print(f"{Colors.BOLD}Latest Battle Log:{Colors.ENDC} {data['latest_log']}")
-    print("-" * 60)
+    log = data['latest_log']
+    if isinstance(log, dict):
+        log_display = f"Era {log['era']}, Arena {log['arena']}: {Colors.GREEN}{log['winner']}{Colors.ENDC} beat {Colors.RED}{log['loser']}{Colors.ENDC} ({log['score1']}-{log['score2']})"
+    elif log:
+        log_display = str(log)
+    else:
+        log_display = f"{Colors.YELLOW}No activity recorded.{Colors.ENDC}"
+
+    print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} {log_display}")
+    print("-" * 75)
+
+    # Table Header
+    header = f"{'ID':>2} | {'Size':>6} | {'Cycles':>8} | {'Proc':>6} | {'Pop':>5} | {'AvgLen':>6} | {'Status':<10}"
+    print(f"{Colors.BOLD}{Colors.CYAN}{header}{Colors.ENDC}")
+    print("-" * 75)
 
     total_warriors = 0
 
     for arena in data['arenas']:
         i = arena['id']
-        print(f"{Colors.BOLD}Arena {i}:{Colors.ENDC}")
-        print(f"  Configuration: Size={arena['config']['size']}, Cycles={arena['config']['cycles']}, Processes={arena['config']['processes']}")
+        conf = arena['config']
 
-        if not arena['exists']:
-            print(f"  {Colors.YELLOW}Status: Directory '{arena['directory']}' not found (Unseeded?){Colors.ENDC}")
-            print("-" * 40)
-            continue
+        if arena['exists']:
+            pop_str = str(arena['population'])
+            len_str = f"{arena['avg_length']:.1f}"
+            status_text = "OK"
+            status_color = Colors.GREEN
+            total_warriors += arena['population']
+        else:
+            pop_str = "-"
+            len_str = "-"
+            status_text = "Missing"
+            status_color = Colors.YELLOW
 
-        count = arena['population']
-        total_warriors += count
+        status_str = f"{status_color}{status_text:<10}{Colors.ENDC}"
+        row = f"{i:>2} | {conf['size']:>6} | {conf['cycles']:>8} | {conf['processes']:>6} | {pop_str:>5} | {len_str:>6} | {status_str}"
+        print(row)
 
-        print(f"  Population:    {Colors.GREEN}{count} warriors{Colors.ENDC}")
-        if count > 0:
-            print(f"  Avg Length:    {arena['avg_length']:.1f} instructions (sampled)")
-        print("-" * 40)
-
+    print("-" * 75)
     # Archive
-    print(f"{Colors.BOLD}Archive:{Colors.ENDC}")
-    if data['archive']['exists']:
-        print(f"  Contains {Colors.GREEN}{data['archive']['count']} warriors{Colors.ENDC}.")
-    else:
-        print(f"  {Colors.YELLOW}Directory 'archive' not found.{Colors.ENDC}")
-
-    print("="*60)
+    archive_status = f"{Colors.GREEN}OK ({data['archive']['count']} warriors){Colors.ENDC}" if data['archive']['exists'] else f"{Colors.YELLOW}Missing{Colors.ENDC}"
+    print(f"{Colors.BOLD}Archive: {Colors.ENDC}{archive_status}")
+    print("="*75)
 
 def validate_configuration():
     """

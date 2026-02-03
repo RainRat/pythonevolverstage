@@ -3,6 +3,7 @@ import os
 import unittest
 from unittest import mock
 import io
+import re
 
 # Add the root directory to sys.path so we can import evolverstage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -38,13 +39,13 @@ class TestRunNormalization(unittest.TestCase):
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_normalization(self.filepath, self.arena_idx)
 
-        mock_print.assert_any_call(f"Error: File '{self.filepath}' not found.")
+        mock_print.assert_any_call(f"Error: Path '{self.filepath}' not found.")
 
     @mock.patch('builtins.open', new_callable=mock.mock_open, read_data="MOV 0, 1\n")
     @mock.patch('os.path.exists')
-    @mock.patch('builtins.print')
+    @mock.patch('sys.stdout', new_callable=io.StringIO)
     @mock.patch('evolverstage.normalize_instruction')
-    def test_run_normalization_success(self, mock_normalize, mock_print, mock_exists, mock_file):
+    def test_run_normalization_success(self, mock_normalize, mock_stdout, mock_exists, mock_file):
         """Test successful normalization of a file."""
         mock_exists.return_value = True
         mock_normalize.return_value = "MOV.I $0,$1\n"
@@ -54,8 +55,8 @@ class TestRunNormalization(unittest.TestCase):
 
         # Verify normalize called (note: ", " replaced by ",")
         mock_normalize.assert_called_with("MOV 0,1", 8000, 8000)
-        # Verify output printed
-        mock_print.assert_called_with("MOV.I $0,$1\n", end='')
+        # Verify output written to stdout
+        self.assertEqual(mock_stdout.getvalue(), "MOV.I $0,$1\n")
 
     @mock.patch('builtins.open', new_callable=mock.mock_open, read_data="bad_instruction\n")
     @mock.patch('os.path.exists')
@@ -98,21 +99,6 @@ class TestRunNormalization(unittest.TestCase):
 
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_normalization(self.filepath, self.arena_idx)
-
-        # "START MOV  0,  1" -> "MOV 0, 1"
-        # .replace('  ',' ') -> "START MOV 0, 1"
-        # .replace('START','') -> " MOV 0, 1"
-        # .replace(', ',',') -> " MOV 0,1"
-        # .strip() -> "MOV 0,1"
-
-        # Wait, the code is:
-        # clean_line = line.replace('  ',' ').replace('START','').replace(', ',',').strip()
-
-        # "START MOV  0,  1"
-        # replace double space: "START MOV 0, 1"
-        # replace START: " MOV 0, 1"
-        # replace comma space: " MOV 0,1"
-        # strip: "MOV 0,1"
 
         mock_normalize.assert_called_with("MOV 0,1", 8000, 8000)
 
