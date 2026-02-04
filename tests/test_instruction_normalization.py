@@ -82,3 +82,39 @@ class TestNormalizeInstruction(unittest.TestCase):
         expected = "MOV.I @10,<20\n"
         result = evolverstage.normalize_instruction(instr, coresize, sanitize)
         self.assertEqual(result, expected)
+
+    def test_1988_syntax(self):
+        # Missing modifier, should default to .I
+        instr = "MOV $0,$0"
+        coresize = 8000
+        sanitize = 8000
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, coresize, sanitize)
+        self.assertEqual(result, expected)
+
+    def test_missing_modes(self):
+        # Missing address modes, should default to $
+        instr = "MOV.I 0,1"
+        coresize = 8000
+        sanitize = 8000
+        expected = "MOV.I $0,$1\n"
+        result = evolverstage.normalize_instruction(instr, coresize, sanitize)
+        self.assertEqual(result, expected)
+
+    def test_case_insensitivity(self):
+        # Lowercase input should be normalized to uppercase
+        instr = "mov.i $0,$0"
+        coresize = 8000
+        sanitize = 8000
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, coresize, sanitize)
+        self.assertEqual(result, expected)
+
+    def test_extra_whitespace(self):
+        # Varied whitespace handling
+        instr = "  MOV.I   $0  ,  $0  "
+        coresize = 8000
+        sanitize = 8000
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, coresize, sanitize)
+        self.assertEqual(result, expected)

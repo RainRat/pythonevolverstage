@@ -483,11 +483,45 @@ def corenorm(x, y):
     return -(y - x) if x > y // 2 else (y + x) if x <= -(y // 2) else x
 
 def normalize_instruction(instruction, coresize, sanitize_limit):
-    splitline = re.split(r'[ \.,\n]', instruction.strip())
-    return splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
-           str(corenorm(coremod(int(splitline[2][1:]),sanitize_limit),coresize))+","+ \
-           splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),sanitize_limit), \
-           coresize))+"\n"
+    """
+    Standardizes a Redcode instruction by normalizing address values
+    and ensuring consistent formatting. Handles both 1988 and 1994 syntax.
+    """
+    # Remove extra whitespace and split into components
+    # We split on space, dot, and comma, filtering out empty strings
+    parts = [p for p in re.split(r'[ \.,\n]', instruction.strip()) if p]
+
+    if len(parts) == 3:
+        # 1988 style: OPCODE A B. We insert a default modifier.
+        parts.insert(1, "I")
+
+    if len(parts) < 4:
+        raise ValueError(f"Invalid instruction format: {instruction}")
+
+    opcode = parts[0].upper()
+    modifier = parts[1].upper()
+
+    def process_field(field):
+        # Handle cases with or without address modes
+        if field[0] in '#$*@{<}>':
+            mode = field[0]
+            val_str = field[1:]
+        else:
+            mode = '$' # Default to direct
+            val_str = field
+
+        try:
+            val = int(val_str)
+        except ValueError:
+            raise ValueError(f"Invalid numeric value in field: {field}")
+
+        norm = corenorm(coremod(val, sanitize_limit), coresize)
+        return f"{mode}{norm}"
+
+    a_field = process_field(parts[2])
+    b_field = process_field(parts[3])
+
+    return f"{opcode}.{modifier} {a_field},{b_field}\n"
 
 def create_directory_if_not_exists(directory):
     """
