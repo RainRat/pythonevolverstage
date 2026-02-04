@@ -692,8 +692,8 @@ def print_status():
     """
     data = get_evolution_status()
 
-    print(f"{Colors.BOLD}{Colors.HEADER}Evolver Status Report{Colors.ENDC}")
-    print("="*60)
+    print(f"\n{Colors.BOLD}{Colors.HEADER}Evolver Status Report{Colors.ENDC}")
+    print("="*78)
 
     # Latest Activity
     log = data['latest_log']
@@ -705,36 +705,41 @@ def print_status():
             print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} {log}")
     else:
         print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} No battles recorded yet.")
-    print("-" * 60)
+    print("-" * 78)
+
+    # Table Header
+    header = f"{'Arena':<6} {'Size':>8} {'Cycles':>10} {'Procs':>8} {'Pop':>6} {'Len':>6}  {'Status':<10}"
+    print(f"{Colors.BOLD}{header}{Colors.ENDC}")
+    print("-" * 78)
 
     total_warriors = 0
-
     for arena in data['arenas']:
         i = arena['id']
-        print(f"{Colors.BOLD}Arena {i}:{Colors.ENDC}")
-        print(f"  Configuration: Size={arena['config']['size']}, Cycles={arena['config']['cycles']}, Processes={arena['config']['processes']}")
+        size = arena['config']['size']
+        cycles = arena['config']['cycles']
+        procs = arena['config']['processes']
 
-        if not arena['exists']:
-            print(f"  {Colors.YELLOW}Status: Directory '{arena['directory']}' not found (Unseeded?){Colors.ENDC}")
-            print("-" * 40)
-            continue
+        if arena['exists']:
+            pop = str(arena['population'])
+            total_warriors += arena['population']
+            avg_len = f"{arena['avg_length']:.1f}"
+            status = f"{Colors.GREEN}OK{Colors.ENDC}"
+        else:
+            pop = "-"
+            avg_len = "-"
+            status = f"{Colors.YELLOW}Unseeded{Colors.ENDC}"
 
-        count = arena['population']
-        total_warriors += count
+        row = f"{i:<6} {size:>8} {cycles:>10} {procs:>8} {pop:>6} {avg_len:>6}  {status}"
+        print(row)
 
-        print(f"  Population:    {Colors.GREEN}{count} warriors{Colors.ENDC}")
-        if count > 0:
-            print(f"  Avg Length:    {arena['avg_length']:.1f} instructions (sampled)")
-        print("-" * 40)
+    print("-" * 78)
 
-    # Archive
-    print(f"{Colors.BOLD}Archive:{Colors.ENDC}")
-    if data['archive']['exists']:
-        print(f"  Contains {Colors.GREEN}{data['archive']['count']} warriors{Colors.ENDC}.")
-    else:
-        print(f"  {Colors.YELLOW}Directory 'archive' not found.{Colors.ENDC}")
+    # Archive and Summary
+    archive_count = data['archive']['count']
+    archive_info = f"{Colors.GREEN}{archive_count}{Colors.ENDC}" if data['archive']['exists'] else f"{Colors.YELLOW}None{Colors.ENDC}"
 
-    print("="*60)
+    print(f"Total Warriors: {Colors.BOLD}{total_warriors}{Colors.ENDC} | Archive: {archive_info}")
+    print("="*78 + "\n")
 
 def _get_arena_idx():
     """

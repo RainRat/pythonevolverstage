@@ -35,8 +35,10 @@ class TestStatus(unittest.TestCase):
 
         self.assertTrue(any("Evolver Status Report" in s for s in printed_strings))
         self.assertTrue(any("Latest Activity: Era 1, Arena 0: Warrior 5 beat 10 (150-50)" in s for s in printed_strings))
-        self.assertTrue(any("Arena 0:" in s for s in printed_strings))
-        self.assertTrue(any("Population:    2 warriors" in s for s in printed_strings))
+        # Check for table headers
+        self.assertTrue(any("Arena" in s and "Size" in s and "Pop" in s for s in printed_strings))
+        # Check if arena 0 data is present (Arena 0, Pop 2)
+        self.assertTrue(any(s.strip().startswith("0") and " 2 " in s for s in printed_strings))
 
     def test_status_command_invocation(self):
         # This test ensures that invoking the script with --status calls print_status
