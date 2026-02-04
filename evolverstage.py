@@ -89,8 +89,9 @@ def draw_progress_bar(percent, width=30):
     if percent < 0: percent = 0
     if percent > 100: percent = 100
     filled_length = int(width * percent // 100)
-    bar = '=' * filled_length + '-' * (width - filled_length)
-    return f"[{Colors.GREEN}{bar}{Colors.ENDC}] {percent:6.2f}%"
+    filled_bar = '=' * filled_length
+    empty_bar = '-' * (width - filled_length)
+    return f"[{Colors.GREEN}{filled_bar}{Colors.ENDC}{empty_bar}] {percent:6.2f}%"
 
 def run_nmars_subprocess(cmd):
     """
