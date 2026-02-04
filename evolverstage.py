@@ -8,36 +8,38 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]]
+  python evolverstage.py [COMMAND] [OPTIONS]
 
 General Commands:
-  --check, -c          Validate configuration and environment (settings.ini, nMars).
-  --status, -s         Show evolution status (arenas, population, logs).
-                       Add --json for JSON output.
-  --leaderboard, -l    Show top performing warriors based on log history.
-                       Usage: --leaderboard [--arena <N>] [--json]
-  --dump-config, -d    Print current configuration settings and exit.
+  --check, -c              Check if your setup and settings.ini are correct.
+  --status, -s             Show progress, population sizes, and recent activity.
+  --leaderboard, -l        Show top warriors based on their win streaks.
+  --dump-config, -d        Show all current settings and exit.
 
-Evolution Controls:
-  --restart            Start fresh (overwrites existing arenas).
-  --resume             Continue evolution from existing files.
+Evolution:
+  (no flags)               Start or continue evolution based on settings.ini.
+  --restart                Force a fresh start (overwrites current warriors).
+  --resume                 Force evolution to continue from existing warriors.
 
 Battle Tools:
-  --battle, -b         Run a single battle between two warriors.
-                       Usage: --battle <warrior1> <warrior2> [--arena <N>]
-  --tournament, -t     Run a round-robin tournament for all warriors in a folder.
-                       Usage: --tournament <directory> [--arena <N>]
-  --benchmark, -m      Test a warrior against a folder of opponents.
-                       Usage: --benchmark <warrior> <directory> [--arena <N>]
+  --battle, -b W1 W2       Run one fight between two warriors (W1 and W2).
+  --tournament, -t DIR     Run a tournament where every warrior in DIR fights everyone else.
+  --benchmark, -m W DIR    Test warrior W against everyone in DIR to see how it ranks.
 
 Utilities:
-  --normalize, -n      Clean up a warrior's code (standardize format).
-                       Usage: --normalize <warrior> [--arena <N>]
+  --normalize, -n SRC      Clean and standardize a warrior's code or a whole folder (SRC).
+
+Common Options:
+  --arena, -a N            Use the rules (size, cycles, etc.) of arena N (default is 0).
+  --output, -o DEST        Specify where to save results (for --normalize).
+  --json                   Output status or leaderboard data in JSON format.
+  --help, -h               Show this help message.
 
 Examples:
   python evolverstage.py --check
-  python evolverstage.py --battle mywarrior.red enemy.red --arena 1
-  python evolverstage.py --benchmark champion.red arena0/
+  python evolverstage.py --battle warrior1.red warrior2.red --arena 1
+  python evolverstage.py --benchmark my_warrior.red arena0/
+  python evolverstage.py --normalize messy.red -o clean.red
 '''
 
 import random
