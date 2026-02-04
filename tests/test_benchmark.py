@@ -119,13 +119,13 @@ class TestRunBenchmark(unittest.TestCase):
 
         # Check Win stats
         # "  Wins:   1 (33.3%)"
-        mock_print.assert_any_call("  Wins:   1 (33.3%)")
+        mock_print.assert_any_call(f"  {evolverstage.Colors.GREEN}Wins:   1 (33.3%){evolverstage.Colors.ENDC}")
 
         # Check Loss stats
-        mock_print.assert_any_call("  Losses: 1 (33.3%)")
+        mock_print.assert_any_call(f"  {evolverstage.Colors.RED}Losses: 1 (33.3%){evolverstage.Colors.ENDC}")
 
         # Check Tie stats
-        mock_print.assert_any_call("  Ties:   1 (33.3%)")
+        mock_print.assert_any_call(f"  {evolverstage.Colors.YELLOW}Ties:   1 (33.3%){evolverstage.Colors.ENDC}")
 
         # Check Total Score
         mock_print.assert_any_call("  Total Score: 170")

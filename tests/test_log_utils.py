@@ -24,14 +24,14 @@ class TestGetLatestLogEntry(unittest.TestCase):
         """Test behavior when the log file does not exist."""
         mock_exists.return_value = False
         result = evolverstage.get_latest_log_entry()
-        self.assertEqual(result, "No battle log found.")
+        self.assertIsNone(result)
 
     @mock.patch('os.path.exists')
     def test_log_file_not_configured(self, _):
         """Test behavior when BATTLE_LOG_FILE is None or empty."""
         evolverstage.BATTLE_LOG_FILE = None
         result = evolverstage.get_latest_log_entry()
-        self.assertEqual(result, "No battle log found.")
+        self.assertIsNone(result)
 
     @mock.patch('os.path.exists')
     def test_log_file_empty(self, mock_exists):
@@ -42,21 +42,24 @@ class TestGetLatestLogEntry(unittest.TestCase):
         with mock.patch('builtins.open', mock.mock_open(read_data="")):
              result = evolverstage.get_latest_log_entry()
 
-        self.assertEqual(result, "Log file is empty.")
+        self.assertIsNone(result)
 
     @mock.patch('os.path.exists')
     def test_log_file_with_content(self, mock_exists):
-        """Test retrieving the last line from a populated log file."""
+        """Test retrieving and parsing the last line from a populated log file."""
         mock_exists.return_value = True
-        log_content = "header1,header2\ndata1,data2\ndata3,data4\n"
+        # era,arena,winner,loser,score1,score2,bred_with
+        log_content = "era,arena,winner,loser,score1,score2,bred_with\n0,1,5,10,150,50,7\n"
 
-        # We need to mock how deque(f, maxlen=1) behaves with a file object.
-        # Since mock_open returns a mock file object which is iterable,
-        # deque(mock_file) iterates over lines.
         with mock.patch('builtins.open', mock.mock_open(read_data=log_content)):
             result = evolverstage.get_latest_log_entry()
 
-        self.assertEqual(result, "data3,data4")
+        self.assertEqual(result['era'], '0')
+        self.assertEqual(result['arena'], '1')
+        self.assertEqual(result['winner'], '5')
+        self.assertEqual(result['loser'], '10')
+        self.assertEqual(result['score1'], '150')
+        self.assertEqual(result['score2'], '50')
 
     @mock.patch('os.path.exists')
     def test_log_file_read_error(self, mock_exists):
@@ -66,5 +69,4 @@ class TestGetLatestLogEntry(unittest.TestCase):
         with mock.patch('builtins.open', side_effect=IOError("Disk error")):
             result = evolverstage.get_latest_log_entry()
 
-        self.assertTrue(result.startswith("Error reading log:"))
-        self.assertIn("Disk error", result)
+        self.assertIsNone(result)

@@ -154,4 +154,4 @@ class TestRunCustomBattle(unittest.TestCase):
              with mock.patch('evolverstage.os.name', 'posix'):
                 evolverstage.run_custom_battle(self.file1, self.file2, self.arena_idx)
 
-        mock_print.assert_any_call("No output received from nMars.")
+        mock_print.assert_any_call(f"{evolverstage.Colors.RED}No output received from nMars.{evolverstage.Colors.ENDC}")
