@@ -15,13 +15,9 @@ class BaseCSVLogger:
         Creates the file with a header row if it doesn't exist.
         """
         if self.filename:
-            # Filter row to only include keys present in fieldnames
-            # This handles extra fields gracefully (ignoring them) or we can choose to raise error.
-            # The original code used csv.DictWriter which raises ValueError for extra keys if extrasaction='raise'.
-            # Let's keep default behavior of DictWriter but wrap it.
-
+            # Use extrasaction='ignore' to handle extra fields gracefully.
             with open(self.filename, 'a', newline='') as file:
-                writer = csv.DictWriter(file, fieldnames=self.fieldnames)
+                writer = csv.DictWriter(file, fieldnames=self.fieldnames, extrasaction='ignore')
                 if file.tell() == 0:
                     writer.writeheader()
                 writer.writerow(row)
