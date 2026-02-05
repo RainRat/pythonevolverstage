@@ -8,7 +8,7 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]]
+  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]]
 
 General Commands:
   --check, -c          Validate configuration and environment (settings.ini, nMars).
@@ -16,6 +16,9 @@ General Commands:
                        Add --json for JSON output.
   --leaderboard, -l    Show top performing warriors based on log history.
                        Usage: --leaderboard [--arena <N>] [--json]
+  --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
+                       Use --top to analyze the current champion.
+                       Usage: --analyze <file|dir> [--top] [--arena <N>] [--json]
   --dump-config, -d    Print current configuration settings and exit.
 
 Evolution Controls:
@@ -38,6 +41,7 @@ Examples:
   python evolverstage.py --check
   python evolverstage.py --battle mywarrior.red enemy.red --arena 1
   python evolverstage.py --benchmark champion.red arena0/
+  python evolverstage.py --analyze arena0/ --top
 '''
 
 import random
@@ -680,6 +684,147 @@ def get_leaderboard(arena_idx=None, limit=10):
         sys.stderr.write(f"Error generating leaderboard: {e}\n")
         return {}
 
+def analyze_warrior(filepath):
+    """
+    Parses a warrior file and extracts statistical information.
+    """
+    stats = {
+        'instructions': 0,
+        'opcodes': {},
+        'modifiers': {},
+        'modes': {},
+        'unique_instructions': set(),
+        'file': filepath
+    }
+
+    if not os.path.exists(filepath):
+        return None
+
+    try:
+        with open(filepath, 'r') as f:
+            for line in f:
+                # Strip comments and whitespace
+                line = line.split(';')[0].strip()
+                if not line:
+                    continue
+
+                stats['instructions'] += 1
+                stats['unique_instructions'].add(line.upper())
+
+                # Regex to extract components robustly
+                # Handles: OPCODE[.MODIFIER] <MODE>A,<MODE>B
+                match = re.match(r'^([A-Z]+)(?:\.([A-Z]+))?\s+([^,]+)(?:,\s*(.+))?$', line, re.I)
+                if match:
+                    opcode, modifier, operand_a, operand_b = match.groups()
+                    opcode = opcode.upper()
+                    stats['opcodes'][opcode] = stats['opcodes'].get(opcode, 0) + 1
+
+                    if modifier:
+                        modifier = modifier.upper()
+                        stats['modifiers'][modifier] = stats['modifiers'].get(modifier, 0) + 1
+
+                    for op in [operand_a, operand_b]:
+                        if op:
+                            mode = op.strip()[0]
+                            if mode in '#$@<>{}*': # Standard Redcode modes
+                                stats['modes'][mode] = stats['modes'].get(mode, 0) + 1
+                            else:
+                                stats['modes']['$'] = stats['modes'].get('$', 0) + 1
+                else:
+                    # Fallback for simple lines
+                    parts = re.split(r'[ \t\.]', line)
+                    if parts:
+                        opcode = parts[0].upper()
+                        stats['opcodes'][opcode] = stats['opcodes'].get(opcode, 0) + 1
+    except Exception as e:
+        sys.stderr.write(f"Error analyzing {filepath}: {e}\n")
+        return None
+
+    stats['vocabulary_size'] = len(stats['unique_instructions'])
+    del stats['unique_instructions']
+    return stats
+
+def analyze_population(directory):
+    """
+    Aggregates statistics for all warriors in a directory.
+    """
+    if not os.path.exists(directory):
+        return None
+
+    files = [f for f in os.listdir(directory) if f.endswith('.red')]
+    if not files:
+        return None
+
+    pop_stats = {
+        'count': len(files),
+        'total_instructions': 0,
+        'opcodes': {},
+        'modifiers': {},
+        'modes': {},
+        'total_vocabulary': 0,
+        'directory': directory
+    }
+
+    for f in files:
+        s = analyze_warrior(os.path.join(directory, f))
+        if s:
+            pop_stats['total_instructions'] += s['instructions']
+            pop_stats['total_vocabulary'] += s['vocabulary_size']
+            for k, v in s['opcodes'].items():
+                pop_stats['opcodes'][k] = pop_stats['opcodes'].get(k, 0) + v
+            for k, v in s['modifiers'].items():
+                pop_stats['modifiers'][k] = pop_stats['modifiers'].get(k, 0) + v
+            for k, v in s['modes'].items():
+                pop_stats['modes'][k] = pop_stats['modes'].get(k, 0) + v
+
+    return pop_stats
+
+def print_analysis(stats):
+    """
+    Prints the analysis results in a human-readable format.
+    """
+    if not stats:
+        print(f"{Colors.RED}No data to analyze.{Colors.ENDC}")
+        return
+
+    is_pop = 'count' in stats
+    target = stats['directory'] if is_pop else stats['file']
+
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Analysis Report: {target} ---{Colors.ENDC}")
+
+    if is_pop:
+        print(f"Warriors Analyzed: {stats['count']}")
+        print(f"Avg Instructions:  {stats['total_instructions'] / stats['count']:.1f}")
+        print(f"Avg Vocabulary:    {stats['total_vocabulary'] / stats['count']:.1f}")
+        total_instr = stats['total_instructions']
+        total_modes = sum(stats['modes'].values())
+    else:
+        print(f"Instructions:      {stats['instructions']}")
+        print(f"Vocabulary Size:   {stats['vocabulary_size']}")
+        total_instr = stats['instructions']
+        total_modes = sum(stats['modes'].values())
+
+    print(f"\n{Colors.BOLD}Opcode Distribution:{Colors.ENDC}")
+    sorted_opcodes = sorted(stats['opcodes'].items(), key=lambda x: x[1], reverse=True)
+    for op, count in sorted_opcodes:
+        pct = (count / total_instr) * 100
+        print(f"  {op:4}: {count:4} ({pct:5.1f}%) " + "#" * int(pct/2))
+
+    if stats['modifiers']:
+        print(f"\n{Colors.BOLD}Modifier Distribution:{Colors.ENDC}")
+        total_mods = sum(stats['modifiers'].values())
+        sorted_mods = sorted(stats['modifiers'].items(), key=lambda x: x[1], reverse=True)
+        for mod, count in sorted_mods:
+            pct = (count / total_mods) * 100
+            print(f"  .{mod:2}: {count:4} ({pct:5.1f}%)")
+
+    if stats['modes']:
+        print(f"\n{Colors.BOLD}Addressing Modes:{Colors.ENDC}")
+        sorted_modes = sorted(stats['modes'].items(), key=lambda x: x[1], reverse=True)
+        for mode, count in sorted_modes:
+            pct = (count / total_modes) * 100
+            print(f"  {mode:1} : {count:4} ({pct:5.1f}%)")
+
 def print_status_json(status_data):
     """
     Prints the status data as a JSON object.
@@ -976,6 +1121,50 @@ if __name__ == "__main__":
           sys.exit(0)
       except ValueError:
           print("Invalid arguments.")
+          sys.exit(1)
+
+  if "--analyze" in sys.argv or "-i" in sys.argv:
+      try:
+          if "--analyze" in sys.argv:
+              idx = sys.argv.index("--analyze")
+          else:
+              idx = sys.argv.index("-i")
+
+          target = None
+          arena_idx = _get_arena_idx()
+
+          if "--top" in sys.argv:
+              # Find leader
+              results = get_leaderboard(arena_idx=arena_idx, limit=1)
+              if arena_idx in results and results[arena_idx]:
+                  warrior_id, wins = results[arena_idx][0]
+                  target = os.path.join(f"arena{arena_idx}", f"{warrior_id}.red")
+                  print(f"Targeting Arena {arena_idx} champion: Warrior {warrior_id} ({wins} wins)")
+              else:
+                  print(f"{Colors.YELLOW}No champion found for Arena {arena_idx}.{Colors.ENDC}")
+                  sys.exit(1)
+          elif len(sys.argv) > idx + 1:
+              target = sys.argv[idx+1]
+              # check if target is an option
+              if target.startswith('-'):
+                  target = None
+
+          if not target:
+              print("Usage: --analyze|-i <file|dir> [--top] [--arena <N>] [--json]")
+              sys.exit(1)
+
+          if os.path.isdir(target):
+              stats = analyze_population(target)
+          else:
+              stats = analyze_warrior(target)
+
+          if "--json" in sys.argv:
+              print(json.dumps(stats, indent=2))
+          else:
+              print_analysis(stats)
+          sys.exit(0)
+      except Exception as e:
+          print(f"Error during analysis: {e}")
           sys.exit(1)
 
   if "--dump-config" in sys.argv or "-d" in sys.argv:
