@@ -59,16 +59,8 @@ class TestNormalizeInstruction(unittest.TestCase):
         self.assertEqual(result, expected)
 
     def test_extra_whitespace_handling(self):
-        # The function uses re.split('[ \.,\n]', instruction.strip())
-        # Input: "MOV.I  $0, $0" (double space)
-        # split -> ['MOV', 'I', '', '$0', '', '$0']
-        # This will fail with the current naive implementation if we don't handle empty strings
-        # But the original code didn't handle it either.
-        # The unarchive block does .replace('  ',' ') first.
-        # The mutation block constructs clean strings.
-        # So normalize_instruction assumes relatively clean input.
-        # Let's test "standard" clean input with potential trailing newline.
-        instr = "MOV.I $0,$0\n"
+        # The function should handle varied whitespace
+        instr = "MOV.I   $0,  $0\n"
         coresize = 8000
         sanitize = 8000
         expected = "MOV.I $0,$0\n"
@@ -80,5 +72,48 @@ class TestNormalizeInstruction(unittest.TestCase):
         coresize = 8000
         sanitize = 8000
         expected = "MOV.I @10,<20\n"
+        result = evolverstage.normalize_instruction(instr, coresize, sanitize)
+        self.assertEqual(result, expected)
+
+    def test_no_modifier_default_to_i(self):
+        # Instruction without modifier should default to .I
+        instr = "MOV $0,$0"
+        coresize = 8000
+        sanitize = 8000
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, coresize, sanitize)
+        self.assertEqual(result, expected)
+
+    def test_no_addressing_modes_default_to_direct(self):
+        # Instruction without addressing modes should default to $
+        instr = "MOV.I 0,0"
+        coresize = 8000
+        sanitize = 8000
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, coresize, sanitize)
+        self.assertEqual(result, expected)
+
+    def test_case_insensitivity(self):
+        # Lowercase should be normalized to uppercase
+        instr = "mov.i $1,$2"
+        coresize = 8000
+        sanitize = 8000
+        expected = "MOV.I $1,$2\n"
+        result = evolverstage.normalize_instruction(instr, coresize, sanitize)
+        self.assertEqual(result, expected)
+
+    def test_spaces_around_comma(self):
+        instr = "MOV.I $1 , $2"
+        coresize = 8000
+        sanitize = 8000
+        expected = "MOV.I $1,$2\n"
+        result = evolverstage.normalize_instruction(instr, coresize, sanitize)
+        self.assertEqual(result, expected)
+
+    def test_tab_characters(self):
+        instr = "MOV.I\t$1,\t$2"
+        coresize = 8000
+        sanitize = 8000
+        expected = "MOV.I $1,$2\n"
         result = evolverstage.normalize_instruction(instr, coresize, sanitize)
         self.assertEqual(result, expected)
