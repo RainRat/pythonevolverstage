@@ -1213,6 +1213,7 @@ if __name__ == "__main__":
   starttime=time.time() #time in seconds
   era=-1
   data_logger = DataLogger(filename=BATTLE_LOG_FILE)
+  battle_count = 0
 
   while(True):
     #before we do anything, determine which era we are in.
@@ -1232,12 +1233,14 @@ if __name__ == "__main__":
       print(f"\n{Colors.YELLOW}************** Switching from era {prevera + 1} to {era + 1} *******************{Colors.ENDC}")
       bag = construct_marble_bag(era)
 
+    runtime_in_seconds = time.time() - starttime
+    bps = battle_count / runtime_in_seconds if runtime_in_seconds > 0 else 0
     remaining_seconds = (CLOCK_TIME - runtime_in_hours) * 3600
     remaining_str = format_time_remaining(remaining_seconds)
     progress_percent = (runtime_in_hours / CLOCK_TIME) * 100
     bar_str = draw_progress_bar(progress_percent)
-    status_line = f"{remaining_str} remaining {bar_str} Era: {era+1}"
-    print(f"{status_line:<80}", end='\r')
+    status_line = f"{remaining_str} left | {bar_str} | Era {era+1} | Battles: {battle_count:,} ({bps:.1f}/s)"
+    print(f"{status_line:<90}", end='\r')
 
     #in a random arena
     arena=random.randint(0, LAST_ARENA)
@@ -1254,6 +1257,7 @@ if __name__ == "__main__":
 
     if len(scores) < 2:
       continue
+    battle_count += 1
 
     res_winner, res_loser = determine_winner(scores, warriors)
     winner = cont1 if res_winner == 1 else cont2
