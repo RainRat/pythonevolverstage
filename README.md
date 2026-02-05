@@ -15,6 +15,7 @@ Before running the evolver, you need:
     *   **Download**: Get the latest version from [SourceForge](https://sourceforge.net/projects/nmars/files/).
     *   **Windows**: Download `nmars.exe` and put it in the same folder as this project.
     *   **Linux/macOS**: Download `nmars` and put it in the same folder, or install it so it runs from your terminal.
+    *   **Permission (Linux/macOS)**: You may need to make `nmars` executable. Run `chmod +x nmars` in your terminal.
 
 ## Configuration
 
@@ -27,10 +28,17 @@ Settings are in `settings.ini`. Open this file to change how the evolution works
 3.  **Starting Fresh vs. Continuing**:
     *   **Start New**: Set `ALREADYSEEDED = False`. This creates random warriors to start.
     *   **Resume**: Set `ALREADYSEEDED = True`. This keeps your current warriors and continues evolving them.
+    *   **Note**: If this is your first time running the script, you **must** set `ALREADYSEEDED = False` to generate the initial population.
 4.  **Optimization**: Set `FINAL_ERA_ONLY = True` (and `ALREADYSEEDED = True`) to skip the chaotic early phases and just fine-tune your warriors.
 
 ## How to Run
 
+### Quick Start
+If you just want to see it work right away:
+1.  Ensure `ALREADYSEEDED = False` in `settings.ini`.
+2.  Run `python evolverstage.py`.
+
+### Detailed Steps
 1.  Check `settings.ini` to make sure it's set up how you want.
 2.  Open your terminal or command prompt in the project folder.
 3.  **Validate your setup**: Before starting a long run, check that everything is correct (settings, file paths, simulator).
@@ -48,12 +56,17 @@ Settings are in `settings.ini`. Open this file to change how the evolution works
         python evolverstage.py --dump-config
         ```
 
-5.  **Watch the Progress**: You will see output like this:
+5.  **Watch the Progress**: You will see a progress bar and time remaining:
     ```text
-    8.00 hours remaining (0.01% complete) Era: 1
+    08:00:00 remaining [------------------------------]   0.00% Era: 1
     ```
-6.  **Get Results**: When it's done (or if you stop it), look in the `arenaX` folders (like `arena0`) for the `.red` files. These are your evolved warriors.
+6.  **Get Results**: When it's done (or if you stop it with `Ctrl+C`), look in the `arenaX` folders (like `arena0`) for the `.red` files. These are your evolved warriors.
 7.  **Find the Best**: Use the built-in benchmark tool (see **Command Line Tools**) to test the final warriors against each other to find the champion.
+
+## Troubleshooting
+
+*   **Script spins but no progress**: If the script is running but the progress bar doesn't move and no files are appearing in `arena` folders, check if `ALREADYSEEDED` is set to `True` when you haven't seeded yet. Set it to `False` and restart.
+*   **nMars errors**: Ensure the `nmars` executable is in the project folder and has the correct permissions (see **Prerequisites**).
 
 ## Command Line Tools
 
