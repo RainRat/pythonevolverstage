@@ -496,11 +496,55 @@ def corenorm(x, y):
     return -(y - x) if x > y // 2 else (y + x) if x <= -(y // 2) else x
 
 def normalize_instruction(instruction, coresize, sanitize_limit):
-    splitline = re.split(r'[ \.,\n]', instruction.strip())
-    return splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
-           str(corenorm(coremod(int(splitline[2][1:]),sanitize_limit),coresize))+","+ \
-           splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),sanitize_limit), \
-           coresize))+"\n"
+    """
+    Parses a Redcode instruction and returns a normalized version.
+    Handles varied syntax, missing components, and ensures values are within core bounds.
+    """
+    # Strip comments and leading/trailing whitespace
+    clean_instr = instruction.split(';')[0].strip()
+    if not clean_instr:
+        return ""
+
+    # Robust regex to extract: OPCODE[.MODIFIER] OPERAND_A[, OPERAND_B]
+    # This handles varied spacing and optional components.
+    match = re.match(r'^([A-Z]+)(?:\.([A-Z]+))?\s+([^,\s\t]+)(?:[,\s\t]+(.+))?$', clean_instr, re.I)
+
+    if not match:
+        raise ValueError(f"Invalid instruction format: {instruction}")
+
+    opcode, modifier, operand_a, operand_b = match.groups()
+
+    opcode = opcode.upper()
+    modifier = modifier.upper() if modifier else "I"
+
+    def parse_operand(op):
+        if not op:
+            return "$", 0
+        op = op.strip()
+        if not op:
+            return "$", 0
+
+        if op[0] in '#$@<>{}*':
+            mode = op[0]
+            try:
+                value = int(op[1:])
+            except ValueError:
+                value = 0
+        else:
+            mode = "$" # Default mode
+            try:
+                value = int(op)
+            except ValueError:
+                value = 0
+
+        # Normalize value
+        normalized_value = corenorm(coremod(value, sanitize_limit), coresize)
+        return mode, normalized_value
+
+    mode_a, val_a = parse_operand(operand_a)
+    mode_b, val_b = parse_operand(operand_b)
+
+    return f"{opcode}.{modifier} {mode_a}{val_a},{mode_b}{val_b}\n"
 
 def create_directory_if_not_exists(directory):
     """
