@@ -8,7 +8,7 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]]
+  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]]
 
 General Commands:
   --check, -c          Validate configuration and environment (settings.ini, nMars).
@@ -17,8 +17,8 @@ General Commands:
   --leaderboard, -l    Show top performing warriors based on log history.
                        Usage: --leaderboard [--arena <N>] [--json]
   --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
-                       Use --top to analyze the current champion.
-                       Usage: --analyze <file|dir> [--top] [--arena <N>] [--json]
+                       Use --top (or 'top' selector) to analyze the current champion.
+                       Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
   --dump-config, -d    Print current configuration settings and exit.
 
 Evolution Controls:
@@ -35,13 +35,21 @@ Battle Tools:
 
 Utilities:
   --normalize, -n      Clean up a warrior's code (standardize format).
-                       Usage: --normalize <warrior> [--arena <N>]
+                       Usage: --normalize <warrior|selector> [--arena <N>]
+  --view, -v           View the source code of a warrior.
+                       Usage: --view <warrior|selector> [--arena <N>]
+
+Dynamic Selectors:
+  Most commands accepting a warrior file also support these keywords:
+  top, topN            Target the #1 (or #N) warrior from the leaderboard.
+  random               Target a random warrior from the current arena population.
 
 Examples:
   python evolverstage.py --check
-  python evolverstage.py --battle mywarrior.red enemy.red --arena 1
-  python evolverstage.py --benchmark champion.red arena0/
-  python evolverstage.py --analyze arena0/ --top
+  python evolverstage.py --battle top random --arena 0
+  python evolverstage.py --view top2 --arena 1
+  python evolverstage.py --benchmark top archive/
+  python evolverstage.py --analyze top
 '''
 
 import random
@@ -887,6 +895,45 @@ def print_status():
     print(f"Total Warriors: {Colors.BOLD}{total_warriors}{Colors.ENDC} | Archive: {archive_info}")
     print("="*78 + "\n")
 
+def _resolve_warrior_path(selector, arena_idx):
+    """
+    Resolves a warrior selector (filename, 'top', 'topN', or 'random') to a file path.
+    """
+    if os.path.exists(selector):
+        return selector
+
+    sel = selector.lower()
+
+    # Random selector
+    if sel == "random":
+        arena_dir = f"arena{arena_idx}"
+        if os.path.exists(arena_dir):
+            files = [f for f in os.listdir(arena_dir) if f.endswith('.red')]
+            if files:
+                chosen = random.choice(files)
+                return os.path.join(arena_dir, chosen)
+        return selector
+
+    # Top/Champion selector
+    if sel.startswith("top"):
+        try:
+            # Extract N from topN, default to 1
+            n = 1
+            if len(sel) > 3:
+                n = int(sel[3:])
+
+            # Use get_leaderboard to find the ID
+            results = get_leaderboard(arena_idx=arena_idx, limit=n)
+            if arena_idx in results and len(results[arena_idx]) >= n:
+                warrior_id, wins = results[arena_idx][n-1]
+                path = os.path.join(f"arena{arena_idx}", f"{warrior_id}.red")
+                if os.path.exists(path):
+                    return path
+        except (ValueError, IndexError):
+            pass
+
+    return selector
+
 def _get_arena_idx():
     """
     Helper to extract arena index from command line arguments.
@@ -1037,6 +1084,28 @@ if __name__ == "__main__":
                 print("-" * 30)
     sys.exit(0)
 
+  if "--view" in sys.argv or "-v" in sys.argv:
+    try:
+        idx = sys.argv.index("--view") if "--view" in sys.argv else sys.argv.index("-v")
+        if len(sys.argv) < idx + 2:
+            print("Usage: --view|-v <warrior_file|selector> [--arena|-a <N>]")
+            sys.exit(1)
+
+        arena_idx = _get_arena_idx()
+        target = _resolve_warrior_path(sys.argv[idx+1], arena_idx)
+
+        if not os.path.exists(target):
+            print(f"Error: File '{target}' not found.")
+            sys.exit(1)
+
+        print(f"{Colors.BOLD}{Colors.HEADER}--- Viewing: {target} ---{Colors.ENDC}")
+        with open(target, 'r') as f:
+            print(f.read())
+        sys.exit(0)
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+
   if "--battle" in sys.argv or "-b" in sys.argv:
     try:
         if "--battle" in sys.argv:
@@ -1048,10 +1117,10 @@ if __name__ == "__main__":
             print("Usage: --battle|-b <warrior1> <warrior2> [--arena|-a <N>]")
             sys.exit(1)
 
-        w1 = sys.argv[idx+1]
-        w2 = sys.argv[idx+2]
-
         arena_idx = _get_arena_idx()
+        w1 = _resolve_warrior_path(sys.argv[idx+1], arena_idx)
+        w2 = _resolve_warrior_path(sys.argv[idx+2], arena_idx)
+
         run_custom_battle(w1, w2, arena_idx)
         sys.exit(0)
     except ValueError:
@@ -1089,10 +1158,10 @@ if __name__ == "__main__":
               print("Usage: --benchmark|-m <warrior_file> <directory> [--arena|-a <N>]")
               sys.exit(1)
 
-          warrior_file = sys.argv[idx+1]
+          arena_idx = _get_arena_idx()
+          warrior_file = _resolve_warrior_path(sys.argv[idx+1], arena_idx)
           directory = sys.argv[idx+2]
 
-          arena_idx = _get_arena_idx()
           run_benchmark(warrior_file, directory, arena_idx)
           sys.exit(0)
       except ValueError:
@@ -1110,9 +1179,9 @@ if __name__ == "__main__":
               print("Usage: --normalize|-n <warrior_file|dir> [-o <output_path>] [--arena|-a <N>]")
               sys.exit(1)
 
-          warrior_file = sys.argv[idx+1]
-
           arena_idx = _get_arena_idx()
+          warrior_file = _resolve_warrior_path(sys.argv[idx+1], arena_idx)
+
           output_path = None
           if "--output" in sys.argv or "-o" in sys.argv:
               if "--output" in sys.argv:
@@ -1154,6 +1223,8 @@ if __name__ == "__main__":
               # check if target is an option
               if target.startswith('-'):
                   target = None
+              else:
+                  target = _resolve_warrior_path(target, arena_idx)
 
           if not target:
               print("Usage: --analyze|-i <file|dir> [--top] [--arena <N>] [--json]")
