@@ -543,24 +543,16 @@ def determine_winner(scores, warriors):
     Intent: This forces turnover in the population, preventing stagnant pools of
     identical warriors that just tie with each other endlessly.
     """
-    winner = None
-    loser = None
     if scores[1] == scores[0]:
         if VERBOSE:
-            print("draw") #in case of a draw, destroy one at random. we want attacking.
+            print("draw")
         if random.randint(1, 2) == 1:
-            winner = warriors[1]
-            loser = warriors[0]
-        else:
-            winner = warriors[0]
-            loser = warriors[1]
-    elif scores[1] > scores[0]:
-        winner = warriors[1]
-        loser = warriors[0]
-    else:
-        winner = warriors[0]
-        loser = warriors[1]
-    return winner, loser
+            return warriors[1], warriors[0]
+        return warriors[0], warriors[1]
+
+    if scores[1] > scores[0]:
+        return warriors[1], warriors[0]
+    return warriors[0], warriors[1]
 
 def get_latest_log_entry():
     """
