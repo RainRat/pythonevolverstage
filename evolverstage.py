@@ -8,7 +8,7 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]]
+  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]]
 
 General Commands:
   --check, -c          Validate configuration and environment (settings.ini, nMars).
@@ -16,6 +16,8 @@ General Commands:
                        Add --json for JSON output.
   --leaderboard, -l    Show top performing warriors based on log history.
                        Usage: --leaderboard [--arena <N>] [--json]
+  --harvest, -p        Collect top warriors from the leaderboard into a directory.
+                       Usage: --harvest <directory> [--top <N>] [--arena <N>]
   --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
                        Use --top (or 'top' selector) to analyze the current champion.
                        Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
@@ -50,6 +52,7 @@ Examples:
   python evolverstage.py --view top2 --arena 1
   python evolverstage.py --benchmark top archive/
   python evolverstage.py --analyze top
+  python evolverstage.py --harvest best_warriors --top 5
 '''
 
 import random
@@ -399,6 +402,41 @@ def run_normalization(filepath, arena_idx, output_path=None):
     finally:
         if file_handle:
             file_handle.close()
+
+def run_harvest(target_dir, arena_idx=None, limit=10):
+    """
+    Collects the top performers from one or all arenas into a single directory.
+    Renames them to include arena, rank, and win streak information.
+    """
+    if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
+        print(f"{Colors.YELLOW}No battle log found. Run some battles first!{Colors.ENDC}")
+        return
+
+    results = get_leaderboard(arena_idx=arena_idx, limit=limit)
+    if not results:
+        print(f"{Colors.YELLOW}No leaderboard data available to harvest.{Colors.ENDC}")
+        return
+
+    os.makedirs(target_dir, exist_ok=True)
+    count = 0
+
+    # results is {arena_idx: [(warrior_id, streak), ...]}
+    for a, top in results.items():
+        for rank, (warrior_id, streak) in enumerate(top, 1):
+            source = os.path.join(f"arena{a}", f"{warrior_id}.red")
+            if os.path.exists(source):
+                dest_name = f"arena{a}_rank{rank}_streak{streak}_id{warrior_id}.red"
+                dest = os.path.join(target_dir, dest_name)
+                shutil.copy2(source, dest)
+                count += 1
+            else:
+                # Some warriors might have been deleted or renamed manually, or log is old
+                pass
+
+    if count > 0:
+        print(f"{Colors.GREEN}Successfully harvested {count} warriors to '{target_dir}'.{Colors.ENDC}")
+    else:
+        print(f"{Colors.YELLOW}Found leaderboard entries, but matching files were missing.{Colors.ENDC}")
 
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
@@ -1096,6 +1134,41 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         print(f"Error: {e}")
+        sys.exit(1)
+
+  if "--harvest" in sys.argv or "-p" in sys.argv:
+    try:
+        idx = sys.argv.index("--harvest") if "--harvest" in sys.argv else sys.argv.index("-p")
+        if len(sys.argv) < idx + 2:
+            print("Usage: --harvest|-p <directory> [--top <N>] [--arena|-a <N>]")
+            sys.exit(1)
+
+        target_dir = sys.argv[idx+1]
+
+        # Determine arena index (default all)
+        arena_idx = None
+        if "--arena" in sys.argv or "-a" in sys.argv:
+            try:
+                a_idx = sys.argv.index("--arena") if "--arena" in sys.argv else sys.argv.index("-a")
+                if len(sys.argv) > a_idx + 1:
+                    arena_idx = int(sys.argv[a_idx+1])
+            except ValueError:
+                pass
+
+        # Determine limit (default 10)
+        limit = 10
+        if "--top" in sys.argv:
+            try:
+                t_idx = sys.argv.index("--top")
+                if len(sys.argv) > t_idx + 1:
+                    limit = int(sys.argv[t_idx+1])
+            except ValueError:
+                pass
+
+        run_harvest(target_dir, arena_idx=arena_idx, limit=limit)
+        sys.exit(0)
+    except Exception as e:
+        print(f"Error during harvest: {e}")
         sys.exit(1)
 
   if "--battle" in sys.argv or "-b" in sys.argv:
