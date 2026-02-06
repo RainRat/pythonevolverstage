@@ -1,8 +1,6 @@
 # Python Core War Evolver
 
-An Evolver for Core War, written in Python. You don't need to know Redcode (the language used in Core War) to use this tool.
-
-This project uses a genetic algorithm to pit warriors against each other, breed the winners, and introduce mutations to evolve superior strategies over time.
+Evolve Core War warriors using genetic algorithms. This tool pits warriors against each other, breeds winners, and introduces mutations to develop stronger strategies over time. You do not need to know Redcode to use it.
 
 Contributions are welcome! If you have a suggestion or improvement, please submit a pull request.
 
@@ -10,147 +8,103 @@ Contributions are welcome! If you have a suggestion or improvement, please submi
 
 Before running the evolver, you need:
 
-*   **Python 3.x**: This project requires Python 3 to run.
-*   **nMars**: This is the simulator that runs the battles.
-    *   **Download**: Get the latest version from [SourceForge](https://sourceforge.net/projects/nmars/files/).
-    *   **Windows**: Download `nmars.exe` and put it in the same folder as this project.
-    *   **Linux/macOS**: Download `nmars` and put it in the same folder, or install it so it runs from your terminal.
-    *   **Permission (Linux/macOS)**: You may need to make `nmars` executable. Run `chmod +x nmars` in your terminal.
+*   **Python 3.x**: Ensure you have Python 3 installed.
+*   **nMars Simulator**:
+    1.  Download the latest version from [SourceForge](https://sourceforge.net/projects/nmars/files/).
+    2.  Place `nmars.exe` (Windows) or `nmars` (Linux/macOS) in the project folder.
+    3.  (Linux/macOS) Make the file executable by running `chmod +x nmars` in your terminal.
 
 ## Configuration
 
-Settings are in `settings.ini`. Open this file to change how the evolution works.
+Settings are in `settings.ini`. Open this file to customize how the evolution works.
 
-1.  **Arenas**: You can run multiple arenas with different rules (like size or cycles).
+1.  **Time**: Set `CLOCK_TIME` to the number of hours you want the script to run.
+2.  **Seeding**: Set `ALREADYSEEDED = False` to start a new evolution. Set it to `True` to resume from existing warriors.
+3.  **Arenas**: You can run multiple arenas with different rules (like core size or cycles).
     *   **Important**: All list settings (like `CORESIZE_LIST`, `CYCLES_LIST`) must be the same length.
-    *   Update `LAST_ARENA` to match the index of your last arena. For example, if you have 8 arenas (0 to 7), set `LAST_ARENA=7`.
-2.  **Time**: Set `CLOCK_TIME` to how many hours you want the script to run.
-3.  **Starting Fresh vs. Continuing**:
-    *   **Start New**: Set `ALREADYSEEDED = False`. This creates random warriors to start.
-    *   **Resume**: Set `ALREADYSEEDED = True`. This keeps your current warriors and continues evolving them.
-    *   **Note**: If this is your first time running the script, you **must** set `ALREADYSEEDED = False` to generate the initial population.
-4.  **Optimization**: Set `FINAL_ERA_ONLY = True` (and `ALREADYSEEDED = True`) to skip the chaotic early phases and just fine-tune your warriors.
+    *   Update `LAST_ARENA` to match the index of your last arena. For example, if you have 8 arenas (indexed 0 to 7), set `LAST_ARENA = 7`.
+4.  **Optimization**: Set `FINAL_ERA_ONLY = True` to skip early evolution phases and fine-tune your best warriors.
 
 ## How to Run
 
 ### Quick Start
-If you just want to see it work right away:
-1.  Ensure `ALREADYSEEDED = False` in `settings.ini`.
-2.  Run `python evolverstage.py`.
+To start evolving immediately:
+1.  Run `python evolverstage.py --restart`.
+    *This command automatically initializes the population and starts the evolution.*
 
 ### Detailed Steps
-1.  Check `settings.ini` to make sure it's set up how you want.
-2.  Open your terminal or command prompt in the project folder.
-3.  **Validate your setup**: Before starting a long run, check that everything is correct (settings, file paths, simulator).
-    ```bash
-    python evolverstage.py --check
-    ```
-    If it says "Configuration and environment are valid," you are good to go.
-
-4.  **Run the script**:
-    ```bash
-    python evolverstage.py
-    ```
-    *   **Tip**: To see the exact settings the script is using (including defaults), run:
-        ```bash
-        python evolverstage.py --dump-config
-        ```
-
-5.  **Watch the Progress**: You will see a progress bar and time remaining:
+1.  Verify your settings in `settings.ini`.
+2.  Open your terminal in the project folder.
+3.  **Validate setup**: Run `python evolverstage.py --check` to ensure your configuration and simulator are ready.
+4.  **Start evolution**: Run `python evolverstage.py`.
+    *   **Tip**: Use `python evolverstage.py --dump-config` to see the active settings.
+5.  **Monitor progress**: The script displays a progress bar and estimated time remaining:
     ```text
-    08:00:00 remaining [------------------------------]   0.00% Era: 1
+    08:00:00 left | [========----------------------]  25.00% | Era 1 | Battles: 1,200 (15.5/s)
     ```
-6.  **Get Results**: When it's done (or if you stop it with `Ctrl+C`), look in the `arenaX` folders (like `arena0`) for the `.red` files. These are your evolved warriors.
-7.  **Find the Best**: Use the built-in benchmark tool (see **Command Line Tools**) to test the final warriors against each other to find the champion.
+6.  **Review results**: Find your evolved warriors in the `arenaX` folders (e.g., `arena0/`).
+7.  **Find the champion**: Use the benchmark tool (see **Command Line Tools**) to test warriors against each other.
 
 ## Troubleshooting
 
-*   **Script spins but no progress**: If the script is running but the progress bar doesn't move and no files are appearing in `arena` folders, check if `ALREADYSEEDED` is set to `True` when you haven't seeded yet. Set it to `False` and restart.
-*   **nMars errors**: Ensure the `nmars` executable is in the project folder and has the correct permissions (see **Prerequisites**).
+*   **No progress**: If the progress bar stays at 0% and no files appear in `arena` folders, ensure you used the `--restart` flag or set `ALREADYSEEDED = False` for your first run.
+*   **nMars errors**: Ensure the `nmars` executable is in the project folder and has the correct permissions.
 
 ## Command Line Tools
 
-You can do more than just evolve warriors. The script includes tools to run battles, tournaments, and benchmarks.
+The script includes several tools for managing evolution and testing warriors.
 
 ### Manage Evolution
 *   **Status**: `python evolverstage.py --status`
-    *   Shows the current state of evolution, including population size and average warrior length for each arena. Add `--json` for machine-readable output.
-*   **Force Restart**: `python evolverstage.py --restart`
-    *   Starts from scratch (Era 1), overwriting any existing warriors in the arenas.
+    *   Shows population size and average warrior length for each arena. Use `--json` for machine-readable output.
+*   **Restart**: `python evolverstage.py --restart`
+    *   Starts from scratch, overwriting existing warriors.
 *   **Resume**: `python evolverstage.py --resume`
-    *   Continues from where you left off, even if `settings.ini` says otherwise.
+    *   Continues evolution from your current files.
 
 ### Run Battles
-*   **Single Battle**: Run one fight between two warriors.
-    ```bash
-    python evolverstage.py --battle warriors/warrior1.red warriors/warrior2.red
-    ```
-*   **Tournament**: Run a round-robin tournament between all warriors in a folder.
-    ```bash
-    python evolverstage.py --tournament warriors/
-    ```
-*   **Benchmark**: Test one warrior against a folder of opponents to see how good it is.
-    ```bash
-    python evolverstage.py --benchmark my_warrior.red warriors/
-    ```
-*   **Normalize**: Clean up a warrior's code or an entire directory to match the arena's standards.
-    ```bash
-    python evolverstage.py --normalize my_warrior.red
-    # Normalize a whole directory to an output folder
-    python evolverstage.py --normalize warriors/ -o cleaned_warriors/
-    ```
+*   **Single Battle**: `python evolverstage.py --battle warrior1.red warrior2.red`
+*   **Tournament**: `python evolverstage.py --tournament directory/`
+    *   Runs a round-robin competition between all warriors in a folder.
+*   **Benchmark**: `python evolverstage.py --benchmark warrior.red directory/`
+    *   Tests a warrior against all opponents in a folder.
+*   **Normalize**: `python evolverstage.py --normalize warrior.red`
+    *   Standardizes a warrior's code format.
 
-**Note**: You can add `--arena N` (e.g., `--arena 1`) to most commands to use the rules of a specific arena. The default is Arena 0.
+**Note**: Add `--arena N` to any command to use the rules of a specific arena (default is Arena 0).
 
 ## Output Explained
 
 ### Warrior Files
-
-*   **Arenas (`arena0/`, `arena1/`, ...)**: The current population. Each file (e.g., `15.red`) is a warrior.
-*   **Archive (`archive/`)**: A backup of winning warriors. This saves good strategies so they aren't lost.
+*   **Arenas (`arena0/`, `arena1/`, ...)**: Contains the current population.
+*   **Archive (`archive/`)**: Stores successful warriors to preserve good strategies.
 
 ### Battle Log
-
-If you set a filename for `BATTLE_LOG_FILE` in `settings.ini`, the script saves every battle result to a CSV file.
-*   **era**: Evolution phase (0, 1, or 2).
-*   **arena**: Which arena the fight happened in.
-*   **winner/loser**: The IDs of the warriors.
-*   **score1/score2**: The score from nMars.
-*   **bred_with**: The ID of the partner warrior used to make the new warrior.
+If `BATTLE_LOG_FILE` is set in `settings.ini`, results are saved to a CSV file:
+*   **era**: Current evolution phase (1, 2, or 3).
+*   **arena**: The arena where the battle occurred.
+*   **winner/loser**: Warrior IDs.
+*   **score1/score2**: Match scores.
 
 ## Running Tests
 
-To ensure the code is working correctly, you can run the included test suite. This is recommended if you plan to modify the code.
+To ensure the code is working correctly, you can run the included test suite.
 
-### Using unittest (Standard Library)
-Most tests can be run using Python's built-in testing framework without installing additional packages:
+### Standard Tests
 ```bash
 python -m unittest discover tests
 ```
 
-### Using pytest (Recommended)
-For full coverage (including tests that require external fixtures), we recommend using `pytest`:
-1.  **Install pytest**:
-    ```bash
-    pip install pytest
-    ```
-2.  **Run the tests**:
-    ```bash
-    pytest
-    ```
-The tests verify the logic for evolution, parsing, and battle execution (using a mock simulator), so you don't need `nMars` installed to run them.
+### Extended Tests (requires pytest)
+1.  Install pytest: `pip install pytest`
+2.  Run tests: `pytest`
 
 ## Features
 
-*   **Multi-Arena**: Warriors can fight in different environments at the same time. Code that works well in one arena can be "sanitized" (adjusted) and moved to another.
-*   **Smart Selection**: The evolver prefers useful instructions (like `MOV` and `SPL`) and efficient numbers.
-*   **Eras**: Evolution happens in three stages:
-    1.  **Exploration (Era 1)**: High mutation. Tries many different things.
-    2.  **Breeding (Era 2)**: Winners breed more often. Combines good parts of different warriors.
-    3.  **Optimization (Era 3)**: Fine-tuning. Changes small numbers to perfect the code.
-*   **Mutation Strategies**: The "Bag of Marbles" system randomly picks how to change a warrior:
-    *   **Do Nothing**: Keep it the same.
-    *   **Major Mutation**: Create a totally new random instruction.
-    *   **Nab Instruction**: Steal code from another arena.
-    *   **Mini/Micro Mutation**: Change a small part of an instruction.
-    *   **Magic Number**: Use a specific number known to be good.
+*   **Supports multiple arenas**: Evolve warriors in different environments simultaneously.
+*   **Selects effective code**: Automatically prioritizes useful instructions and numbers during evolution.
+*   **Phased Evolution**:
+    1.  **Exploration (Era 1)**: High mutation rate to discover new strategies.
+    2.  **Breeding (Era 2)**: Combines parts of winning warriors.
+    3.  **Optimization (Era 3)**: Fine-tunes values for peak performance.
+*   **Diverse Mutation Strategies**: Uses a "Bag of Marbles" system to randomly apply different mutation types, including instruction theft from other arenas and "magic number" adjustments.
