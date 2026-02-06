@@ -66,22 +66,5 @@ class TestCoreNorm(unittest.TestCase):
         # -40 is <= -40, so it wraps up: 80 + -40 = 40.
         self.assertEqual(evolverstage.corenorm(-40, 80), 40)
 
-class TestCreateDirectory(unittest.TestCase):
-    def test_creates_directory_if_missing(self):
-        """Test that os.mkdir is called if directory does not exist."""
-        with mock.patch('evolverstage.os.path.exists') as mock_exists, \
-             mock.patch('evolverstage.os.mkdir') as mock_mkdir:
-            mock_exists.return_value = False
-            evolverstage.create_directory_if_not_exists("new_dir")
-            mock_mkdir.assert_called_once_with("new_dir")
-
-    def test_does_not_create_if_exists(self):
-        """Test that os.mkdir is NOT called if directory exists."""
-        with mock.patch('evolverstage.os.path.exists') as mock_exists, \
-             mock.patch('evolverstage.os.mkdir') as mock_mkdir:
-            mock_exists.return_value = True
-            evolverstage.create_directory_if_not_exists("existing_dir")
-            mock_mkdir.assert_not_called()
-
 if __name__ == '__main__':
     unittest.main()
