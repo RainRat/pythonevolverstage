@@ -33,10 +33,10 @@ class TestStatus(unittest.TestCase):
 
         printed_strings = [strip_ansi(call.args[0]) for call in mock_print.call_args_list if call.args]
 
-        self.assertTrue(any("Evolver Status Report" in s for s in printed_strings))
-        self.assertTrue(any("Latest Activity: Era 1, Arena 0: Warrior 5 beat 10 (150-50)" in s for s in printed_strings))
+        self.assertTrue(any("Evolver Status Dashboard" in s for s in printed_strings))
+        self.assertTrue(any("Latest Activity: Era 1, Arena 0: Warrior 5 beat Warrior 10 (150-50)" in s for s in printed_strings))
         # Check for table headers
-        self.assertTrue(any("Arena" in s and "Size" in s and "Pop" in s for s in printed_strings))
+        self.assertTrue(any("Arena" in s and "Size" in s and "Pop" in s and "Champion" in s for s in printed_strings))
         # Check if arena 0 data is present (Arena 0, Pop 2)
         self.assertTrue(any(s.strip().startswith("0") and " 2 " in s for s in printed_strings))
 
