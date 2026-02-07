@@ -581,13 +581,6 @@ def normalize_instruction(instruction, coresize, sanitize_limit):
 
     return f"{opcode}.{modifier} {mode_a}{norm_a},{mode_b}{norm_b}\n"
 
-def create_directory_if_not_exists(directory):
-    """
-    Creates a folder if it does not already exist.
-    """
-    if not os.path.exists(directory):
-        os.mkdir(directory)
-
 def parse_nmars_output(raw_output):
     """
     Reads the text output from nMars to extract scores and warrior IDs.
@@ -1402,11 +1395,11 @@ if __name__ == "__main__":
             print(f"{key}={globals()[key]}")
     sys.exit(0)
 
-  if ALREADYSEEDED==False:
+  if ALREADYSEEDED == False:
     print("Seeding")
-    create_directory_if_not_exists("archive")
-    for arena in range (0,LAST_ARENA+1):
-      create_directory_if_not_exists(f"arena{arena}")
+    os.makedirs("archive", exist_ok=True)
+    for arena in range(0, LAST_ARENA + 1):
+      os.makedirs(f"arena{arena}", exist_ok=True)
       for i in range(1, NUMWARRIORS+1):
         with open(os.path.join(f"arena{arena}", f"{i}.red"), "w") as f:
             for j in range(1, WARLEN_LIST[arena]+1):
