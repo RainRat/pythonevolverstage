@@ -99,6 +99,10 @@ def format_time_remaining(seconds):
     h, m = divmod(m, 60)
     return "{:02d}:{:02d}:{:02d}".format(int(h), int(m), int(s))
 
+def strip_ansi(text):
+    """Removes ANSI escape codes from a string."""
+    return re.sub(r'\033\[[0-9;]*m', '', str(text))
+
 def draw_progress_bar(percent, width=30):
     """Returns a string representing a progress bar."""
     if percent < 0: percent = 0
@@ -628,6 +632,8 @@ def get_evolution_status():
     """
     Gathers the current status of the evolution system into a dictionary.
     """
+    champions = get_leaderboard(limit=1)
+
     status = {
         "latest_log": get_latest_log_entry(),
         "arenas": [],
@@ -654,6 +660,14 @@ def get_evolution_status():
             files = [f for f in os.listdir(dir_name) if f.endswith('.red')]
             count = len(files)
             arena_info["population"] = count
+
+            # Add champion info if available
+            if i in champions and champions[i]:
+                arena_info["champion"] = champions[i][0][0]
+                arena_info["champion_wins"] = champions[i][0][1]
+            else:
+                arena_info["champion"] = None
+                arena_info["champion_wins"] = 0
 
             if count > 0:
                 total_lines = 0
@@ -875,15 +889,17 @@ def print_status():
     Prints the current status of all arenas and the archive in a human-readable format.
     """
     data = get_evolution_status()
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
 
-    print(f"\n{Colors.BOLD}{Colors.HEADER}Evolver Status Report{Colors.ENDC}")
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Evolver Status Dashboard ---{Colors.ENDC}")
+    print(f"Captured: {now}")
     print("="*78)
 
     # Latest Activity
     log = data['latest_log']
     if log:
         try:
-            summary = f"Era {int(log['era'])+1}, Arena {log['arena']}: Warrior {log['winner']} beat {log['loser']} ({log['score1']}-{log['score2']})"
+            summary = f"Era {int(log['era'])+1}, Arena {log['arena']}: {Colors.GREEN}Warrior {log['winner']}{Colors.ENDC} beat {Colors.RED}Warrior {log['loser']}{Colors.ENDC} ({log['score1']}-{log['score2']})"
             print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} {summary}")
         except (ValueError, KeyError):
             print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} {log}")
@@ -892,7 +908,7 @@ def print_status():
     print("-" * 78)
 
     # Table Header
-    header = f"{'Arena':<6} {'Size':>8} {'Cycles':>10} {'Procs':>8} {'Pop':>6} {'Len':>6}  {'Status':<10}"
+    header = f"{'Arena':<5} {'Size':>7} {'Cycles':>8} {'Procs':>6} {'Pop':>5} {'Len':>5} {'Champion':<12} {'Wins':>4} {'Status':<8}"
     print(f"{Colors.BOLD}{header}{Colors.ENDC}")
     print("-" * 78)
 
@@ -903,17 +919,35 @@ def print_status():
         cycles = arena['config']['cycles']
         procs = arena['config']['processes']
 
+        champ_str = "-"
+        wins_str = "-"
+
         if arena['exists']:
             pop = str(arena['population'])
             total_warriors += arena['population']
             avg_len = f"{arena['avg_length']:.1f}"
             status = f"{Colors.GREEN}OK{Colors.ENDC}"
+
+            if arena.get('champion'):
+                champ_str = f"#{arena['champion']}"
+                wins_str = str(arena['champion_wins'])
+                if arena['champion_wins'] > 0:
+                    champ_str = f"{Colors.CYAN}{champ_str}{Colors.ENDC}"
+                    wins_str = f"{Colors.BOLD}{Colors.GREEN}{wins_str}{Colors.ENDC}"
         else:
             pop = "-"
             avg_len = "-"
             status = f"{Colors.YELLOW}Unseeded{Colors.ENDC}"
 
-        row = f"{i:<6} {size:>8} {cycles:>10} {procs:>8} {pop:>6} {avg_len:>6}  {status}"
+        champ_plain = strip_ansi(champ_str)
+        wins_plain = strip_ansi(wins_str)
+
+        row = (
+            f"{i:<5} {size:>7} {cycles:>8} {procs:>6} {pop:>5} {avg_len:>5} "
+            f"{champ_str}{' ' * (12 - len(champ_plain))} "
+            f"{' ' * (4 - len(wins_plain))}{wins_str} "
+            f"{status}"
+        )
         print(row)
 
     print("-" * 78)
@@ -922,7 +956,7 @@ def print_status():
     archive_count = data['archive']['count']
     archive_info = f"{Colors.GREEN}{archive_count}{Colors.ENDC}" if data['archive']['exists'] else f"{Colors.YELLOW}None{Colors.ENDC}"
 
-    print(f"Total Warriors: {Colors.BOLD}{total_warriors}{Colors.ENDC} | Archive: {archive_info}")
+    print(f"Total Population: {Colors.BOLD}{total_warriors}{Colors.ENDC} | Archive: {archive_info}")
     print("="*78 + "\n")
 
 def _resolve_warrior_path(selector, arena_idx):
@@ -964,11 +998,11 @@ def _resolve_warrior_path(selector, arena_idx):
 
     return selector
 
-def _get_arena_idx():
+def _get_arena_idx(default=0):
     """
     Helper to extract arena index from command line arguments.
     """
-    arena_idx = 0
+    arena_idx = default
     if "--arena" in sys.argv or "-a" in sys.argv:
         if "--arena" in sys.argv:
             a_idx = sys.argv.index("--arena")
@@ -1066,7 +1100,16 @@ def validate_configuration():
 
 if __name__ == "__main__":
   if "--help" in sys.argv or "-h" in sys.argv:
-    print(__doc__)
+    help_text = __doc__
+    # Section Headers
+    help_text = re.sub(r'^([A-Z].*:)$', rf'{Colors.BOLD}{Colors.HEADER}\1{Colors.ENDC}', help_text, flags=re.MULTILINE)
+    # Flags
+    help_text = re.sub(r'(--[a-z-]+|-[a-z](?!\w))', rf'{Colors.CYAN}\1{Colors.ENDC}', help_text)
+    # Examples
+    help_text = re.sub(r'(python evolverstage\.py .*)', rf'{Colors.YELLOW}\1{Colors.ENDC}', help_text)
+    # Keywords
+    help_text = re.sub(r'\b(top|topN|random)\b', rf'{Colors.GREEN}\1{Colors.ENDC}', help_text)
+    print(help_text)
     sys.exit(0)
 
   if "--restart" in sys.argv:
@@ -1088,14 +1131,7 @@ if __name__ == "__main__":
     sys.exit(0)
 
   if "--leaderboard" in sys.argv or "-l" in sys.argv:
-    arena_idx = None
-    if "--arena" in sys.argv or "-a" in sys.argv:
-        try:
-            a_idx = sys.argv.index("--arena") if "--arena" in sys.argv else sys.argv.index("-a")
-            if len(sys.argv) > a_idx + 1:
-                arena_idx = int(sys.argv[a_idx+1])
-        except ValueError:
-            pass
+    arena_idx = _get_arena_idx(default=None)
 
     results = get_leaderboard(arena_idx=arena_idx)
 
