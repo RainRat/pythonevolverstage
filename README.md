@@ -8,7 +8,7 @@ Contributions are welcome! If you have a suggestion or improvement, please submi
 
 Before running the evolver, you need:
 
-*   **Python 3.x**: Ensure you have Python 3 installed.
+*   **Python 3.x**: Install Python 3 on your system.
 *   **nMars Simulator**:
     1.  Download the latest version from [SourceForge](https://sourceforge.net/projects/nmars/files/).
     2.  Place `nmars.exe` (Windows) or `nmars` (Linux/macOS) in the project folder.
@@ -16,13 +16,13 @@ Before running the evolver, you need:
 
 ## Configuration
 
-Settings are in `settings.ini`. Open this file to customize how the evolution works.
+Edit `settings.ini` to customize the evolution.
 
 1.  **Time**: Set `CLOCK_TIME` to the number of hours you want the script to run.
 2.  **Seeding**: Set `ALREADYSEEDED = False` to start a new evolution. Set it to `True` to resume from existing warriors.
-3.  **Arenas**: You can run multiple arenas with different rules (like core size or cycles).
+3.  **Arenas**: Run multiple arenas with different rules (like core size or cycles).
     *   **Important**: All list settings (like `CORESIZE_LIST`, `CYCLES_LIST`) must be the same length.
-    *   Update `LAST_ARENA` to match the index of your last arena. For example, if you have 8 arenas (indexed 0 to 7), set `LAST_ARENA = 7`.
+    *   Set `LAST_ARENA` to your total number of arenas minus one (e.g., if you have 8 arenas, set this to 7).
 4.  **Optimization**: Set `FINAL_ERA_ONLY = True` to skip early evolution phases and fine-tune your best warriors.
 
 ## How to Run
@@ -56,11 +56,18 @@ The script includes several tools for managing evolution and testing warriors.
 
 ### Manage Evolution
 *   **Status**: `python evolverstage.py --status`
-    *   Shows population size and average warrior length for each arena. Use `--json` for machine-readable output.
-*   **Restart**: `python evolverstage.py --restart`
-    *   Starts from scratch, overwriting existing warriors.
-*   **Resume**: `python evolverstage.py --resume`
-    *   Continues evolution from your current files.
+    *   Shows population size, average warrior length, and current champions. Use `--json` for machine-readable output.
+*   **Leaderboard**: `python evolverstage.py --leaderboard`
+    *   Displays top-performing warriors based on recent win streaks.
+*   **Harvest**: `python evolverstage.py --harvest directory/`
+    *   Collects the best warriors from the leaderboard into a specific folder.
+*   **Restart/Resume**: Use `--restart` to start fresh or `--resume` to continue from your current files.
+
+### Analyze and View
+*   **Analyze**: `python evolverstage.py --analyze warrior.red`
+    *   Provides a statistical report on a warrior's code, including instruction distribution.
+*   **View**: `python evolverstage.py --view top`
+    *   Displays the source code of a warrior. Supports keywords like `top` or `random`.
 
 ### Run Battles
 *   **Single Battle**: `python evolverstage.py --battle warrior1.red warrior2.red`
@@ -85,6 +92,7 @@ If `BATTLE_LOG_FILE` is set in `settings.ini`, results are saved to a CSV file:
 *   **arena**: The arena where the battle occurred.
 *   **winner/loser**: Warrior IDs.
 *   **score1/score2**: Match scores.
+*   **bred_with**: The ID of the warrior used for breeding after the match.
 
 ## Running Tests
 
@@ -101,10 +109,10 @@ python -m unittest discover tests
 
 ## Features
 
-*   **Supports multiple arenas**: Evolve warriors in different environments simultaneously.
-*   **Selects effective code**: Automatically prioritizes useful instructions and numbers during evolution.
+*   **Multi-Arena Support**: Evolve warriors in different environments simultaneously.
+*   **Intelligent Selection**: Automatically prioritizes useful instructions and numbers during evolution.
 *   **Phased Evolution**:
-    1.  **Exploration (Era 1)**: High mutation rate to discover new strategies.
-    2.  **Breeding (Era 2)**: Combines parts of winning warriors.
-    3.  **Optimization (Era 3)**: Fine-tunes values for peak performance.
-*   **Diverse Mutation Strategies**: Uses a "Bag of Marbles" system to randomly apply different mutation types, including instruction theft from other arenas and "magic number" adjustments.
+    1.  **Exploration**: Uses high mutation rates to discover new strategies.
+    2.  **Breeding**: Combines successful warriors to pass on winning traits.
+    3.  **Optimization**: Fine-tunes code for peak performance.
+*   **Dynamic Mutation**: Uses a "Bag of Marbles" system to randomly apply different mutation types, including instruction theft and "magic number" adjustments.
