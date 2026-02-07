@@ -46,13 +46,22 @@ Dynamic Selectors:
   top, topN            Target the #1 (or #N) warrior from the leaderboard.
   random               Target a random warrior from the current arena population.
 
+  You can also specify an arena for a selector using the '@' suffix:
+  top@5                Target the champion of Arena 5.
+  random@2             Target a random warrior from Arena 2.
+
+Smart Arena Inference:
+  If --arena (-a) is omitted, the script automatically detects the arena index
+  from file paths provided in the command line (e.g., 'arena5/1.red' targets Arena 5).
+
 Examples:
   python evolverstage.py --check
-  python evolverstage.py --battle top random --arena 0
-  python evolverstage.py --view top2 --arena 1
-  python evolverstage.py --benchmark top archive/
-  python evolverstage.py --analyze top
-  python evolverstage.py --harvest best_warriors --top 5
+  python evolverstage.py --battle arena0/1.red arena1/1.red
+  python evolverstage.py --battle top@0 top@1
+  python evolverstage.py --view top@2
+  python evolverstage.py --benchmark top arena5/
+  python evolverstage.py --analyze top --arena 5
+  python evolverstage.py --harvest best_warriors --top 5 --arena 0
 '''
 
 import random
@@ -992,9 +1001,19 @@ def print_status():
 def _resolve_warrior_path(selector, arena_idx):
     """
     Resolves a warrior selector (filename, 'top', 'topN', or 'random') to a file path.
+    Supports '@N' suffix to override the arena index (e.g., 'top@5', 'random@2').
     """
     if os.path.exists(selector):
         return selector
+
+    # Handle arena override suffix
+    if "@" in selector:
+        parts = selector.split("@")
+        selector = parts[0]
+        try:
+            arena_idx = int(parts[1])
+        except (ValueError, IndexError):
+            pass
 
     sel = selector.lower()
 
@@ -1031,17 +1050,25 @@ def _resolve_warrior_path(selector, arena_idx):
 def _get_arena_idx(default=0):
     """
     Helper to extract arena index from command line arguments.
+    If no explicit flag is found, it attempts to infer the arena from other arguments.
     """
-    arena_idx = default
+    # 1. Look for explicit flag
     if "--arena" in sys.argv or "-a" in sys.argv:
-        if "--arena" in sys.argv:
-            a_idx = sys.argv.index("--arena")
-        else:
-            a_idx = sys.argv.index("-a")
+        try:
+            a_idx = sys.argv.index("--arena") if "--arena" in sys.argv else sys.argv.index("-a")
+            if len(sys.argv) > a_idx + 1:
+                return int(sys.argv[a_idx+1])
+        except (ValueError, IndexError):
+            pass
 
-        if len(sys.argv) > a_idx + 1:
-            arena_idx = int(sys.argv[a_idx+1])
-    return arena_idx
+    # 2. Inferred arena from path-like arguments (skipping script name)
+    for arg in sys.argv[1:]:
+        # Matches 'arenaN' as a directory or start of filename (e.g., arena5/ or arena5.red)
+        match = re.search(r'(?:^|[\\/])arena(\d+)(?=[\\/.]|$)', arg, re.I)
+        if match:
+            return int(match.group(1))
+
+    return default
 
 def validate_configuration():
     """
@@ -1212,14 +1239,7 @@ if __name__ == "__main__":
         target_dir = sys.argv[idx+1]
 
         # Determine arena index (default all)
-        arena_idx = None
-        if "--arena" in sys.argv or "-a" in sys.argv:
-            try:
-                a_idx = sys.argv.index("--arena") if "--arena" in sys.argv else sys.argv.index("-a")
-                if len(sys.argv) > a_idx + 1:
-                    arena_idx = int(sys.argv[a_idx+1])
-            except ValueError:
-                pass
+        arena_idx = _get_arena_idx(default=None)
 
         # Determine limit (default 10)
         limit = 10
