@@ -538,11 +538,48 @@ def corenorm(x, y):
     return -(y - x) if x > y // 2 else (y + x) if x <= -(y // 2) else x
 
 def normalize_instruction(instruction, coresize, sanitize_limit):
-    splitline = re.split(r'[ \.,\n]', instruction.strip())
-    return splitline[0]+"."+splitline[1]+" "+splitline[2][0:1]+ \
-           str(corenorm(coremod(int(splitline[2][1:]),sanitize_limit),coresize))+","+ \
-           splitline[3][0:1]+str(corenorm(coremod(int(splitline[3][1:]),sanitize_limit), \
-           coresize))+"\n"
+    """
+    Standardizes a Redcode instruction into a consistent format.
+    Handles missing modifiers, missing addressing modes, and varied whitespace.
+    """
+    # Strip trailing comments and whitespace
+    clean_instr = instruction.split(';')[0].strip()
+    if not clean_instr:
+        raise ValueError("Empty instruction")
+
+    # Regex to extract components robustly: OPCODE[.MODIFIER] <MODE>A-VAL[,<MODE>B-VAL]
+    match = re.match(r'^([A-Z]+)(?:\.([A-Z]+))?\s+([^,]+)(?:,\s*(.+))?$', clean_instr, re.I)
+    if not match:
+        raise ValueError(f"Invalid instruction format: {clean_instr}")
+
+    opcode, modifier, op_a, op_b = match.groups()
+    opcode = opcode.upper()
+    modifier = modifier.upper() if modifier else "I"
+
+    def parse_op(op):
+        if not op:
+            return "$", 0
+        op = op.strip()
+        # Check for mode prefix
+        if op[0] in '#$@<>{}*':
+            mode = op[0]
+            val_part = op[1:]
+        else:
+            mode = "$"
+            val_part = op
+
+        if not val_part: # Handle cases like "$" or "#" without a number
+            return mode, 0
+
+        return mode, int(val_part)
+
+    mode_a, val_a = parse_op(op_a)
+    mode_b, val_b = parse_op(op_b)
+
+    norm_a = corenorm(coremod(val_a, sanitize_limit), coresize)
+    norm_b = corenorm(coremod(val_b, sanitize_limit), coresize)
+
+    return f"{opcode}.{modifier} {mode_a}{norm_a},{mode_b}{norm_b}\n"
 
 def create_directory_if_not_exists(directory):
     """

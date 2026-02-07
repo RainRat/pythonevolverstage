@@ -82,3 +82,56 @@ class TestNormalizeInstruction(unittest.TestCase):
         expected = "MOV.I @10,<20\n"
         result = evolverstage.normalize_instruction(instr, coresize, sanitize)
         self.assertEqual(result, expected)
+
+    def test_missing_modifier(self):
+        instr = "MOV $0,$0"
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
+
+    def test_missing_modes(self):
+        instr = "MOV.I 0,0"
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
+
+    def test_case_insensitivity(self):
+        instr = "mov.i $0,$0"
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
+
+    def test_varied_whitespace_robust(self):
+        instr = "MOV.I   $0  ,   $0"
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
+
+    def test_trailing_comment_robust(self):
+        instr = "MOV.I $0,$0 ; this is a comment"
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
+
+    def test_single_operand(self):
+        instr = "JMP $5"
+        expected = "JMP.I $5,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
+
+    def test_invalid_instruction(self):
+        instr = "NOT_AN_INSTRUCTION"
+        with self.assertRaises(ValueError):
+            evolverstage.normalize_instruction(instr, 8000, 8000)
+
+    def test_empty_instruction(self):
+        instr = "   "
+        with self.assertRaises(ValueError):
+            evolverstage.normalize_instruction(instr, 8000, 8000)
+
+    def test_mode_only(self):
+        # Handle cases like "DAT.F #,#" or "DAT.F $"
+        instr = "DAT.F #,#"
+        expected = "DAT.F #0,#0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
