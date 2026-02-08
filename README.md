@@ -1,6 +1,6 @@
 # Python Core War Evolver
 
-Evolve Core War warriors using genetic algorithms. This tool pits warriors against each other, breeds winners, and introduces mutations to develop stronger strategies over time. You do not need to know Redcode to use it.
+Evolve Core War warriors by pitting them against each other and breeding winners. The tool uses mutations to create stronger strategies over time. You do not need to know Redcode to use it.
 
 Contributions are welcome! If you have a suggestion or improvement, please submit a pull request.
 
@@ -10,9 +10,9 @@ Before running the evolver, you need:
 
 *   **Python 3.x**: Install Python 3 on your system.
 *   **nMars Simulator**:
-    1.  Download the latest version from [SourceForge](https://sourceforge.net/projects/nmars/files/).
-    2.  Place `nmars.exe` (Windows) or `nmars` (Linux/macOS) in the project folder.
-    3.  (Linux/macOS) Make the file executable by running `chmod +x nmars` in your terminal.
+    1. Download nMars from [SourceForge](https://sourceforge.net/projects/nmars/files/).
+    2. Put `nmars.exe` (Windows) or `nmars` (Linux/macOS) in this folder.
+    3. On Linux or macOS, run `chmod +x nmars` in your terminal to allow it to run.
 
 ## Configuration
 
@@ -22,7 +22,7 @@ Edit `settings.ini` to customize the evolution.
 2.  **Seeding**: Set `ALREADYSEEDED = False` to start a new evolution. Set it to `True` to resume from existing warriors.
 3.  **Arenas**: Run multiple arenas with different rules (like core size or cycles).
     *   **Important**: All list settings (like `CORESIZE_LIST`, `CYCLES_LIST`) must be the same length.
-    *   Set `LAST_ARENA` to your total number of arenas minus one (e.g., if you have 8 arenas, set this to 7).
+    *   Set `LAST_ARENA` to the index of your final arena. For example, if you have 8 arenas, they are numbered 0 to 7, so set `LAST_ARENA` to 7.
 4.  **Optimization**: Set `FINAL_ERA_ONLY = True` to skip early evolution phases and fine-tune your best warriors.
 
 ## How to Run
@@ -65,7 +65,7 @@ The script includes several tools for managing evolution and testing warriors.
 
 ### Analyze and View
 *   **Analyze**: `python evolverstage.py --analyze warrior.red`
-    *   Provides a statistical report on a warrior's code, including instruction distribution.
+    *   Shows details about a warrior's code, such as the types of instructions it uses.
 *   **View**: `python evolverstage.py --view top`
     *   Displays the source code of a warrior. Supports keywords like `top` or `random`.
 
@@ -109,10 +109,10 @@ python -m unittest discover tests
 
 ## Features
 
-*   **Multi-Arena Support**: Evolve warriors in different environments simultaneously.
+*   **Multi-Arena Support**: Run many arenas with different rules at the same time.
 *   **Intelligent Selection**: Automatically prioritizes useful instructions and numbers during evolution.
 *   **Phased Evolution**:
-    1.  **Exploration**: Uses high mutation rates to discover new strategies.
+    1.  **Exploration**: Uses frequent changes to find new strategies.
     2.  **Breeding**: Combines successful warriors to pass on winning traits.
     3.  **Optimization**: Fine-tunes code for peak performance.
 *   **Dynamic Mutation**: Uses a "Bag of Marbles" system to randomly apply different mutation types, including instruction theft and "magic number" adjustments.
