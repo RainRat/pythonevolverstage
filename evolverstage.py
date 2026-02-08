@@ -8,7 +8,7 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]]
+  python evolverstage.py [COMMAND] [OPTIONS]
 
 General Commands:
   --check, -c          Validate configuration and environment (settings.ini, nMars).
@@ -18,9 +18,6 @@ General Commands:
                        Usage: --leaderboard [--arena <N>] [--json]
   --harvest, -p        Collect top warriors from the leaderboard into a directory.
                        Usage: --harvest <directory> [--top <N>] [--arena <N>]
-  --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
-                       Use --top (or 'top' selector) to analyze the current champion.
-                       Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
   --dump-config, -d    Print current configuration settings and exit.
 
 Evolution Controls:
@@ -41,6 +38,11 @@ Utilities:
                        Usage: --normalize <warrior|selector> [--arena <N>]
   --view, -v           View the source code of a warrior.
                        Usage: --view <warrior|selector> [--arena <N>]
+
+Analysis Tools:
+  --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
+                       Use --top (or 'top' selector) to analyze the current champion.
+                       Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
 
 Dynamic Selectors:
   Most commands accepting a warrior file also support these keywords:
@@ -1064,18 +1066,33 @@ def _resolve_warrior_path(selector, arena_idx):
 
 def _get_arena_idx(default=0):
     """
-    Helper to extract arena index from command line arguments.
+    Consolidates arena index extraction from CLI arguments.
+    Priority: 1. Explicit --arena/-a flag, 2. Smart inference from paths or selectors, 3. Default.
     """
-    arena_idx = default
-    if "--arena" in sys.argv or "-a" in sys.argv:
-        if "--arena" in sys.argv:
-            a_idx = sys.argv.index("--arena")
-        else:
-            a_idx = sys.argv.index("-a")
+    # 1. Explicit flag
+    for flag in ["--arena", "-a"]:
+        if flag in sys.argv:
+            try:
+                idx = sys.argv.index(flag)
+                if idx + 1 < len(sys.argv):
+                    return int(sys.argv[idx + 1])
+            except (ValueError, IndexError):
+                pass
 
-        if len(sys.argv) > a_idx + 1:
-            arena_idx = int(sys.argv[a_idx+1])
-    return arena_idx
+    # 2. Smart Arena Inference: look for arenaN/ or selector@N in any argument
+    # Skip sys.argv[0] (the script path) to avoid false positives.
+    for arg in sys.argv[1:]:
+        # Check for arenaN/ or arenaN\
+        path_match = re.search(r'arena(\d+)[/\\]', arg)
+        if path_match:
+            return int(path_match.group(1))
+
+        # Check for selector@N
+        selector_match = re.search(r'@(\d+)$', arg)
+        if selector_match:
+            return int(selector_match.group(1))
+
+    return default
 
 def validate_configuration():
     """
@@ -1246,14 +1263,7 @@ if __name__ == "__main__":
         target_dir = sys.argv[idx+1]
 
         # Determine arena index (default all)
-        arena_idx = None
-        if "--arena" in sys.argv or "-a" in sys.argv:
-            try:
-                a_idx = sys.argv.index("--arena") if "--arena" in sys.argv else sys.argv.index("-a")
-                if len(sys.argv) > a_idx + 1:
-                    arena_idx = int(sys.argv[a_idx+1])
-            except ValueError:
-                pass
+        arena_idx = _get_arena_idx(default=None)
 
         # Determine limit (default 10)
         limit = 10
