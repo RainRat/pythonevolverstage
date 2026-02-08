@@ -115,6 +115,10 @@ def draw_progress_bar(percent, width=30):
     empty_bar = '-' * (width - filled_length)
     return f"[{Colors.GREEN}{filled_bar}{Colors.ENDC}{empty_bar}] {percent:6.2f}%"
 
+def _get_nmars_cmd():
+    """Returns the appropriate nMars executable name for the current platform."""
+    return "nmars.exe" if os.name == "nt" else "nmars"
+
 def run_nmars_subprocess(cmd):
     """
     Executes the nmars command with the given arguments.
@@ -135,38 +139,38 @@ def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, 
   It builds the command string with all the rules for the specific arena (size, cycles, etc.)
   and returns the raw output from nMars, which contains the scores.
   """
-  nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
-  cmd = [
-      nmars_cmd,
-      os.path.join(f"arena{arena}", f"{cont1}.red"),
-      os.path.join(f"arena{arena}", f"{cont2}.red"),
-      "-s", str(coresize),
-      "-c", str(cycles),
-      "-p", str(processes),
-      "-l", str(warlen),
-      "-d", str(wardistance),
-      "-r", str(battlerounds)
-    ]
+  file1 = os.path.join(f"arena{arena}", f"{cont1}.red")
+  file2 = os.path.join(f"arena{arena}", f"{cont2}.red")
+  cmd = construct_battle_command(file1, file2, arena, coresize=coresize, cycles=cycles,
+                                 processes=processes, warlen=warlen,
+                                 wardistance=wardistance, rounds=battlerounds)
   return run_nmars_subprocess(cmd)
 
-def construct_battle_command(file1, file2, arena_idx):
+def construct_battle_command(file1, file2, arena_idx, coresize=None, cycles=None, processes=None, warlen=None, wardistance=None, rounds=None):
     """
     Constructs the nMars command for battling two specific files.
     """
-    nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
-    # Use the battlerounds from the last era (Optimization) as default for manual battles
-    rounds = BATTLEROUNDS_LIST[-1] if BATTLEROUNDS_LIST else 100
+    if rounds is None:
+        # Use the battlerounds from the last era (Optimization) as default for manual battles
+        rounds = BATTLEROUNDS_LIST[-1] if BATTLEROUNDS_LIST else 100
+
+    s = str(coresize if coresize is not None else CORESIZE_LIST[arena_idx])
+    c = str(cycles if cycles is not None else CYCLES_LIST[arena_idx])
+    p = str(processes if processes is not None else PROCESSES_LIST[arena_idx])
+    l = str(warlen if warlen is not None else WARLEN_LIST[arena_idx])
+    d = str(wardistance if wardistance is not None else WARDISTANCE_LIST[arena_idx])
+    r = str(rounds)
 
     return [
-        nmars_cmd,
+        _get_nmars_cmd(),
         file1,
         file2,
-        "-s", str(CORESIZE_LIST[arena_idx]),
-        "-c", str(CYCLES_LIST[arena_idx]),
-        "-p", str(PROCESSES_LIST[arena_idx]),
-        "-l", str(WARLEN_LIST[arena_idx]),
-        "-d", str(WARDISTANCE_LIST[arena_idx]),
-        "-r", str(rounds)
+        "-s", s,
+        "-c", c,
+        "-p", p,
+        "-l", l,
+        "-d", d,
+        "-r", r
     ]
 
 def run_custom_battle(file1, file2, arena_idx):
@@ -1131,7 +1135,7 @@ def validate_configuration():
             errors.append(f"{name} has {len(lst)} elements, expected at least 3 (for eras 0, 1, 2)")
 
     # Check Executables
-    nmars_cmd = "nmars.exe" if os.name == "nt" else "nmars"
+    nmars_cmd = _get_nmars_cmd()
     if not shutil.which(nmars_cmd) and not os.path.exists(nmars_cmd):
         errors.append(f"Executable '{nmars_cmd}' not found in PATH or current directory.")
 
