@@ -43,12 +43,14 @@ class TestRunTournament(unittest.TestCase):
 
         mock_print.assert_any_call(f"Error: Directory '{self.directory}' not found.")
 
+    @mock.patch('os.path.isdir')
     @mock.patch('os.listdir')
     @mock.patch('os.path.exists')
     @mock.patch('builtins.print')
-    def test_run_tournament_insufficient_files(self, mock_print, mock_exists, mock_listdir):
+    def test_run_tournament_insufficient_files(self, mock_print, mock_exists, mock_listdir, mock_isdir):
         """Test tournament with fewer than 2 .red files."""
         mock_exists.return_value = True
+        mock_isdir.return_value = True
         mock_listdir.return_value = ['one.red'] # Only one file
 
         with mock.patch.multiple(evolverstage, **self.mock_config):
@@ -58,12 +60,14 @@ class TestRunTournament(unittest.TestCase):
 
     @mock.patch('evolverstage.run_nmars_subprocess')
     @mock.patch('evolverstage.parse_nmars_output')
+    @mock.patch('os.path.isdir')
     @mock.patch('os.listdir')
     @mock.patch('os.path.exists')
     @mock.patch('builtins.print')
-    def test_run_tournament_success(self, mock_print, mock_exists, mock_listdir, mock_parse, mock_run):
+    def test_run_tournament_success(self, mock_print, mock_exists, mock_listdir, mock_isdir, mock_parse, mock_run):
         """Test successful tournament execution."""
         mock_exists.return_value = True
+        mock_isdir.return_value = True
         files = ['warrior1.red', 'warrior2.red', 'warrior3.red']
         mock_listdir.return_value = files
 
@@ -115,3 +119,6 @@ class TestRunTournament(unittest.TestCase):
         mock_print.assert_any_call(f"{evolverstage.Colors.GREEN}1. warrior1.red: 200{evolverstage.Colors.ENDC}")
         mock_print.assert_any_call(f"{evolverstage.Colors.ENDC}2. warrior2.red: 100{evolverstage.Colors.ENDC}")
         mock_print.assert_any_call(f"{evolverstage.Colors.ENDC}3. warrior3.red: 0{evolverstage.Colors.ENDC}")
+
+if __name__ == '__main__':
+    unittest.main()

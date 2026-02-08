@@ -30,8 +30,9 @@ Evolution Controls:
 Battle Tools:
   --battle, -b         Run a single battle between two warriors.
                        Usage: --battle <warrior1> <warrior2> [--arena <N>]
-  --tournament, -t     Run a round-robin tournament for all warriors in a folder.
-                       Usage: --tournament <directory> [--arena <N>]
+  --tournament, -t     Run a round-robin tournament between specific warriors or all files in a folder.
+                       Use --champions to automatically battle the #1 warrior from every arena.
+                       Usage: --tournament <directory|selectors...> [--champions] [--arena <N>]
   --benchmark, -m      Test a warrior against a folder of opponents.
                        Usage: --benchmark <warrior> <directory> [--arena <N>]
 
@@ -45,14 +46,16 @@ Dynamic Selectors:
   Most commands accepting a warrior file also support these keywords:
   top, topN            Target the #1 (or #N) warrior from the leaderboard.
   random               Target a random warrior from the current arena population.
+  selector@N           Override the arena for a selector (e.g., top@0, random@2).
 
 Examples:
   python evolverstage.py --check
-  python evolverstage.py --battle top random --arena 0
-  python evolverstage.py --view top2 --arena 1
+  python evolverstage.py --battle top@0 top@1
+  python evolverstage.py --tournament --champions --arena 5
+  python evolverstage.py --tournament top@0 top@1 top@2 --arena 0
+  python evolverstage.py --view random@2
   python evolverstage.py --benchmark top archive/
   python evolverstage.py --analyze top
-  python evolverstage.py --harvest best_warriors --top 5
 '''
 
 import random
@@ -195,32 +198,55 @@ def run_custom_battle(file1, file2, arena_idx):
     else:
         print(f"{Colors.RED}No output received from nMars.{Colors.ENDC}")
 
-def run_tournament(directory, arena_idx):
+def run_tournament(targets, arena_idx):
     """
-    Runs a round-robin tournament between all .red files in the specified directory.
+    Runs a round-robin tournament between a directory of warriors or a specific list of warriors.
     """
+    if isinstance(targets, str):
+        targets = [targets]
+
     if arena_idx > LAST_ARENA:
         print(f"Error: Arena {arena_idx} does not exist (LAST_ARENA={LAST_ARENA})")
         return
 
-    if not os.path.exists(directory):
-        print(f"Error: Directory '{directory}' not found.")
-        return
+    abs_files = []
+    file_map = {}
 
-    files = [f for f in os.listdir(directory) if f.endswith('.red')]
-    if len(files) < 2:
-        print("Error: Need at least 2 .red files for a tournament.")
+    # Check if we are given a single directory or a list of files/selectors
+    if len(targets) == 1 and os.path.isdir(targets[0]):
+        directory = targets[0]
+        files = [f for f in os.listdir(directory) if f.endswith('.red')]
+        if len(files) < 2:
+            print("Error: Need at least 2 .red files for a tournament.")
+            return
+        abs_files = [os.path.join(directory, f) for f in files]
+        file_map = {path: f for path, f in zip(abs_files, files)}
+        print(f"Tournament: {len(files)} warriors from directory '{directory}'")
+    elif len(targets) == 1 and not os.path.exists(targets[0]):
+        # Maintain backward compatibility for single directory not found error message
+        print(f"Error: Directory '{targets[0]}' not found.")
         return
+    else:
+        # It's a list of selectors/files
+        for sel in targets:
+            path = _resolve_warrior_path(sel, arena_idx)
+            if os.path.exists(path):
+                abs_files.append(path)
+                file_map[path] = sel
+            else:
+                print(f"Warning: Warrior '{sel}' not found. Skipping.")
 
-    scores = {f: 0 for f in files}
-    # Create absolute paths
-    abs_files = [os.path.join(directory, f) for f in files]
-    file_map = {os.path.join(directory, f): f for f in files}
+        if len(abs_files) < 2:
+            print("Error: Need at least 2 warriors for a tournament.")
+            return
+        print(f"Tournament: {len(abs_files)} specific warriors.")
+
+    scores = {file_map[f]: 0 for f in abs_files}
 
     # Generate pairs
     pairs = list(itertools.combinations(abs_files, 2))
     total_battles = len(pairs)
-    print(f"Tournament: {len(files)} warriors, {total_battles} battles.")
+    print(f"Total battles: {total_battles}")
     print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
 
     for i, (p1, p2) in enumerate(pairs, 1):
@@ -992,7 +1018,15 @@ def print_status():
 def _resolve_warrior_path(selector, arena_idx):
     """
     Resolves a warrior selector (filename, 'top', 'topN', or 'random') to a file path.
+    Supports an @N suffix to override the default arena index (e.g., top@0, random@2).
     """
+    # Check for arena override suffix (e.g., top@0)
+    if "@" in selector:
+        parts = selector.rsplit("@", 1)
+        if parts[1].isdigit():
+            selector = parts[0]
+            arena_idx = int(parts[1])
+
     if os.path.exists(selector):
         return selector
 
@@ -1260,19 +1294,26 @@ if __name__ == "__main__":
 
   if "--tournament" in sys.argv or "-t" in sys.argv:
       try:
-          if "--tournament" in sys.argv:
-              idx = sys.argv.index("--tournament")
-          else:
-              idx = sys.argv.index("-t")
+          idx = sys.argv.index("--tournament") if "--tournament" in sys.argv else sys.argv.index("-t")
 
-          if len(sys.argv) < idx + 2:
-              print("Usage: --tournament|-t <directory> [--arena|-a <N>]")
+          targets = []
+          if "--champions" in sys.argv:
+              # Auto-populate with champions from all arenas
+              for i in range(LAST_ARENA + 1):
+                  targets.append(f"top@{i}")
+          else:
+              # Collect all arguments until the next flag
+              for i in range(idx + 1, len(sys.argv)):
+                  if sys.argv[i].startswith('-'):
+                      break
+                  targets.append(sys.argv[i])
+
+          if not targets:
+              print("Usage: --tournament|-t <directory|selectors...> [--champions] [--arena|-a <N>]")
               sys.exit(1)
 
-          directory = sys.argv[idx+1]
-
           arena_idx = _get_arena_idx()
-          run_tournament(directory, arena_idx)
+          run_tournament(targets, arena_idx)
           sys.exit(0)
       except ValueError:
           print("Invalid arguments.")
