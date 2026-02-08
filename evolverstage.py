@@ -1604,7 +1604,8 @@ if __name__ == "__main__":
         if VERBOSE:
             print("Nab instruction from arena " + str(donor_arena))
         donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
-        templine = random.choice(list(open(donor_file)))
+        with open(donor_file, 'r') as f:
+            templine = random.choice(f.readlines())
       elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
         if VERBOSE:
             print("Minor mutation")
@@ -1648,7 +1649,8 @@ if __name__ == "__main__":
       elif chosen_marble==Marble.INSTRUCTION_LIBRARY and LIBRARY_PATH and os.path.exists(LIBRARY_PATH):
         if VERBOSE:
             print("Instruction library")
-        templine=random.choice(list(open(LIBRARY_PATH)))
+        with open(LIBRARY_PATH, 'r') as f:
+            templine = random.choice(f.readlines())
       elif chosen_marble==Marble.MAGIC_NUMBER_MUTATION:
         if VERBOSE:
             print ("Magic number mutation")
