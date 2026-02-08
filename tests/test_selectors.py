@@ -65,5 +65,28 @@ class TestSelectors(unittest.TestCase):
         result = evolverstage._resolve_warrior_path("something_else", 0)
         self.assertEqual(result, "something_else")
 
+    @mock.patch('os.path.exists')
+    @mock.patch('evolverstage.get_leaderboard')
+    def test_resolve_top_with_arena_override_suffix(self, mock_leaderboard, mock_exists):
+        # Setup: top@5 should look in arena 5
+        mock_leaderboard.return_value = {5: [('99', 20)]}
+        mock_exists.side_effect = lambda p: p == "arena5/99.red"
+
+        result = evolverstage._resolve_warrior_path("top@5", 0)
+        self.assertEqual(result, "arena5/99.red")
+        mock_leaderboard.assert_called_with(arena_idx=5, limit=1)
+
+    @mock.patch('os.path.exists')
+    @mock.patch('os.listdir')
+    @mock.patch('random.choice')
+    def test_resolve_random_with_arena_override_suffix(self, mock_choice, mock_listdir, mock_exists):
+        mock_exists.side_effect = lambda p: p == "arena2"
+        mock_listdir.return_value = ["w1.red"]
+        mock_choice.return_value = "w1.red"
+
+        result = evolverstage._resolve_warrior_path("random@2", 0)
+        self.assertEqual(result, os.path.join("arena2", "w1.red"))
+        mock_listdir.assert_called_once_with("arena2")
+
 if __name__ == '__main__':
     unittest.main()
