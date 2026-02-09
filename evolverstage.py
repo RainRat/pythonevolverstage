@@ -8,7 +8,7 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]]
+  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]] [--collect|-k targets... [-o output] [--arena N]]
 
 General Commands:
   --check, -c          Validate configuration and environment (settings.ini, nMars).
@@ -41,6 +41,8 @@ Utilities:
                        Usage: --normalize <warrior|selector> [--arena <N>]
   --view, -v           View the source code of a warrior.
                        Usage: --view <warrior|selector> [--arena <N>]
+  --collect, -k        Extract instructions from warriors into a single library file.
+                       Usage: --collect <dir|file|selector...> [-o <output>] [--arena <N>]
 
 Dynamic Selectors:
   Most commands accepting a warrior file also support these keywords:
@@ -56,6 +58,7 @@ Examples:
   python evolverstage.py --view random@2
   python evolverstage.py --benchmark top archive/
   python evolverstage.py --analyze top
+  python evolverstage.py --collect archive/ -o instructions.txt
 '''
 
 import random
@@ -432,6 +435,56 @@ def run_normalization(filepath, arena_idx, output_path=None):
     finally:
         if file_handle:
             file_handle.close()
+
+def run_instruction_collection(targets, output_path, arena_idx):
+    """
+    Reads all instructions from one or more warriors (or directories),
+    normalizes them, and aggregates them into a single library file.
+    """
+    if arena_idx > LAST_ARENA:
+        print(f"Error: Arena {arena_idx} does not exist (LAST_ARENA={LAST_ARENA})")
+        return
+
+    # Aggregate all files to process
+    files_to_process = []
+    for target in targets:
+        # Resolve selector if needed
+        resolved = _resolve_warrior_path(target, arena_idx)
+        if os.path.isdir(resolved):
+            files = [f for f in os.listdir(resolved) if f.endswith('.red')]
+            for f in files:
+                files_to_process.append(os.path.join(resolved, f))
+        elif os.path.exists(resolved):
+            files_to_process.append(resolved)
+        else:
+            print(f"Warning: Target '{target}' could not be resolved. Skipping.")
+
+    if not files_to_process:
+        print("No warriors found to collect instructions from.")
+        return
+
+    print(f"Collecting instructions from {len(files_to_process)} warriors into '{output_path}'...")
+
+    count = 0
+    try:
+        with open(output_path, 'w') as out_f:
+            for filepath in files_to_process:
+                with open(filepath, 'r') as in_f:
+                    for line in in_f:
+                        # Cleanup logic mirrored from unarchiving logic
+                        clean_line = line.replace('  ',' ').replace('START','').replace(', ',',').strip()
+                        if not clean_line or clean_line.startswith(';'):
+                            continue
+                        try:
+                            normalized = normalize_instruction(clean_line, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
+                            out_f.write(normalized)
+                            count += 1
+                        except (ValueError, IndexError):
+                            # Skip invalid lines
+                            pass
+        print(f"Successfully collected {count} instructions.")
+    except Exception as e:
+        print(f"Error writing to library file {output_path}: {e}")
 
 def run_harvest(target_dir, arena_idx=None, limit=10):
     """
@@ -1269,6 +1322,34 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         print(f"Error during harvest: {e}")
+        sys.exit(1)
+
+  if "--collect" in sys.argv or "-k" in sys.argv:
+    try:
+        idx = sys.argv.index("--collect") if "--collect" in sys.argv else sys.argv.index("-k")
+
+        targets = []
+        for i in range(idx + 1, len(sys.argv)):
+            if sys.argv[i].startswith('-'):
+                break
+            targets.append(sys.argv[i])
+
+        if not targets:
+            print("Usage: --collect|-k <warrior_file|dir|selector...> [-o <output_path>] [--arena|-a <N>]")
+            sys.exit(1)
+
+        arena_idx = _get_arena_idx()
+
+        output_path = LIBRARY_PATH
+        if "--output" in sys.argv or "-o" in sys.argv:
+            o_idx = sys.argv.index("--output") if "--output" in sys.argv else sys.argv.index("-o")
+            if len(sys.argv) > o_idx + 1:
+                output_path = sys.argv[o_idx+1]
+
+        run_instruction_collection(targets, output_path, arena_idx)
+        sys.exit(0)
+    except Exception as e:
+        print(f"Error during instruction collection: {e}")
         sys.exit(1)
 
   if "--battle" in sys.argv or "-b" in sys.argv:
