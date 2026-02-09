@@ -8,40 +8,42 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]] [--collect|-k targets... [-o output] [--arena N]]
+  python evolverstage.py [COMMAND] [OPTIONS]
 
 General Commands:
-  --check, -c          Validate configuration and environment (settings.ini, nMars).
-  --status, -s         Show evolution status (arenas, population, logs).
-                       Add --json for JSON output.
-  --leaderboard, -l    Show top performing warriors based on log history.
+  --check, -c          Make sure the settings and simulator are ready.
+  --status, -s         Display the current state of the evolution.
+                       Use --json for machine-readable output.
+  --leaderboard, -l    Show the best warriors based on battle history.
                        Usage: --leaderboard [--arena <N>] [--json]
-  --harvest, -p        Collect top warriors from the leaderboard into a directory.
-                       Usage: --harvest <directory> [--top <N>] [--arena <N>]
-  --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
-                       Use --top (or 'top' selector) to analyze the current champion.
-                       Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
-  --dump-config, -d    Print current configuration settings and exit.
+  --dump-config, -d    Show the active settings and exit.
 
 Evolution Controls:
-  --restart            Start fresh (overwrites existing arenas).
-  --resume             Continue evolution from existing files.
+  --restart            Start a new evolution from scratch.
+  --resume             Continue evolution from existing warriors.
 
 Battle Tools:
-  --battle, -b         Run a single battle between two warriors.
+  --battle, -b         Run a single match between two warriors.
                        Usage: --battle <warrior1> <warrior2> [--arena <N>]
-  --tournament, -t     Run a round-robin tournament between specific warriors or all files in a folder.
-                       Use --champions to automatically battle the #1 warrior from every arena.
+  --tournament, -t     Run a round-robin competition between several warriors.
+                       Use --champions to battle the #1 warrior from every arena.
                        Usage: --tournament <directory|selectors...> [--champions] [--arena <N>]
-  --benchmark, -m      Test a warrior against a folder of opponents.
+  --benchmark, -m      Test a warrior's performance against a group of opponents.
                        Usage: --benchmark <warrior> <directory> [--arena <N>]
 
-Utilities:
-  --normalize, -n      Clean up a warrior's code (standardize format).
-                       Usage: --normalize <warrior|selector> [--arena <N>]
-  --view, -v           View the source code of a warrior.
+Analysis Tools:
+  --analyze, -i        Look at a warrior's code and show its statistics (like opcodes).
+                       Use --top to analyze the current champion.
+                       Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
+  --view, -v           Display the source code of a warrior.
                        Usage: --view <warrior|selector> [--arena <N>]
-  --collect, -k        Extract instructions from warriors into a single library file.
+
+Utilities:
+  --harvest, -p        Collect the best warriors from the leaderboard into a folder.
+                       Usage: --harvest <directory> [--top <N>] [--arena <N>]
+  --normalize, -n      Clean up a warrior's code and standardize its format.
+                       Usage: --normalize <warrior|selector> [--arena <N>]
+  --collect, -k        Gather instructions from warriors into a single library file.
                        Usage: --collect <dir|file|selector...> [-o <output>] [--arena <N>]
 
 Dynamic Selectors:
