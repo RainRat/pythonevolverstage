@@ -8,7 +8,7 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]] [--collect|-k targets... [-o output] [--arena N]]
+  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--trends|-r [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]] [--collect|-k targets... [-o output] [--arena N]]
 
 General Commands:
   --check, -c          Validate configuration and environment (settings.ini, nMars).
@@ -16,6 +16,8 @@ General Commands:
                        Add --json for JSON output.
   --leaderboard, -l    Show top performing warriors based on log history.
                        Usage: --leaderboard [--arena <N>] [--json]
+  --trends, -r         Compare population stats vs top performers (the Meta).
+                       Usage: --trends [--arena <N>]
   --harvest, -p        Collect top warriors from the leaderboard into a directory.
                        Usage: --harvest <directory> [--top <N>] [--arena <N>]
   --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
@@ -906,6 +908,37 @@ def analyze_warrior(filepath):
     del stats['unique_instructions']
     return stats
 
+def analyze_files(files, label):
+    """
+    Aggregates statistics for a list of warrior files.
+    """
+    if not files:
+        return None
+
+    stats = {
+        'count': len(files),
+        'total_instructions': 0,
+        'opcodes': {},
+        'modifiers': {},
+        'modes': {},
+        'total_vocabulary': 0,
+        'label': label
+    }
+
+    for f in files:
+        s = analyze_warrior(f)
+        if s:
+            stats['total_instructions'] += s['instructions']
+            stats['total_vocabulary'] += s['vocabulary_size']
+            for k, v in s['opcodes'].items():
+                stats['opcodes'][k] = stats['opcodes'].get(k, 0) + v
+            for k, v in s['modifiers'].items():
+                stats['modifiers'][k] = stats['modifiers'].get(k, 0) + v
+            for k, v in s['modes'].items():
+                stats['modes'][k] = stats['modes'].get(k, 0) + v
+
+    return stats
+
 def analyze_population(directory):
     """
     Aggregates statistics for all warriors in a directory.
@@ -913,33 +946,95 @@ def analyze_population(directory):
     if not os.path.exists(directory):
         return None
 
-    files = [f for f in os.listdir(directory) if f.endswith('.red')]
-    if not files:
-        return None
+    files = [os.path.join(directory, f) for f in os.listdir(directory) if f.endswith('.red')]
+    return analyze_files(files, directory)
 
-    pop_stats = {
-        'count': len(files),
-        'total_instructions': 0,
-        'opcodes': {},
-        'modifiers': {},
-        'modes': {},
-        'total_vocabulary': 0,
-        'directory': directory
-    }
+def run_trend_analysis(arena_idx):
+    """
+    Compares the distribution of instructions in the entire arena population
+    vs the top-performing warriors (the Meta).
+    """
+    arena_dir = f"arena{arena_idx}"
+    if not os.path.exists(arena_dir):
+        print(f"{Colors.RED}Arena directory {arena_dir} not found.{Colors.ENDC}")
+        return
 
-    for f in files:
-        s = analyze_warrior(os.path.join(directory, f))
-        if s:
-            pop_stats['total_instructions'] += s['instructions']
-            pop_stats['total_vocabulary'] += s['vocabulary_size']
-            for k, v in s['opcodes'].items():
-                pop_stats['opcodes'][k] = pop_stats['opcodes'].get(k, 0) + v
-            for k, v in s['modifiers'].items():
-                pop_stats['modifiers'][k] = pop_stats['modifiers'].get(k, 0) + v
-            for k, v in s['modes'].items():
-                pop_stats['modes'][k] = pop_stats['modes'].get(k, 0) + v
+    # 1. Analyze Population
+    pop_stats = analyze_population(arena_dir)
+    if not pop_stats:
+        print(f"{Colors.YELLOW}No warriors found in {arena_dir} to analyze.{Colors.ENDC}")
+        return
 
-    return pop_stats
+    # 2. Get Top Performers
+    results = get_leaderboard(arena_idx=arena_idx, limit=10)
+    meta_warriors = []
+    if arena_idx in results:
+        for warrior_id, streak in results[arena_idx]:
+            path = os.path.join(arena_dir, f"{warrior_id}.red")
+            if os.path.exists(path):
+                meta_warriors.append(path)
+
+    if not meta_warriors:
+        print(f"{Colors.YELLOW}No leaderboard data found for Arena {arena_idx}. Run more battles!{Colors.ENDC}")
+        return
+
+    # 3. Analyze Meta
+    meta_stats = analyze_files(meta_warriors, f"Meta (Top {len(meta_warriors)})")
+
+    # 4. Print Trends
+    print_trends(pop_stats, meta_stats, arena_idx)
+
+def print_trends(pop_stats, meta_stats, arena_idx):
+    """
+    Prints a side-by-side comparison of population vs meta statistics.
+    """
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Trend Analysis: Arena {arena_idx} ---{Colors.ENDC}")
+    print(f"Population: {pop_stats['count']:4} warriors")
+    print(f"Meta:       {meta_stats['count']:4} warriors (Top performers)")
+    print("-" * 60)
+
+    def print_section(title, pop_data, meta_data, total_pop, total_meta):
+        print(f"\n{Colors.BOLD}Trait: {title}{Colors.ENDC}")
+        header = f"  {'Value':<10} | {'Pop %':>8} | {'Meta %':>8} | {'Delta':>8}"
+        print(header)
+        print("  " + "-" * (len(header) - 2))
+
+        # Get all unique keys
+        all_keys = sorted(set(pop_data.keys()) | set(meta_data.keys()))
+
+        for key in all_keys:
+            pop_count = pop_data.get(key, 0)
+            meta_count = meta_data.get(key, 0)
+
+            pop_pct = (pop_count / total_pop * 100) if total_pop > 0 else 0
+            meta_pct = (meta_count / total_meta * 100) if total_meta > 0 else 0
+            delta = meta_pct - pop_pct
+
+            delta_val_str = f"{delta:+.1f}%"
+            if delta > 5:
+                delta_str = f"{Colors.GREEN}{delta_val_str:>8}{Colors.ENDC}"
+            elif delta < -5:
+                delta_str = f"{Colors.RED}{delta_val_str:>8}{Colors.ENDC}"
+            else:
+                delta_str = f"{delta_val_str:>8}"
+
+            print(f"  {key:<10} | {pop_pct:>7.1f}% | {meta_pct:>7.1f}% | {delta_str}")
+
+    print_section("Opcodes", pop_stats['opcodes'], meta_stats['opcodes'],
+                  pop_stats['total_instructions'], meta_stats['total_instructions'])
+
+    if pop_stats['modifiers'] or meta_stats['modifiers']:
+        pop_total_mods = sum(pop_stats['modifiers'].values())
+        meta_total_mods = sum(meta_stats['modifiers'].values())
+        print_section("Modifiers", pop_stats['modifiers'], meta_stats['modifiers'],
+                      pop_total_mods, meta_total_mods)
+
+    if pop_stats['modes'] or meta_stats['modes']:
+        pop_total_modes = sum(pop_stats['modes'].values())
+        meta_total_modes = sum(meta_stats['modes'].values())
+        print_section("Addressing Modes", pop_stats['modes'], meta_stats['modes'],
+                      pop_total_modes, meta_total_modes)
+    print("")
 
 def print_analysis(stats):
     """
@@ -1272,6 +1367,11 @@ if __name__ == "__main__":
                     color = Colors.GREEN if i == 1 else Colors.ENDC
                     print(f"  {i}. Warrior {warrior:3}: {color}{wins} wins{Colors.ENDC}")
                 print("-" * 30)
+    sys.exit(0)
+
+  if "--trends" in sys.argv or "-r" in sys.argv:
+    arena_idx = _get_arena_idx()
+    run_trend_analysis(arena_idx)
     sys.exit(0)
 
   if "--view" in sys.argv or "-v" in sys.argv:
