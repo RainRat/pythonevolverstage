@@ -59,7 +59,7 @@ class TestDrawProgressBar(unittest.TestCase):
         self.assertIn(evolverstage.Colors.GREEN, result)
         self.assertIn(evolverstage.Colors.ENDC, result)
         # Check content ignoring color codes for bar part logic
-        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        clean_result = evolverstage.strip_ansi(result)
         self.assertIn(f"[{expected_bar}]", clean_result)
         self.assertIn("0.00%", clean_result)
 
@@ -67,7 +67,7 @@ class TestDrawProgressBar(unittest.TestCase):
         """Test 100% progress."""
         result = evolverstage.draw_progress_bar(100)
         expected_bar = '=' * 30
-        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        clean_result = evolverstage.strip_ansi(result)
         self.assertIn(f"[{expected_bar}]", clean_result)
         self.assertIn("100.00%", clean_result)
 
@@ -75,7 +75,7 @@ class TestDrawProgressBar(unittest.TestCase):
         """Test 50% progress."""
         result = evolverstage.draw_progress_bar(50)
         expected_bar = '=' * 15 + '-' * 15
-        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        clean_result = evolverstage.strip_ansi(result)
         self.assertIn(f"[{expected_bar}]", clean_result)
         self.assertIn("50.00%", clean_result)
 
@@ -83,7 +83,7 @@ class TestDrawProgressBar(unittest.TestCase):
         """Test with custom width."""
         result = evolverstage.draw_progress_bar(50, width=10)
         expected_bar = '=' * 5 + '-' * 5
-        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        clean_result = evolverstage.strip_ansi(result)
         self.assertIn(f"[{expected_bar}]", clean_result)
         self.assertIn("50.00%", clean_result)
 
@@ -91,7 +91,7 @@ class TestDrawProgressBar(unittest.TestCase):
         """Test negative percentage is clamped to 0%."""
         result = evolverstage.draw_progress_bar(-10)
         expected_bar = '-' * 30
-        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        clean_result = evolverstage.strip_ansi(result)
         self.assertIn(f"[{expected_bar}]", clean_result)
         self.assertIn("0.00%", clean_result)
 
@@ -99,6 +99,37 @@ class TestDrawProgressBar(unittest.TestCase):
         """Test >100% is clamped to 100%."""
         result = evolverstage.draw_progress_bar(150)
         expected_bar = '=' * 30
-        clean_result = result.replace(evolverstage.Colors.GREEN, "").replace(evolverstage.Colors.ENDC, "")
+        clean_result = evolverstage.strip_ansi(result)
         self.assertIn(f"[{expected_bar}]", clean_result)
         self.assertIn("100.00%", clean_result)
+
+class TestStripAnsi(unittest.TestCase):
+    def test_strip_colors(self):
+        """Test stripping basic color codes."""
+        text = f"{evolverstage.Colors.GREEN}Green Text{evolverstage.Colors.ENDC}"
+        self.assertEqual(evolverstage.strip_ansi(text), "Green Text")
+
+    def test_strip_mixed_styles(self):
+        """Test stripping multiple different codes."""
+        text = f"{evolverstage.Colors.BOLD}{evolverstage.Colors.RED}Bold Red{evolverstage.Colors.ENDC}"
+        self.assertEqual(evolverstage.strip_ansi(text), "Bold Red")
+
+    def test_strip_complex_sequences(self):
+        """Test stripping sequences with multiple parameters."""
+        # \033[1;31m is Bold Red in many terminals
+        text = "\033[1;31mComplex\033[0m"
+        self.assertEqual(evolverstage.strip_ansi(text), "Complex")
+
+    def test_no_ansi(self):
+        """Test string without any ANSI codes."""
+        text = "Plain Text"
+        self.assertEqual(evolverstage.strip_ansi(text), "Plain Text")
+
+    def test_empty_string(self):
+        """Test empty string."""
+        self.assertEqual(evolverstage.strip_ansi(""), "")
+
+    def test_non_string_input(self):
+        """Test non-string inputs are converted to string and stripped."""
+        self.assertEqual(evolverstage.strip_ansi(123), "123")
+        self.assertEqual(evolverstage.strip_ansi(None), "None")

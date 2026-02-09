@@ -27,11 +27,7 @@ class TestStatus(unittest.TestCase):
 
         # Check if key headers were printed
         # We can inspect the calls to print
-        import re
-        def strip_ansi(text):
-            return re.sub(r'\033\[[0-9;]*m', '', text)
-
-        printed_strings = [strip_ansi(call.args[0]) for call in mock_print.call_args_list if call.args]
+        printed_strings = [evolverstage.strip_ansi(call.args[0]) for call in mock_print.call_args_list if call.args]
 
         self.assertTrue(any("Evolver Status Dashboard" in s for s in printed_strings))
         self.assertTrue(any("Latest Activity: Era 1, Arena 0: Warrior 5 beat Warrior 10 (150-50)" in s for s in printed_strings))
