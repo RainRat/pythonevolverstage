@@ -8,41 +8,39 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]] [--collect|-k targets... [-o output] [--arena N]]
+  python evolverstage.py [COMMAND] [OPTIONS]
 
 General Commands:
-  --check, -c          Validate configuration and environment (settings.ini, nMars).
-  --status, -s         Show evolution status (arenas, population, logs).
-                       Add --json for JSON output.
-  --leaderboard, -l    Show top performing warriors based on log history.
-                       Usage: --leaderboard [--arena <N>] [--json]
-  --harvest, -p        Collect top warriors from the leaderboard into a directory.
-                       Usage: --harvest <directory> [--top <N>] [--arena <N>]
-  --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
-                       Use --top (or 'top' selector) to analyze the current champion.
-                       Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
-  --dump-config, -d    Print current configuration settings and exit.
+  -c, --check          Validate configuration and environment (settings.ini, nMars).
+  -s, --status         Show evolution dashboard (arenas, population, archive).
+                       Add --json for machine-readable output.
+  -l, --leaderboard    Show top performing warriors based on log history.
+                       Usage: -l [--arena N] [--json]
+  -d, --dump-config    Print current configuration settings and exit.
 
 Evolution Controls:
   --restart            Start fresh (overwrites existing arenas).
   --resume             Continue evolution from existing files.
 
-Battle Tools:
-  --battle, -b         Run a single battle between two warriors.
-                       Usage: --battle <warrior1> <warrior2> [--arena <N>]
-  --tournament, -t     Run a round-robin tournament between specific warriors or all files in a folder.
-                       Use --champions to automatically battle the #1 warrior from every arena.
-                       Usage: --tournament <directory|selectors...> [--champions] [--arena <N>]
-  --benchmark, -m      Test a warrior against a folder of opponents.
-                       Usage: --benchmark <warrior> <directory> [--arena <N>]
+Battle & Tournament Tools:
+  -b, --battle         Run a single battle between two warriors.
+                       Usage: -b <warrior1> <warrior2> [--arena N]
+  -t, --tournament     Run a round-robin tournament between specific warriors or a folder.
+                       Usage: -t <dir|targets...> [--champions] [--arena N]
+  -m, --benchmark      Test a warrior against a directory of opponents.
+                       Usage: -m <warrior> <dir> [--arena N]
 
-Utilities:
-  --normalize, -n      Clean up a warrior's code (standardize format).
-                       Usage: --normalize <warrior|selector> [--arena <N>]
-  --view, -v           View the source code of a warrior.
-                       Usage: --view <warrior|selector> [--arena <N>]
-  --collect, -k        Extract instructions from warriors into a single library file.
-                       Usage: --collect <dir|file|selector...> [-o <output>] [--arena <N>]
+Analysis & Utilities:
+  -i, --analyze        Analyze a warrior or directory (opcodes, modes, etc.).
+                       Usage: -i <target> [--arena N] [--json]
+  -v, --view           View the source code of a warrior.
+                       Usage: -v <target> [--arena N]
+  -n, --normalize      Standardize a warrior's Redcode instructions.
+                       Usage: -n <target> [-o <output>] [--arena N]
+  -p, --harvest        Collect top warriors from the leaderboard into a directory.
+                       Usage: -p <dir> [--top N] [--arena N]
+  -k, --collect        Extract instructions from warriors into a single library file.
+                       Usage: -k <targets...> [-o <output>] [--arena N]
 
 Dynamic Selectors:
   Most commands accepting a warrior file also support these keywords:
@@ -1468,17 +1466,7 @@ if __name__ == "__main__":
           target = None
           arena_idx = _get_arena_idx()
 
-          if "--top" in sys.argv:
-              # Find leader
-              results = get_leaderboard(arena_idx=arena_idx, limit=1)
-              if arena_idx in results and results[arena_idx]:
-                  warrior_id, wins = results[arena_idx][0]
-                  target = os.path.join(f"arena{arena_idx}", f"{warrior_id}.red")
-                  print(f"Targeting Arena {arena_idx} champion: Warrior {warrior_id} ({wins} wins)")
-              else:
-                  print(f"{Colors.YELLOW}No champion found for Arena {arena_idx}.{Colors.ENDC}")
-                  sys.exit(1)
-          elif len(sys.argv) > idx + 1:
+          if len(sys.argv) > idx + 1:
               target = sys.argv[idx+1]
               # check if target is an option
               if target.startswith('-'):
@@ -1487,7 +1475,7 @@ if __name__ == "__main__":
                   target = _resolve_warrior_path(target, arena_idx)
 
           if not target:
-              print("Usage: --analyze|-i <file|dir> [--top] [--arena <N>] [--json]")
+              print("Usage: --analyze|-i <target> [--arena N] [--json]")
               sys.exit(1)
 
           if os.path.isdir(target):
