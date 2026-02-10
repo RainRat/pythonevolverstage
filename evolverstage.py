@@ -8,7 +8,7 @@ A tool to evolve Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--trends|-r [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]] [--collect|-k targets... [-o output] [--arena N]]
+  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--trends|-r [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--compare|-x target1 target2 [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]] [--collect|-k targets... [-o output] [--arena N]]
 
 General Commands:
   --check, -c          Validate configuration and environment (settings.ini, nMars).
@@ -18,6 +18,8 @@ General Commands:
                        Usage: --leaderboard [--arena <N>] [--json]
   --trends, -r         Compare population stats vs top performers (the Meta).
                        Usage: --trends [--arena <N>]
+  --compare, -x        Compare two warriors or directories side-by-side.
+                       Usage: --compare <target1> <target2> [--arena <N>] [--json]
   --harvest, -p        Collect top warriors from the leaderboard into a directory.
                        Usage: --harvest <directory> [--top <N>] [--arena <N>]
   --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
@@ -55,6 +57,7 @@ Dynamic Selectors:
 Examples:
   python evolverstage.py --check
   python evolverstage.py --battle top@0 top@1
+  python evolverstage.py --compare top random
   python evolverstage.py --tournament --champions --arena 5
   python evolverstage.py --tournament top@0 top@1 top@2 --arena 0
   python evolverstage.py --view random@2
@@ -858,13 +861,15 @@ def analyze_warrior(filepath):
         'modifiers': {},
         'modes': {},
         'unique_instructions': set(),
-        'file': filepath
+        'file': filepath,
+        'fingerprint': ""
     }
 
     if not os.path.exists(filepath):
         return None
 
     try:
+        content_lines = []
         with open(filepath, 'r') as f:
             for line in f:
                 # Strip comments and whitespace
@@ -872,8 +877,10 @@ def analyze_warrior(filepath):
                 if not line:
                     continue
 
+                line_upper = line.upper()
                 stats['instructions'] += 1
-                stats['unique_instructions'].add(line.upper())
+                stats['unique_instructions'].add(line_upper)
+                content_lines.append(line_upper)
 
                 # Regex to extract components robustly
                 # Handles: OPCODE[.MODIFIER] <MODE>A,<MODE>B
@@ -905,6 +912,7 @@ def analyze_warrior(filepath):
         return None
 
     stats['vocabulary_size'] = len(stats['unique_instructions'])
+    stats['fingerprint'] = "\n".join(content_lines)
     del stats['unique_instructions']
     return stats
 
@@ -922,12 +930,15 @@ def analyze_files(files, label):
         'modifiers': {},
         'modes': {},
         'total_vocabulary': 0,
-        'label': label
+        'label': label,
+        'unique_warriors': 0
     }
 
+    fingerprints = set()
     for f in files:
         s = analyze_warrior(f)
         if s:
+            fingerprints.add(s['fingerprint'])
             stats['total_instructions'] += s['instructions']
             stats['total_vocabulary'] += s['vocabulary_size']
             for k, v in s['opcodes'].items():
@@ -937,6 +948,7 @@ def analyze_files(files, label):
             for k, v in s['modes'].items():
                 stats['modes'][k] = stats['modes'].get(k, 0) + v
 
+    stats['unique_warriors'] = len(fingerprints)
     return stats
 
 def analyze_population(directory):
@@ -984,31 +996,38 @@ def run_trend_analysis(arena_idx):
     # 4. Print Trends
     print_trends(pop_stats, meta_stats, arena_idx)
 
-def print_trends(pop_stats, meta_stats, arena_idx):
+def print_comparison_table(stats1, stats2, label1, label2, title):
     """
-    Prints a side-by-side comparison of population vs meta statistics.
+    Prints a side-by-side comparison of two sets of statistics.
     """
-    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Trend Analysis: Arena {arena_idx} ---{Colors.ENDC}")
-    print(f"Population: {pop_stats['count']:4} warriors")
-    print(f"Meta:       {meta_stats['count']:4} warriors (Top performers)")
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- {title} ---{Colors.ENDC}")
+
+    count1 = stats1.get('count', 1)
+    count2 = stats2.get('count', 1)
+
+    print(f"{label1:<12}: {count1:4} warriors")
+    print(f"{label2:<12}: {count2:4} warriors")
     print("-" * 60)
 
-    def print_section(title, pop_data, meta_data, total_pop, total_meta):
-        print(f"\n{Colors.BOLD}Trait: {title}{Colors.ENDC}")
-        header = f"  {'Value':<10} | {'Pop %':>8} | {'Meta %':>8} | {'Delta':>8}"
+    def print_section(trait_title, data1, data2, total1, total2):
+        print(f"\n{Colors.BOLD}Trait: {trait_title}{Colors.ENDC}")
+        # Use abbreviated labels in header if they are too long
+        h1 = (label1[:6] + " %") if len(label1) > 6 else (label1 + " %")
+        h2 = (label2[:6] + " %") if len(label2) > 6 else (label2 + " %")
+        header = f"  {'Value':<10} | {h1:>8} | {h2:>8} | {'Delta':>8}"
         print(header)
         print("  " + "-" * (len(header) - 2))
 
         # Get all unique keys
-        all_keys = sorted(set(pop_data.keys()) | set(meta_data.keys()))
+        all_keys = sorted(set(data1.keys()) | set(data2.keys()))
 
         for key in all_keys:
-            pop_count = pop_data.get(key, 0)
-            meta_count = meta_data.get(key, 0)
+            c1 = data1.get(key, 0)
+            c2 = data2.get(key, 0)
 
-            pop_pct = (pop_count / total_pop * 100) if total_pop > 0 else 0
-            meta_pct = (meta_count / total_meta * 100) if total_meta > 0 else 0
-            delta = meta_pct - pop_pct
+            pct1 = (c1 / total1 * 100) if total1 > 0 else 0
+            pct2 = (c2 / total2 * 100) if total2 > 0 else 0
+            delta = pct2 - pct1
 
             delta_val_str = f"{delta:+.1f}%"
             if delta > 5:
@@ -1018,23 +1037,64 @@ def print_trends(pop_stats, meta_stats, arena_idx):
             else:
                 delta_str = f"{delta_val_str:>8}"
 
-            print(f"  {key:<10} | {pop_pct:>7.1f}% | {meta_pct:>7.1f}% | {delta_str}")
+            print(f"  {key:<10} | {pct1:>7.1f}% | {pct2:>7.1f}% | {delta_str}")
 
-    print_section("Opcodes", pop_stats['opcodes'], meta_stats['opcodes'],
-                  pop_stats['total_instructions'], meta_stats['total_instructions'])
+    t1 = stats1.get('total_instructions', stats1.get('instructions', 0))
+    t2 = stats2.get('total_instructions', stats2.get('instructions', 0))
+    print_section("Opcodes", stats1['opcodes'], stats2['opcodes'], t1, t2)
 
-    if pop_stats['modifiers'] or meta_stats['modifiers']:
-        pop_total_mods = sum(pop_stats['modifiers'].values())
-        meta_total_mods = sum(meta_stats['modifiers'].values())
-        print_section("Modifiers", pop_stats['modifiers'], meta_stats['modifiers'],
-                      pop_total_mods, meta_total_mods)
+    if stats1['modifiers'] or stats2['modifiers']:
+        m1 = sum(stats1['modifiers'].values())
+        m2 = sum(stats2['modifiers'].values())
+        print_section("Modifiers", stats1['modifiers'], stats2['modifiers'], m1, m2)
 
-    if pop_stats['modes'] or meta_stats['modes']:
-        pop_total_modes = sum(pop_stats['modes'].values())
-        meta_total_modes = sum(meta_stats['modes'].values())
-        print_section("Addressing Modes", pop_stats['modes'], meta_stats['modes'],
-                      pop_total_modes, meta_total_modes)
+    if stats1['modes'] or stats2['modes']:
+        mo1 = sum(stats1['modes'].values())
+        mo2 = sum(stats2['modes'].values())
+        print_section("Addressing Modes", stats1['modes'], stats2['modes'], mo1, mo2)
     print("")
+
+def print_trends(pop_stats, meta_stats, arena_idx):
+    """
+    Prints a side-by-side comparison of population vs meta statistics.
+    """
+    print_comparison_table(pop_stats, meta_stats, "Population", "Meta", f"Trend Analysis: Arena {arena_idx}")
+
+def run_comparison(target1, target2, arena_idx, json_mode=False):
+    """
+    Compares two warriors or two directories/arenas.
+    """
+    path1 = _resolve_warrior_path(target1, arena_idx)
+    path2 = _resolve_warrior_path(target2, arena_idx)
+
+    if not os.path.exists(path1):
+        print(f"Error: Target '{target1}' not found.")
+        return
+    if not os.path.exists(path2):
+        print(f"Error: Target '{target2}' not found.")
+        return
+
+    # Determine labels
+    label1 = target1
+    label2 = target2
+
+    if os.path.isdir(path1):
+        stats1 = analyze_population(path1)
+    else:
+        stats1 = analyze_files([path1], path1)
+
+    if os.path.isdir(path2):
+        stats2 = analyze_population(path2)
+    else:
+        stats2 = analyze_files([path2], path2)
+
+    if json_mode:
+        print(json.dumps({
+            'target1': {'label': label1, 'path': path1, 'stats': stats1},
+            'target2': {'label': label2, 'path': path2, 'stats': stats2}
+        }, indent=2))
+    else:
+        print_comparison_table(stats1, stats2, label1, label2, f"Comparison: {label1} vs {label2}")
 
 def print_analysis(stats):
     """
@@ -1045,12 +1105,14 @@ def print_analysis(stats):
         return
 
     is_pop = 'count' in stats
-    target = stats['directory'] if is_pop else stats['file']
+    target = stats.get('label', stats.get('file', 'Unknown'))
 
     print(f"\n{Colors.BOLD}{Colors.HEADER}--- Analysis Report: {target} ---{Colors.ENDC}")
 
     if is_pop:
+        diversity = (stats['unique_warriors'] / stats['count'] * 100) if stats['count'] > 0 else 0
         print(f"Warriors Analyzed: {stats['count']}")
+        print(f"Unique Warriors:   {stats['unique_warriors']} ({diversity:.1f}% Diversity)")
         print(f"Avg Instructions:  {stats['total_instructions'] / stats['count']:.1f}")
         print(f"Avg Vocabulary:    {stats['total_vocabulary'] / stats['count']:.1f}")
         total_instr = stats['total_instructions']
@@ -1373,6 +1435,24 @@ if __name__ == "__main__":
     arena_idx = _get_arena_idx()
     run_trend_analysis(arena_idx)
     sys.exit(0)
+
+  if "--compare" in sys.argv or "-x" in sys.argv:
+    try:
+        idx = sys.argv.index("--compare") if "--compare" in sys.argv else sys.argv.index("-x")
+        if len(sys.argv) < idx + 3:
+            print("Usage: --compare|-x <target1> <target2> [--arena|-a <N>] [--json]")
+            sys.exit(1)
+
+        arena_idx = _get_arena_idx()
+        t1 = sys.argv[idx+1]
+        t2 = sys.argv[idx+2]
+        json_mode = "--json" in sys.argv
+
+        run_comparison(t1, t2, arena_idx, json_mode)
+        sys.exit(0)
+    except Exception as e:
+        print(f"Error during comparison: {e}")
+        sys.exit(1)
 
   if "--view" in sys.argv or "-v" in sys.argv:
     try:
