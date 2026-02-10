@@ -52,8 +52,8 @@ class TestRunNormalization(unittest.TestCase):
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_normalization(self.filepath, self.arena_idx)
 
-        # Verify normalize called (note: ", " replaced by ",")
-        mock_normalize.assert_called_with("MOV 0,1", 8000, 8000)
+        # Verify normalize called with the line from file
+        mock_normalize.assert_called_with("MOV 0, 1\n", 8000, 8000)
         # Verify output printed
         mock_print.assert_called_with("MOV.I $0,$1\n", end='')
 
@@ -84,9 +84,9 @@ class TestRunNormalization(unittest.TestCase):
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_normalization(self.filepath, self.arena_idx)
 
-        # normalize_instruction should only be called once for "MOV 0, 1" -> "MOV 0,1"
+        # normalize_instruction should only be called once for "MOV 0, 1"
         self.assertEqual(mock_normalize.call_count, 1)
-        mock_normalize.assert_called_with("MOV 0,1", 8000, 8000)
+        mock_normalize.assert_called_with("MOV 0, 1", 8000, 8000)
 
     @mock.patch('builtins.open', new_callable=mock.mock_open, read_data="START MOV  0,  1")
     @mock.patch('os.path.exists')
@@ -108,13 +108,8 @@ class TestRunNormalization(unittest.TestCase):
         # Wait, the code is:
         # clean_line = line.replace('  ',' ').replace('START','').replace(', ',',').strip()
 
-        # "START MOV  0,  1"
-        # replace double space: "START MOV 0, 1"
-        # replace START: " MOV 0, 1"
-        # replace comma space: " MOV 0,1"
-        # strip: "MOV 0,1"
-
-        mock_normalize.assert_called_with("MOV 0,1", 8000, 8000)
+        # "START MOV  0,  1" should be passed raw to normalize_instruction
+        mock_normalize.assert_called_with("START MOV  0,  1", 8000, 8000)
 
     @mock.patch('builtins.open')
     @mock.patch('os.path.exists')

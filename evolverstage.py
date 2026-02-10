@@ -417,14 +417,11 @@ def run_normalization(filepath, arena_idx, output_path=None):
             lines = f.readlines()
 
         for line in lines:
-            # Cleanup logic mirrored from unarchiving logic
-            clean_line = line.replace('  ',' ').replace('START','').replace(', ',',').strip()
-            # Basic check to skip empty lines or comments
-            if not clean_line or clean_line.startswith(';'):
+            stripped = line.strip()
+            if not stripped or stripped.startswith(';'):
                 continue
-
             try:
-                normalized = normalize_instruction(clean_line, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
+                normalized = normalize_instruction(line, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
                 if out_stream == sys.stdout:
                     print(normalized, end='')
                 else:
@@ -473,12 +470,11 @@ def run_instruction_collection(targets, output_path, arena_idx):
             for filepath in files_to_process:
                 with open(filepath, 'r') as in_f:
                     for line in in_f:
-                        # Cleanup logic mirrored from unarchiving logic
-                        clean_line = line.replace('  ',' ').replace('START','').replace(', ',',').strip()
-                        if not clean_line or clean_line.startswith(';'):
+                        stripped = line.strip()
+                        if not stripped or stripped.startswith(';'):
                             continue
                         try:
-                            normalized = normalize_instruction(clean_line, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
+                            normalized = normalize_instruction(line, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
                             out_f.write(normalized)
                             count += 1
                         except (ValueError, IndexError):
@@ -624,7 +620,9 @@ def normalize_instruction(instruction, coresize, sanitize_limit):
     Handles missing modifiers, missing addressing modes, and varied whitespace.
     """
     # Strip trailing comments and whitespace
-    clean_instr = instruction.split(';')[0].strip()
+    clean_instr = instruction.split(';')[0]
+    # Centralized tolerant cleanup
+    clean_instr = clean_instr.replace('START', '').strip()
     if not clean_instr:
         raise ValueError("Empty instruction")
 
@@ -1720,12 +1718,18 @@ if __name__ == "__main__":
       fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # unarchived warrior destroys loser
       countoflines=0
       for line in sourcelines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith(';'):
+            continue
         countoflines=countoflines+1
         if countoflines>WARLEN_LIST[arena]:
           break
-        line=line.replace('  ',' ').replace('START','').replace(', ',',').strip()
-        line = normalize_instruction(line, CORESIZE_LIST[arena], SANITIZE_LIST[arena])
-        fl.write(line)
+        try:
+            line = normalize_instruction(line, CORESIZE_LIST[arena], SANITIZE_LIST[arena])
+            fl.write(line)
+        except (ValueError, IndexError):
+            countoflines -= 1
+            continue
       while countoflines<WARLEN_LIST[arena]:
         countoflines=countoflines+1
         fl.write('DAT.F $0,$0\n')
