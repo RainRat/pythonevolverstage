@@ -56,7 +56,7 @@ class TestRunTournament(unittest.TestCase):
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_tournament(self.directory, self.arena_idx)
 
-        mock_print.assert_any_call("Error: Need at least 2 .red files for a tournament.")
+        mock_print.assert_any_call(f"Error: A tournament requires at least two warriors (.red files) in the '{self.directory}' folder.")
 
     @mock.patch('evolverstage.run_nmars_subprocess')
     @mock.patch('evolverstage.parse_nmars_output')

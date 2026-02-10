@@ -72,7 +72,7 @@ class TestRunBenchmark(unittest.TestCase):
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_benchmark(self.warrior_file, self.directory, self.arena_idx)
 
-        mock_print.assert_any_call(f"Error: No .red files found in '{self.directory}'.")
+        mock_print.assert_any_call(f"Error: No opponents found. Please ensure the folder '{self.directory}' contains .red files.")
 
     @mock.patch('evolverstage.run_nmars_subprocess')
     @mock.patch('evolverstage.parse_nmars_output')

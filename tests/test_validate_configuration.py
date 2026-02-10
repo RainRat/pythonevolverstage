@@ -84,7 +84,7 @@ class TestValidateConfiguration(unittest.TestCase):
         with mock.patch.object(evolverstage, 'CORESIZE_LIST', []):
             result = evolverstage.validate_configuration()
             self.assertFalse(result)
-            self.assertIn("CORESIZE_LIST has 0 elements, expected at least 1", self.stdout.getvalue())
+            self.assertIn("The setting 'CORESIZE_LIST' in settings.ini is too short. It has 0 values, but needs at least 1 (because LAST_ARENA is 0).", self.stdout.getvalue())
 
     @mock.patch('shutil.which')
     @mock.patch('os.path.exists')
@@ -95,7 +95,7 @@ class TestValidateConfiguration(unittest.TestCase):
         with mock.patch.object(evolverstage, 'NOTHING_LIST', [1, 1]):
             result = evolverstage.validate_configuration()
             self.assertFalse(result)
-            self.assertIn("NOTHING_LIST has 2 elements, expected at least 3", self.stdout.getvalue())
+            self.assertIn("The setting 'NOTHING_LIST' in settings.ini must have at least 3 values (one for each evolution era).", self.stdout.getvalue())
 
     @mock.patch('shutil.which')
     @mock.patch('os.path.exists')

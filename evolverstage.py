@@ -4,63 +4,60 @@
 '''
 Core War Evolver
 
-A tool to evolve Redcode warriors using a genetic algorithm.
+Evolve and test Redcode warriors using a genetic algorithm.
 For license information, see LICENSE.md.
 
 Usage:
-  python evolverstage.py [--dump-config|-d] [--check|-c] [--status|-s] [--leaderboard|-l [--arena|-a N]] [--trends|-r [--arena|-a N]] [--restart] [--resume] [--battle|-b file1 file2 [--arena|-a N]] [--tournament|-t dir [--arena|-a N]] [--benchmark|-m warrior_file dir [--arena|-a N]] [--normalize|-n file [--arena|-a N]] [--analyze|-i file|dir [--top] [--arena|-a N]] [--view|-v file [--arena|-a N]] [--harvest|-p dir [--top N] [--arena N]] [--collect|-k targets... [-o output] [--arena N]]
+  python evolverstage.py [COMMAND] [OPTIONS]
 
 General Commands:
-  --check, -c          Validate configuration and environment (settings.ini, nMars).
-  --status, -s         Show evolution status (arenas, population, logs).
-                       Add --json for JSON output.
-  --leaderboard, -l    Show top performing warriors based on log history.
+  --check, -c          Check your configuration and simulator setup.
+  --status, -s         Display the current status of all arenas and population.
+                       Add --json for machine-readable output.
+  --leaderboard, -l    Show the top-performing warriors based on recent win streaks.
                        Usage: --leaderboard [--arena <N>] [--json]
-  --trends, -r         Compare population stats vs top performers (the Meta).
+  --trends, -r         Analyze evolution trends by comparing the population to the top performers.
                        Usage: --trends [--arena <N>]
-  --harvest, -p        Collect top warriors from the leaderboard into a directory.
-                       Usage: --harvest <directory> [--top <N>] [--arena <N>]
-  --analyze, -i        Analyze a warrior or directory (opcodes, modes, etc.).
-                       Use --top (or 'top' selector) to analyze the current champion.
-                       Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
-  --dump-config, -d    Print current configuration settings and exit.
+  --dump-config, -d    Show the active configuration from settings.ini and exit.
 
-Evolution Controls:
-  --restart            Start fresh (overwrites existing arenas).
-  --resume             Continue evolution from existing files.
+Evolution:
+  --restart            Start a new evolution from scratch (overwrites existing files).
+  --resume             Continue evolution using existing warriors and logs.
+  (Run with no command to start/continue evolution based on settings.ini)
 
 Battle Tools:
-  --battle, -b         Run a single battle between two warriors.
+  --battle, -b         Run a match between two specific warriors.
                        Usage: --battle <warrior1> <warrior2> [--arena <N>]
-  --tournament, -t     Run a round-robin tournament between specific warriors or all files in a folder.
-                       Use --champions to automatically battle the #1 warrior from every arena.
+  --tournament, -t     Run a round-robin competition between a group of warriors.
+                       Use --champions to automatically include winners from every arena.
                        Usage: --tournament <directory|selectors...> [--champions] [--arena <N>]
-  --benchmark, -m      Test a warrior against a folder of opponents.
+  --benchmark, -m      Test one warrior against every opponent in a directory.
                        Usage: --benchmark <warrior> <directory> [--arena <N>]
 
-Utilities:
-  --normalize, -n      Clean up a warrior's code (standardize format).
-                       Usage: --normalize <warrior|selector> [--arena <N>]
-  --view, -v           View the source code of a warrior.
+Analysis & Utilities:
+  --analyze, -i        Get statistics on instructions, opcodes, and addressing modes.
+                       Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
+  --view, -v           Display the source code of a warrior.
                        Usage: --view <warrior|selector> [--arena <N>]
-  --collect, -k        Extract instructions from warriors into a single library file.
-                       Usage: --collect <dir|file|selector...> [-o <output>] [--arena <N>]
+  --normalize, -n      Clean and standardize a warrior's Redcode format.
+                       Usage: --normalize <warrior|selector> [--arena <N>]
+  --harvest, -p        Collect the best warriors from the leaderboard into a folder.
+                       Usage: --harvest <directory> [--top <N>] [--arena <N>]
+  --collect, -k        Extract and normalize instructions from warriors into a library file.
+                       Usage: --collect <targets...> [-o <output>] [--arena <N>]
 
 Dynamic Selectors:
-  Most commands accepting a warrior file also support these keywords:
-  top, topN            Target the #1 (or #N) warrior from the leaderboard.
-  random               Target a random warrior from the current arena population.
-  selector@N           Override the arena for a selector (e.g., top@0, random@2).
+  Instead of a filename, you can use these keywords in most commands:
+  top, topN            Select the #1 (or #N) warrior from the leaderboard.
+  random               Select a random warrior from the current population.
+  selector@N           Target a specific arena (e.g., top@0, random@2).
 
 Examples:
-  python evolverstage.py --check
+  python evolverstage.py --status
   python evolverstage.py --battle top@0 top@1
-  python evolverstage.py --tournament --champions --arena 5
-  python evolverstage.py --tournament top@0 top@1 top@2 --arena 0
-  python evolverstage.py --view random@2
+  python evolverstage.py --tournament --champions
   python evolverstage.py --benchmark top archive/
-  python evolverstage.py --analyze top
-  python evolverstage.py --collect archive/ -o instructions.txt
+  python evolverstage.py --view random@2
 '''
 
 import random
@@ -131,10 +128,11 @@ def run_nmars_subprocess(cmd):
     try:
         result = subprocess.run(cmd, capture_output=True, text=True)
         return result.stdout
-    except FileNotFoundError as e:
-        print(f"Unable to run {cmd[0]}: {e}")
+    except FileNotFoundError:
+        print(f"Error: The simulator '{cmd[0]}' was not found.")
+        print("Please ensure the nMars executable is in the project folder and has the correct permissions (e.g., 'chmod +x nmars' on Linux/macOS).")
     except subprocess.SubprocessError as e:
-        print(f"An error occurred: {e}")
+        print(f"An unexpected error occurred while running the simulator: {e}")
     return None
 
 def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
@@ -222,7 +220,7 @@ def run_tournament(targets, arena_idx):
         directory = targets[0]
         files = [f for f in os.listdir(directory) if f.endswith('.red')]
         if len(files) < 2:
-            print("Error: Need at least 2 .red files for a tournament.")
+            print(f"Error: A tournament requires at least two warriors (.red files) in the '{directory}' folder.")
             return
         abs_files = [os.path.join(directory, f) for f in files]
         file_map = {path: f for path, f in zip(abs_files, files)}
@@ -242,7 +240,7 @@ def run_tournament(targets, arena_idx):
                 print(f"Warning: Warrior '{sel}' not found. Skipping.")
 
         if len(abs_files) < 2:
-            print("Error: Need at least 2 warriors for a tournament.")
+            print("Error: A tournament requires at least two warriors to compete.")
             return
         print(f"Tournament: {len(abs_files)} specific warriors.")
 
@@ -301,7 +299,7 @@ def run_benchmark(warrior_file, directory, arena_idx):
 
     opponents = [f for f in os.listdir(directory) if f.endswith('.red')]
     if not opponents:
-        print(f"Error: No .red files found in '{directory}'.")
+        print(f"Error: No opponents found. Please ensure the folder '{directory}' contains .red files.")
         return
 
     print(f"Benchmarking {warrior_file} against {len(opponents)} warriors in {directory}")
@@ -1260,7 +1258,7 @@ def validate_configuration():
 
     for name, lst in arena_lists.items():
         if len(lst) < expected_length:
-            errors.append(f"{name} has {len(lst)} elements, expected at least {expected_length} (LAST_ARENA={LAST_ARENA})")
+            errors.append(f"The setting '{name}' in settings.ini is too short. It has {len(lst)} values, but needs at least {expected_length} (because LAST_ARENA is {LAST_ARENA}).")
 
     # Check Era Lists (Expect 3 eras: 0, 1, 2)
     era_lists = {
@@ -1283,7 +1281,7 @@ def validate_configuration():
 
     for name, lst in era_lists.items():
         if len(lst) < 3:
-            errors.append(f"{name} has {len(lst)} elements, expected at least 3 (for eras 0, 1, 2)")
+            errors.append(f"The setting '{name}' in settings.ini must have at least 3 values (one for each evolution era).")
 
     # Check Executables
     nmars_cmd = _get_nmars_cmd()
