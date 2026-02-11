@@ -1221,7 +1221,7 @@ def _get_arena_idx(default=0):
             arena_idx = int(sys.argv[a_idx+1])
     else:
         # Smart Arena Inference: look for arenaN/ or arenaN\ in any argument
-        for arg in sys.argv:
+        for arg in sys.argv[1:]:
             match = re.search(r'arena(\d+)[/\\]', arg)
             if match:
                 return int(match.group(1))
