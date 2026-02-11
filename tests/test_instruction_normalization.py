@@ -135,3 +135,10 @@ class TestNormalizeInstruction(unittest.TestCase):
         expected = "DAT.F #0,#0\n"
         result = evolverstage.normalize_instruction(instr, 8000, 8000)
         self.assertEqual(result, expected)
+
+    def test_start_label_stripping(self):
+        # Test that 'START' labels are correctly stripped
+        instr = "START MOV.I $0,$0"
+        expected = "MOV.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
