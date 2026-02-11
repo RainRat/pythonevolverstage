@@ -874,8 +874,8 @@ def analyze_warrior(filepath):
                 stats['unique_instructions'].add(line.upper())
 
                 # Regex to extract components robustly
-                # Handles: OPCODE[.MODIFIER] <MODE>A,<MODE>B
-                match = re.match(r'^([A-Z]+)(?:\.([A-Z]+))?\s+([^,]+)(?:,\s*(.+))?$', line, re.I)
+                # Handles: OPCODE[.MODIFIER] [<MODE>A[,<MODE>B]]
+                match = re.match(r'^([A-Z]+)(?:\.([A-Z]+))?(?:\s+([^,]+)(?:,\s*(.+))?)?$', line, re.I)
                 if match:
                     opcode, modifier, operand_a, operand_b = match.groups()
                     opcode = opcode.upper()
@@ -920,7 +920,7 @@ def analyze_files(files, label):
         'modifiers': {},
         'modes': {},
         'total_vocabulary': 0,
-        'label': label
+        'directory': label
     }
 
     for f in files:
