@@ -23,6 +23,8 @@ General Commands:
 Evolution:
   --restart            Start a new evolution from scratch (overwrites existing files).
   --resume             Continue evolution using existing warriors and logs.
+  --seed               Populate an arena with a set of specific warriors.
+                       Usage: --seed <targets...> [--arena <N>]
   (Run with no command to start/continue evolution based on settings.ini)
 
 Battle Tools:
@@ -58,6 +60,7 @@ Examples:
   python evolverstage.py --tournament --champions
   python evolverstage.py --benchmark top archive/
   python evolverstage.py --view random@2
+  python evolverstage.py --seed best_warriors/ --arena 0
 '''
 
 import random
@@ -516,6 +519,80 @@ def run_harvest(target_dir, arena_idx=None, limit=10):
         print(f"{Colors.GREEN}Successfully harvested {count} warriors to '{target_dir}'.{Colors.ENDC}")
     else:
         print(f"{Colors.YELLOW}Found leaderboard entries, but matching files were missing.{Colors.ENDC}")
+
+def run_seeding(targets, arena_idx=None):
+    """
+    Populates an arena (or all arenas) with warriors from a set of targets.
+    Targets can be files, directories, or dynamic selectors (top, random).
+    """
+    arenas_to_seed = range(LAST_ARENA + 1) if arena_idx is None else [arena_idx]
+
+    for a in arenas_to_seed:
+        if a > LAST_ARENA:
+            print(f"Error: Arena {a} does not exist.")
+            continue
+
+        # Aggregate all files to process for THIS arena
+        files_to_process = []
+        for target in targets:
+            # Resolve selector per arena
+            resolved = _resolve_warrior_path(target, a)
+            if os.path.isdir(resolved):
+                files = [os.path.join(resolved, f) for f in os.listdir(resolved) if f.endswith('.red')]
+                files_to_process.extend(files)
+            elif os.path.exists(resolved):
+                files_to_process.append(resolved)
+            else:
+                print(f"Warning: Target '{target}' could not be resolved for Arena {a}. Skipping.")
+
+        if not files_to_process:
+            print(f"Error: No warriors found to seed Arena {a}.")
+            continue
+
+        arena_dir = f"arena{a}"
+        os.makedirs(arena_dir, exist_ok=True)
+
+        print(f"Seeding Arena {a} with {NUMWARRIORS} warriors using {len(files_to_process)} sources...")
+
+        # target config
+        target_len = WARLEN_LIST[a]
+        coresize = CORESIZE_LIST[a]
+        sanitize = SANITIZE_LIST[a]
+
+        for i in range(1, NUMWARRIORS + 1):
+            src = files_to_process[(i-1) % len(files_to_process)]
+            dest = os.path.join(arena_dir, f"{i}.red")
+
+            try:
+                with open(src, 'r') as f_in:
+                    lines = f_in.readlines()
+
+                with open(dest, 'w') as f_out:
+                    count = 0
+                    for line in lines:
+                        if count >= target_len:
+                            break
+
+                        stripped = line.strip()
+                        if not stripped or stripped.startswith(';'):
+                            continue
+
+                        try:
+                            normalized = normalize_instruction(line, coresize, sanitize)
+                            f_out.write(normalized)
+                            count += 1
+                        except (ValueError, IndexError):
+                            continue
+
+                    # Padding
+                    while count < target_len:
+                        f_out.write("DAT.F $0,$0\n")
+                        count += 1
+            except Exception as e:
+                print(f"Error processing warrior {src} for Arena {a}: {e}")
+                break
+
+    print(f"{Colors.GREEN}Seeding process complete.{Colors.ENDC}")
 
 def read_config(key, data_type='int', default=None):
     value = config['DEFAULT'].get(key, fallback=default)
@@ -1453,6 +1530,29 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         print(f"Error during instruction collection: {e}")
+        sys.exit(1)
+
+  if "--seed" in sys.argv:
+    try:
+        idx = sys.argv.index("--seed")
+        targets = []
+        for i in range(idx + 1, len(sys.argv)):
+            if sys.argv[i].startswith('-'):
+                break
+            targets.append(sys.argv[i])
+
+        if not targets:
+            print("Usage: --seed <targets...> [--arena|-a <N>]")
+            sys.exit(1)
+
+        arena_idx = None
+        if "--arena" in sys.argv or "-a" in sys.argv:
+            arena_idx = _get_arena_idx()
+
+        run_seeding(targets, arena_idx)
+        sys.exit(0)
+    except Exception as e:
+        print(f"Error during seeding: {e}")
         sys.exit(1)
 
   if "--battle" in sys.argv or "-b" in sys.argv:
