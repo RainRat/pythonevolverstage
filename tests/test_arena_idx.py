@@ -34,5 +34,14 @@ class TestGetArenaIdx(unittest.TestCase):
         with mock.patch.object(sys, 'argv', ['evolverstage.py', '--arena', '2', 'arena5/w1.red']):
             self.assertEqual(evolverstage._get_arena_idx(), 2)
 
+    def test_smart_arena_inference_with_selector_suffix(self):
+        """Test detection of arena index from @N suffix in selectors."""
+        with mock.patch.object(sys, 'argv', ['evolverstage.py', '--view', 'top@5']):
+            self.assertEqual(evolverstage._get_arena_idx(), 5)
+
+        with mock.patch.object(sys, 'argv', ['evolverstage.py', '--battle', 'random@2', 'top@3']):
+            # Should return the first one found
+            self.assertEqual(evolverstage._get_arena_idx(), 2)
+
 if __name__ == '__main__':
     unittest.main()

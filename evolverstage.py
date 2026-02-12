@@ -1401,9 +1401,13 @@ def _get_arena_idx(default=0):
         if len(sys.argv) > a_idx + 1:
             arena_idx = int(sys.argv[a_idx+1])
     else:
-        # Smart Arena Inference: look for arenaN/ or arenaN\ in any argument
+        # Smart Arena Inference: look for arenaN/ or arenaN\ or selector@N in any argument
         for arg in sys.argv[1:]:
             match = re.search(r'arena(\d+)[/\\]', arg)
+            if match:
+                return int(match.group(1))
+            # Support @N suffix (e.g., top@5, random@2)
+            match = re.search(r'@(\d+)$', arg)
             if match:
                 return int(match.group(1))
 
