@@ -1,18 +1,18 @@
 # Python Core War Evolver
 
-Evolve Core War warriors by pitting them against each other and breeding winners. The tool uses mutations to create stronger strategies over time. You do not need to know Redcode to use it.
+This tool evolves digital warriors for the game of Core War. It pits warriors against each other and breeds the winners to find stronger strategies. You can use this tool even if you do not know the Redcode language.
 
-Contributions are welcome! If you have a suggestion or improvement, please submit a pull request.
+We welcome your contributions! If you have an idea to improve the tool, please submit a pull request.
 
 ## Prerequisites
 
-Before running the evolver, you need:
+You need the following to run the evolver:
 
-*   **Python 3.x**: Install Python 3 on your system.
+*   **Python 3**: Install the latest version of Python 3.
 *   **nMars Simulator**:
     1. Download nMars from [SourceForge](https://sourceforge.net/projects/nmars/files/).
-    2. Put `nmars.exe` (Windows) or `nmars` (Linux/macOS) in this folder.
-    3. On Linux or macOS, run `chmod +x nmars` in your terminal to allow it to run.
+    2. Place the `nmars.exe` (Windows) or `nmars` (Linux/macOS) file in the project folder.
+    3. If you use Linux or macOS, open your terminal and run `chmod +x nmars` to give the simulator permission to run.
 
 ## Configuration
 
@@ -20,9 +20,9 @@ Edit `settings.ini` to customize the evolution.
 
 1.  **Time**: Set `CLOCK_TIME` to the number of hours you want the script to run.
 2.  **Seeding**: Set `ALREADYSEEDED = False` to start a new evolution. Set it to `True` to resume from existing warriors.
-3.  **Arenas**: Run multiple arenas with different rules (like core size or cycles).
-    *   **Important**: All list settings (like `CORESIZE_LIST`, `CYCLES_LIST`) must be the same length.
-    *   Set `LAST_ARENA` to the index of your final arena. For example, if you have 8 arenas, they are numbered 0 to 7, so set `LAST_ARENA` to 7.
+3.  **Arenas**: You can run multiple arenas at the same time, each with its own rules like core size or cycle limits.
+    *   **Important**: Make sure all settings ending in `_LIST` (like `CORESIZE_LIST`) have the same number of items.
+    *   **Total Arenas**: Set `LAST_ARENA` to the total number of arenas minus one. For example, if you want 8 arenas, set `LAST_ARENA = 7`.
 4.  **Optimization**: Set `FINAL_ERA_ONLY = True` to skip early evolution phases and fine-tune your best warriors.
 
 ## How to Run
@@ -33,12 +33,12 @@ To start evolving immediately:
     *This command automatically initializes the population and starts the evolution.*
 
 ### Detailed Steps
-1.  Verify your settings in `settings.ini`.
+1.  Check your settings in `settings.ini`.
 2.  Open your terminal in the project folder.
-3.  **Validate setup**: Run `python evolverstage.py --check` to ensure your configuration and simulator are ready.
+3.  **Verify setup**: Run `python evolverstage.py --check` to make sure your configuration and simulator are ready.
 4.  **Start evolution**: Run `python evolverstage.py`.
-    *   **Tip**: Use `python evolverstage.py --dump-config` to see the active settings.
-5.  **Monitor progress**: The script displays a progress bar and estimated time remaining:
+    *   **Tip**: Use `python evolverstage.py --dump-config` to view your active settings.
+5.  **Monitor progress**: The script shows a progress bar and how much time is left:
     ```text
     08:00:00 left | [========----------------------]  25.00% | Era 1 | Battles: 1,200 (15.5/s)
     ```
@@ -110,9 +110,9 @@ python -m unittest discover tests
 ## Features
 
 *   **Multi-Arena Support**: Run many arenas with different rules at the same time.
-*   **Intelligent Selection**: Automatically prioritizes useful instructions and numbers during evolution.
-*   **Phased Evolution**:
-    1.  **Exploration**: Uses frequent changes to find new strategies.
-    2.  **Breeding**: Combines successful warriors to pass on winning traits.
-    3.  **Optimization**: Fine-tunes code for peak performance.
-*   **Dynamic Mutation**: Uses a "Bag of Marbles" system to randomly apply different mutation types, including instruction theft and "magic number" adjustments.
+*   **Smart Selection**: Automatically chooses useful instructions and numbers as warriors evolve.
+*   **Evolution Phases**:
+    1.  **Exploration**: Makes frequent changes to find new strategies.
+    2.  **Breeding**: Combines successful warriors to pass on their best traits.
+    3.  **Optimization**: Makes small changes to fine-tune your top warriors.
+*   **Dynamic Mutations**: Uses a "Bag of Marbles" system to apply different changes, such as stealing instructions or adjusting "magic numbers."
