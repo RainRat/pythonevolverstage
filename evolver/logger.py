@@ -9,7 +9,7 @@ class BaseCSVLogger:
         self.filename = filename
         self.fieldnames = fieldnames
 
-    def log_row(self, row: dict):
+    def log_row(self, **row):
         """
         Writes a single row of data to the CSV file.
         Creates the file with a header row if it doesn't exist.
@@ -28,10 +28,3 @@ class DataLogger(BaseCSVLogger):
     """
     def __init__(self, filename):
         super().__init__(filename, ['era', 'arena', 'winner', 'loser', 'score1', 'score2', 'bred_with'])
-
-    def log_data(self, **kwargs):
-        """
-        Writes a single row of data to the CSV file.
-        Kept for backward compatibility but uses log_row.
-        """
-        self.log_row(kwargs)

@@ -33,8 +33,8 @@ class TestDataLogger(unittest.TestCase):
         self.assertEqual(logger.filename, self.log_file_path)
         self.assertEqual(logger.fieldnames, fields)
 
-    def test_log_data_creates_new_file(self):
-        """Test that log_data creates a new file with header if it doesn't exist."""
+    def test_log_row_creates_new_file(self):
+        """Test that log_row creates a new file with header if it doesn't exist."""
         logger = DataLogger(self.log_file_path)
         data = {
             'era': 1,
@@ -45,7 +45,7 @@ class TestDataLogger(unittest.TestCase):
             'score2': 50,
             'bred_with': 'random'
         }
-        logger.log_data(**data)
+        logger.log_row(**data)
 
         self.assertTrue(os.path.exists(self.log_file_path))
         with open(self.log_file_path, 'r', newline='') as f:
@@ -62,8 +62,8 @@ class TestDataLogger(unittest.TestCase):
             self.assertEqual(int(row['score2']), 50)
             self.assertEqual(row['bred_with'], 'random')
 
-    def test_log_data_appends_to_existing_file(self):
-        """Test that log_data appends to an existing file without rewriting header."""
+    def test_log_row_appends_to_existing_file(self):
+        """Test that log_row appends to an existing file without rewriting header."""
         logger = DataLogger(self.log_file_path)
         data1 = {
             'era': 1,
@@ -74,7 +74,7 @@ class TestDataLogger(unittest.TestCase):
             'score2': 50,
             'bred_with': 'random1'
         }
-        logger.log_data(**data1)
+        logger.log_row(**data1)
 
         data2 = {
             'era': 2,
@@ -85,7 +85,7 @@ class TestDataLogger(unittest.TestCase):
             'score2': 150,
             'bred_with': 'random2'
         }
-        logger.log_data(**data2)
+        logger.log_row(**data2)
 
         with open(self.log_file_path, 'r', newline='') as f:
             reader = csv.DictReader(f)
@@ -99,17 +99,17 @@ class TestDataLogger(unittest.TestCase):
             content = f.read()
             self.assertEqual(content.count('bred_with'), 1)
 
-    def test_log_data_no_filename(self):
-        """Test that log_data does nothing if filename is None or empty."""
+    def test_log_row_no_filename(self):
+        """Test that log_row does nothing if filename is None or empty."""
         logger = DataLogger(None)
         # Should not raise error
-        logger.log_data(era=1)
+        logger.log_row(era=1)
 
         logger = DataLogger("")
-        logger.log_data(era=1)
+        logger.log_row(era=1)
 
-    def test_log_data_missing_fields(self):
-        """Test log_data with missing fields (should be empty strings or similar in CSV)."""
+    def test_log_row_missing_fields(self):
+        """Test log_row with missing fields (should be empty strings or similar in CSV)."""
         logger = DataLogger(self.log_file_path)
         # Missing 'score2'
         data = {
@@ -121,15 +121,15 @@ class TestDataLogger(unittest.TestCase):
             # score2 missing
             'bred_with': 'random'
         }
-        logger.log_data(**data)
+        logger.log_row(**data)
 
         with open(self.log_file_path, 'r', newline='') as f:
             reader = csv.DictReader(f)
             rows = list(reader)
             self.assertEqual(rows[0]['score2'], '')
 
-    def test_log_data_extra_fields(self):
-        """Test log_data with extra fields (should be ignored gracefully)."""
+    def test_log_row_extra_fields(self):
+        """Test log_row with extra fields (should be ignored gracefully)."""
         logger = DataLogger(self.log_file_path)
         data = {
             'era': 1,
@@ -142,7 +142,7 @@ class TestDataLogger(unittest.TestCase):
             'extra_field': 'oops'
         }
         # Should NOT raise ValueError
-        logger.log_data(**data)
+        logger.log_row(**data)
 
         self.assertTrue(os.path.exists(self.log_file_path))
         with open(self.log_file_path, 'r', newline='') as f:

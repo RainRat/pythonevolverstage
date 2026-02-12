@@ -1970,8 +1970,8 @@ if __name__ == "__main__":
         magic_number=magic_number-1
 
       fl.close()
-      data_logger.log_data(era=era, arena=arena, winner=winner, loser=loser, score1=scores[0], score2=scores[1], \
-                           bred_with=randomwarrior)
+      data_logger.log_row(era=era, arena=arena, winner=winner, loser=loser, score1=scores[0], score2=scores[1], \
+                          bred_with=randomwarrior)
 
       # Update last_result for next status line refresh
       last_result = f" | {Colors.CYAN}A{arena}{Colors.ENDC}: {Colors.GREEN}#{winner}{Colors.ENDC}>{Colors.RED}#{loser}{Colors.ENDC}"
