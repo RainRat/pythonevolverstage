@@ -57,8 +57,8 @@ class TestTrends(unittest.TestCase):
 
         # Verify output contains key sections
         self.assertIn("Trend Analysis: Arena 0", output)
-        self.assertIn("Population:    5 warriors", output)
-        self.assertIn("Meta:          2 warriors", output)
+        self.assertIn("Target A: arena0 (5 warriors)", output)
+        self.assertIn("Target B: Meta (Top 2) (2 warriors)", output)
 
         # Verify Opcode Trends
         # Population: 3 MOV, 2 SPL -> MOV 60%, SPL 40%
