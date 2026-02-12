@@ -66,6 +66,8 @@ The script includes several tools for managing evolution and testing warriors.
 ### Analyze and View
 *   **Analyze**: `python evolverstage.py --analyze warrior.red`
     *   Shows details about a warrior's code, such as the types of instructions it uses.
+*   **Compare**: `python evolverstage.py --compare top@0 top@1`
+    *   Provides a side-by-side statistical comparison between two warriors or populations.
 *   **View**: `python evolverstage.py --view top`
     *   Displays the source code of a warrior. Supports keywords like `top` or `random`.
 
