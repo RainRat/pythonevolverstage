@@ -35,9 +35,9 @@ To start evolving immediately:
 ### Detailed Steps
 1.  Check your settings in `settings.ini`.
 2.  Open your terminal in the project folder.
-3.  **Verify setup**: Run `python evolverstage.py --check` to make sure your configuration and simulator are ready.
+3.  **Verify setup**: Run `python evolverstage.py --check` (or `-c`) to make sure your configuration and simulator are ready.
 4.  **Start evolution**: Run `python evolverstage.py`.
-    *   **Tip**: Use `python evolverstage.py --dump-config` to view your active settings.
+    *   **Tip**: Use `python evolverstage.py --dump-config` (or `-d`) to view your active settings.
 5.  **Monitor progress**: The script shows a progress bar and how much time is left:
     ```text
     08:00:00 left | [========----------------------]  25.00% | Era 1 | Battles: 1,200 (15.5/s)
@@ -52,33 +52,36 @@ To start evolving immediately:
 
 ## Command Line Tools
 
-The script includes several tools for managing evolution and testing warriors.
+The script includes several tools to manage evolution and test warriors. You can use short aliases for most commands (e.g., `-s` instead of `--status`).
 
 ### Manage Evolution
-*   **Status**: `python evolverstage.py --status`
-    *   Shows population size, average warrior length, and current champions. Use `--json` for machine-readable output.
-*   **Leaderboard**: `python evolverstage.py --leaderboard`
-    *   Displays top-performing warriors based on recent win streaks.
-*   **Harvest**: `python evolverstage.py --harvest directory/`
-    *   Collects the best warriors from the leaderboard into a specific folder.
+*   **Status** (`--status`, `-s`): Shows population size, average warrior length, and current champions. Use `--json` for machine-readable output.
+*   **Leaderboard** (`--leaderboard`, `-l`): Displays top-performing warriors based on recent win streaks.
+*   **Trends** (`--trends`, `-r`): Analyzes evolution by comparing the whole population to the top performers.
+*   **Harvest** (`--harvest`, `-p`): Collects the best warriors from the leaderboard into a specific folder.
+*   **Seed** (`--seed`): Populates an arena with a set of specific warriors or folders.
 *   **Restart/Resume**: Use `--restart` to start fresh or `--resume` to continue from your current files.
 
 ### Analyze and View
-*   **Analyze**: `python evolverstage.py --analyze warrior.red`
-    *   Shows details about a warrior's code, such as the types of instructions it uses.
-*   **View**: `python evolverstage.py --view top`
-    *   Displays the source code of a warrior. Supports keywords like `top` or `random`.
+*   **Analyze** (`--analyze`, `-i`): Shows details about a warrior's code, such as the instructions it uses. Works on files, folders, or selectors.
+*   **View** (`--view`, `-v`): Displays the source code of a warrior in your terminal.
+*   **Normalize** (`--normalize`, `-n`): Standardizes a warrior's code format. Use `-o` to save the output to a file.
+*   **Collect** (`--collect`, `-k`): Extracts and normalizes instructions from many warriors into a single library file.
 
 ### Run Battles
-*   **Single Battle**: `python evolverstage.py --battle warrior1.red warrior2.red`
-*   **Tournament**: `python evolverstage.py --tournament directory/`
-    *   Runs a round-robin competition between all warriors in a folder.
-*   **Benchmark**: `python evolverstage.py --benchmark warrior.red directory/`
-    *   Tests a warrior against all opponents in a folder.
-*   **Normalize**: `python evolverstage.py --normalize warrior.red`
-    *   Standardizes a warrior's code format.
+*   **Single Battle** (`--battle`, `-b`): Runs a match between two warriors.
+*   **Tournament** (`--tournament`, `-t`): Runs a competition between a group of warriors. Use `--champions` to automatically include the winners from every arena.
+*   **Benchmark** (`--benchmark`, `-m`): Tests one warrior against every opponent in a folder.
 
-**Note**: Add `--arena N` to any command to use the rules of a specific arena (default is Arena 0).
+### Dynamic Selectors
+Instead of a filename, you can use these keywords in most commands:
+*   `top`: The #1 warrior on the leaderboard for the current arena.
+*   `topN`: The #N warrior (e.g., `top3`).
+*   `random`: A random warrior from the current population.
+
+**Targeting Arenas**: Add `@N` to a selector to target a specific arena (e.g., `top@2` or `random@0`). You can also use the `--arena N` (or `-a N`) flag to set the default arena for a command.
+
+**Example**: `python evolverstage.py --battle top@0 random@1`
 
 ## Output Explained
 
