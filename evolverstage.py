@@ -123,6 +123,13 @@ def draw_progress_bar(percent, width=30):
     empty_bar = '-' * (width - filled_length)
     return f"[{Colors.GREEN}{filled_bar}{Colors.ENDC}{empty_bar}] {percent:6.2f}%"
 
+def print_status_line(text, end='\r'):
+    """Clears the current line and prints the status text with proper terminal width handling."""
+    cols, _ = shutil.get_terminal_size()
+    visible_len = len(strip_ansi(text))
+    padding = " " * max(0, cols - visible_len - 1)
+    print(f"\r{text}{padding}", end=end, flush=True)
+
 def _get_nmars_cmd():
     """Returns the nMars executable name based on the operating system."""
     return "nmars.exe" if os.name == "nt" else "nmars"
@@ -258,14 +265,30 @@ def run_tournament(targets, arena_idx):
     print(f"Total battles: {total_battles}")
     print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
 
+    last_res = ""
     for i, (p1, p2) in enumerate(pairs, 1):
         # Progress
-        print(f"Battle {i}/{total_battles}: {file_map[p1]} vs {file_map[p2]}", end='\r')
+        percent = ((i - 1) / total_battles) * 100
+        bar = draw_progress_bar(percent, width=15)
+        status = f"Battle {i}/{total_battles}: {file_map[p1]} vs {file_map[p2]}"
+
+        line = f"{bar} {status}"
+        if last_res:
+            line += f" | {last_res}"
+
+        print_status_line(line)
 
         cmd = construct_battle_command(p1, p2, arena_idx)
         output = run_nmars_subprocess(cmd)
 
         s, warriors = parse_nmars_output(output)
+
+        # Determine last result for next iteration
+        if len(s) >= 2:
+            res_winner, res_loser = determine_winner(s, warriors)
+            w_name = file_map[p1] if res_winner == 1 else file_map[p2]
+            l_name = file_map[p1] if res_loser == 1 else file_map[p2]
+            last_res = f"Last: {Colors.GREEN}{w_name}{Colors.ENDC}>{Colors.RED}{l_name}{Colors.ENDC}"
 
         # Mapping back scores to filenames
         # parse_nmars_output returns [score1, score2] and [id1, id2]
@@ -282,7 +305,12 @@ def run_tournament(targets, arena_idx):
             elif warrior_id == 2:
                 scores[file_map[p2]] += points
 
-    print(f"\n\n{Colors.BOLD}Tournament Results:{Colors.ENDC}")
+    # Final progress line
+    bar = draw_progress_bar(100.0, width=15)
+    line = f"{bar} Tournament Complete | {last_res}"
+    print_status_line(line, end='\n')
+
+    print(f"\n{Colors.BOLD}Tournament Results:{Colors.ENDC}")
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     for rank, (name, score) in enumerate(sorted_scores, 1):
         color = Colors.GREEN if rank == 1 else Colors.ENDC
@@ -322,15 +350,30 @@ def run_benchmark(warrior_file, directory, arena_idx):
     # Use absolute path for warrior_file to avoid issues if directory is different
     abs_warrior_file = os.path.abspath(warrior_file)
 
+    last_res = ""
     for i, opp in enumerate(opponents, 1):
         opp_path = os.path.join(directory, opp)
         # Progress
-        print(f"Battle {i}/{len(opponents)}: vs {opp}", end='\r')
+        percent = ((i - 1) / len(opponents)) * 100
+        bar = draw_progress_bar(percent, width=15)
+        status = f"Battle {i}/{len(opponents)}: vs {opp}"
+
+        line = f"{bar} {status}"
+        if last_res:
+            line += f" | {last_res}"
+
+        print_status_line(line)
 
         cmd = construct_battle_command(abs_warrior_file, opp_path, arena_idx)
         output = run_nmars_subprocess(cmd)
 
         scores, warriors = parse_nmars_output(output)
+
+        # Determine last result
+        if len(scores) >= 2:
+            res_winner, res_loser = determine_winner(scores, warriors)
+            w_label = f"{Colors.GREEN}Win{Colors.ENDC}" if res_winner == 1 else f"{Colors.RED}Loss{Colors.ENDC}"
+            last_res = f"Last: {w_label}"
 
         # Determine my score
         my_score = 0
@@ -357,7 +400,12 @@ def run_benchmark(warrior_file, directory, arena_idx):
         else:
             stats['ties'] += 1
 
-    print(f"\n\n{Colors.BOLD}Benchmark Results for {warrior_file}:{Colors.ENDC}")
+    # Final progress line
+    bar = draw_progress_bar(100.0, width=15)
+    line = f"{bar} Benchmark Complete | {last_res}"
+    print_status_line(line, end='\n')
+
+    print(f"\n{Colors.BOLD}Benchmark Results for {warrior_file}:{Colors.ENDC}")
     print(f"  Total Battles: {len(opponents)}")
     if len(opponents) > 0:
         print(f"  {Colors.GREEN}Wins:   {stats['wins']} ({stats['wins']/len(opponents)*100:.1f}%){Colors.ENDC}")
@@ -397,11 +445,17 @@ def run_normalization(filepath, arena_idx, output_path=None):
             return
 
         print(f"Normalizing {len(files)} files from {filepath} to {output_path}...")
-        for f in files:
+        for i, f in enumerate(files, 1):
+            percent = ((i - 1) / len(files)) * 100
+            bar = draw_progress_bar(percent, width=15)
+            print_status_line(f"{bar} Normalizing: {f}")
+
             in_f = os.path.join(filepath, f)
             out_f = os.path.join(output_path, f)
             # Recursive call for single file
             run_normalization(in_f, arena_idx, output_path=out_f)
+
+        print_status_line(f"{draw_progress_bar(100.0, width=15)} Normalization complete.", end='\n')
         return
 
     # Single File Mode
@@ -471,7 +525,11 @@ def run_instruction_collection(targets, output_path, arena_idx):
     count = 0
     try:
         with open(output_path, 'w') as out_f:
-            for filepath in files_to_process:
+            for i, filepath in enumerate(files_to_process, 1):
+                percent = ((i - 1) / len(files_to_process)) * 100
+                bar = draw_progress_bar(percent, width=15)
+                print_status_line(f"{bar} Collecting from: {os.path.basename(filepath)}")
+
                 with open(filepath, 'r') as in_f:
                     for line in in_f:
                         stripped = line.strip()
@@ -484,7 +542,7 @@ def run_instruction_collection(targets, output_path, arena_idx):
                         except (ValueError, IndexError):
                             # Skip invalid lines
                             pass
-        print(f"Successfully collected {count} instructions.")
+        print_status_line(f"{draw_progress_bar(100.0, width=15)} Successfully collected {count} instructions.", end='\n')
     except Exception as e:
         print(f"Error writing to library file {output_path}: {e}")
 
@@ -563,6 +621,10 @@ def run_seeding(targets, arena_idx=None):
         sanitize = SANITIZE_LIST[a]
 
         for i in range(1, NUMWARRIORS + 1):
+            percent = ((i - 1) / NUMWARRIORS) * 100
+            bar = draw_progress_bar(percent, width=15)
+            print_status_line(f"{bar} Seeding warrior {i}/{NUMWARRIORS}")
+
             src = files_to_process[(i-1) % len(files_to_process)]
             dest = os.path.join(arena_dir, f"{i}.red")
 
@@ -592,8 +654,9 @@ def run_seeding(targets, arena_idx=None):
                         f_out.write("DAT.F $0,$0\n")
                         count += 1
             except Exception as e:
-                print(f"Error processing warrior {src} for Arena {a}: {e}")
+                print(f"\nError processing warrior {src} for Arena {a}: {e}")
                 break
+        print_status_line(f"{draw_progress_bar(100.0, width=15)} Seeding Arena {a} complete.", end='\n')
 
     print(f"{Colors.GREEN}Seeding process complete.{Colors.ENDC}")
 
@@ -1841,9 +1904,7 @@ if __name__ == "__main__":
           status_line += last_result
 
       # Clear line and print status
-      visible_len = len(strip_ansi(status_line))
-      padding = " " * max(0, cols - visible_len - 1)
-      print(f"\r{status_line}{padding}", end='', flush=True)
+      print_status_line(status_line)
 
       #in a random arena
       arena=random.randint(0, LAST_ARENA)
