@@ -6,6 +6,10 @@ import io
 import sys
 import csv
 from unittest.mock import patch, MagicMock
+
+# Add the root directory to sys.path so we can import evolverstage
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import evolverstage
 
 class TestTrends(unittest.TestCase):
