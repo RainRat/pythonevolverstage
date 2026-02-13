@@ -30,18 +30,33 @@ class TestBattleLogic(unittest.TestCase):
         self.assertEqual(scores, [])
         self.assertEqual(warriors, [])
 
-    def test_parse_nmars_output_malformed(self):
-        """Test parsing malformed lines."""
-        # Line with "scores" but too short
+    def test_parse_nmars_output_minimal(self):
+        """Test parsing minimal output lines."""
+        # Minimal format is now supported
         raw_output = (
-            "1 scores 100\n" # split len 3
-            "2 Warrior2 Author scores 50" # valid
+            "1 scores 100\n"
+            "2 Warrior2 Author scores 50"
         )
         scores, warriors = evolverstage.parse_nmars_output(raw_output)
 
-        # Should only capture the valid line
-        self.assertEqual(scores, [50])
-        self.assertEqual(warriors, [2])
+        self.assertEqual(scores, [100, 50])
+        self.assertEqual(warriors, [1, 2])
+
+    def test_parse_nmars_output_with_spaces(self):
+        """Test parsing lines with spaces in name/author."""
+        raw_output = "1 My Warrior Author Name scores 100"
+        scores, warriors = evolverstage.parse_nmars_output(raw_output)
+
+        self.assertEqual(scores, [100])
+        self.assertEqual(warriors, [1])
+
+    def test_parse_nmars_output_actually_malformed(self):
+        """Test parsing actually malformed lines."""
+        # No score following "scores", or not a number
+        raw_output = "1 scores\n2 scores not_a_number"
+        scores, warriors = evolverstage.parse_nmars_output(raw_output)
+        self.assertEqual(scores, [])
+        self.assertEqual(warriors, [])
 
     def test_parse_nmars_output_no_scores_keyword(self):
         """Test lines without 'scores' keyword are ignored."""
