@@ -810,21 +810,25 @@ def parse_nmars_output(raw_output):
         return [], []
     scores = []
     warriors = []
-    #note nMars will sort by score regardless of the order in the command-line, so match up score with warrior
+    # Note nMars will sort by score regardless of the order in the command-line,
+    # so we must match up the score with the warrior ID on each line.
     output = raw_output.splitlines()
-    numline=0
     for line in output:
-        numline=numline+1
         if "scores" in line:
             if VERBOSE:
                 print(line.strip())
-            splittedline=line.split()
-            # Ensure line has enough parts to avoid IndexError
-            if len(splittedline) > 4:
-                scores.append(int(splittedline[4]))
-                warriors.append(int(splittedline[0]))
-    if VERBOSE:
-        print(numline)
+            parts = line.split()
+            try:
+                # The score is the value immediately following the 'scores' keyword.
+                # The warrior ID is assumed to be the first element on the line.
+                s_idx = parts.index("scores")
+                if s_idx > 0 and s_idx + 1 < len(parts):
+                    warrior_id = int(parts[0])
+                    score_val = int(parts[s_idx + 1])
+                    warriors.append(warrior_id)
+                    scores.append(score_val)
+            except (ValueError, IndexError):
+                continue
     return scores, warriors
 
 def determine_winner(scores, warriors):
