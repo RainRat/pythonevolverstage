@@ -47,6 +47,8 @@ Analysis & Utilities:
                        Usage: --normalize <warrior|selector> [--arena <N>]
   --harvest, -p        Collect the best warriors from the leaderboard into a folder.
                        Usage: --harvest <directory> [--top <N>] [--arena <N>]
+  --export             Save a warrior with a standard Redcode header and normalization.
+                       Usage: --export <selector> [--output <file>] [--arena <N>]
   --collect, -k        Extract and normalize instructions from warriors into a library file.
                        Usage: --collect <targets...> [-o <output>] [--arena <N>]
 
@@ -60,6 +62,7 @@ Examples:
   python evolverstage.py --status
   python evolverstage.py --battle top@0 top@1
   python evolverstage.py --compare top@0 top@1
+  python evolverstage.py --export top@0 --output champion.red
   python evolverstage.py --tournament --champions
   python evolverstage.py --benchmark top archive/
   python evolverstage.py --view random@2
@@ -82,6 +85,8 @@ import csv
 from collections import deque
 
 from evolver.logger import DataLogger
+
+VERSION = "1.1.0"
 
 class Colors:
     HEADER = '\033[95m'
@@ -580,6 +585,77 @@ def run_harvest(target_dir, arena_idx=None, limit=10):
         print(f"{Colors.GREEN}Successfully harvested {count} warriors to '{target_dir}'.{Colors.ENDC}")
     else:
         print(f"{Colors.YELLOW}Found leaderboard entries, but matching files were missing.{Colors.ENDC}")
+
+def run_export(selector, output_path, arena_idx):
+    """
+    Exports a warrior with a standardized Redcode header and normalization.
+    """
+    path = _resolve_warrior_path(selector, arena_idx)
+    if not os.path.exists(path):
+        print(f"Error: Warrior '{selector}' not found.")
+        return
+
+    # Try to extract warrior ID and arena from leaderboard
+    warrior_id = "unknown"
+    streak = 0
+    leaderboard = get_leaderboard(arena_idx=arena_idx)
+    if arena_idx in leaderboard:
+        for wid, s in leaderboard[arena_idx]:
+            if _resolve_warrior_path(str(wid), arena_idx) == path:
+                warrior_id = str(wid)
+                streak = s
+                break
+
+    if warrior_id == "unknown":
+        warrior_id = os.path.basename(path).replace(".red", "")
+
+    # Normalize and read instructions
+    instructions = []
+    try:
+        with open(path, 'r') as f:
+            for line in f:
+                stripped = line.strip()
+                if not stripped or stripped.startswith(';'):
+                    continue
+                try:
+                    norm = normalize_instruction(line, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
+                    if not norm.endswith('\n'):
+                        norm += '\n'
+                    instructions.append(norm)
+                except (ValueError, IndexError):
+                    continue
+    except Exception as e:
+        print(f"Error reading warrior: {e}")
+        return
+
+    # Determine output file path
+    if not output_path:
+        output_path = f"exported_{warrior_id}.red"
+    elif os.path.isdir(output_path):
+        output_path = os.path.join(output_path, f"{warrior_id}.red")
+
+    # Header
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    header = [
+        f";name {warrior_id}\n",
+        f";author Python Core War Evolver\n",
+        f";strategy Evolved in Arena {arena_idx}\n",
+        f";strategy Coresize: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]}, Processes: {PROCESSES_LIST[arena_idx]}\n",
+        f";strategy Max Warrior Length: {WARLEN_LIST[arena_idx]}, Max Distance: {WARDISTANCE_LIST[arena_idx]}\n",
+        f";win-streak {streak}\n",
+        f";exported {now}\n",
+        ";\n"
+    ]
+
+    try:
+        if os.path.dirname(output_path):
+            os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
+        with open(output_path, 'w') as f:
+            f.writelines(header)
+            f.writelines(instructions)
+        print(f"{Colors.GREEN}Successfully exported warrior to '{output_path}'{Colors.ENDC}")
+    except Exception as e:
+        print(f"Error writing export: {e}")
 
 def run_seeding(targets, arena_idx=None):
     """
@@ -1385,6 +1461,12 @@ def _resolve_warrior_path(selector, arena_idx):
         except (ValueError, IndexError):
             pass
 
+    # If it's a number, try to resolve it as a warrior ID in the arena directory
+    if selector.isdigit():
+        path = os.path.join(f"arena{arena_idx}", f"{selector}.red")
+        if os.path.exists(path):
+            return path
+
     return selector
 
 def _get_arena_idx(default=0):
@@ -1516,6 +1598,10 @@ if __name__ == "__main__":
     ALREADYSEEDED = False
   elif "--resume" in sys.argv:
     ALREADYSEEDED = True
+
+  if "--version" in sys.argv:
+    print(f"Python Core War Evolver v{VERSION}")
+    sys.exit(0)
 
   if "--check" in sys.argv or "-c" in sys.argv:
     if validate_configuration():
@@ -1661,6 +1747,28 @@ if __name__ == "__main__":
         sys.exit(0)
     except Exception as e:
         print(f"Error during seeding: {e}")
+        sys.exit(1)
+
+  if "--export" in sys.argv:
+    try:
+        idx = sys.argv.index("--export")
+        if len(sys.argv) < idx + 2:
+            print("Usage: --export <selector> [--output <path>] [--arena|-a <N>]")
+            sys.exit(1)
+
+        target = sys.argv[idx+1]
+        arena_idx = _get_arena_idx()
+
+        output_path = None
+        if "--output" in sys.argv or "-o" in sys.argv:
+            o_idx = sys.argv.index("--output") if "--output" in sys.argv else sys.argv.index("-o")
+            if len(sys.argv) > o_idx + 1:
+                output_path = sys.argv[o_idx+1]
+
+        run_export(target, output_path, arena_idx)
+        sys.exit(0)
+    except Exception as e:
+        print(f"Error during export: {e}")
         sys.exit(1)
 
   if "--battle" in sys.argv or "-b" in sys.argv:
