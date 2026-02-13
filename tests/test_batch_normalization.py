@@ -151,4 +151,4 @@ class TestBatchNormalization(unittest.TestCase):
 
         with mock.patch('sys.stdout', new=StringIO()) as fake_out:
              evolverstage.run_normalization("in_dir", 0, output_path=None)
-             self.assertIn("Error: Output directory must be specified", fake_out.getvalue())
+             self.assertIn("Error: You must specify an output folder", fake_out.getvalue())
