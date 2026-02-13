@@ -70,8 +70,8 @@ class TestValidateConfiguration(unittest.TestCase):
 
         result = evolverstage.validate_configuration()
         self.assertFalse(result)
-        self.assertIn("Executable", self.stdout.getvalue())
-        self.assertIn("not found in PATH or current directory", self.stdout.getvalue())
+        self.assertIn("The simulator", self.stdout.getvalue())
+        self.assertIn("was not found. Please place it in the project folder", self.stdout.getvalue())
 
     @mock.patch('shutil.which')
     @mock.patch('os.path.exists')
@@ -84,7 +84,7 @@ class TestValidateConfiguration(unittest.TestCase):
         with mock.patch.object(evolverstage, 'CORESIZE_LIST', []):
             result = evolverstage.validate_configuration()
             self.assertFalse(result)
-            self.assertIn("The setting 'CORESIZE_LIST' in settings.ini is too short. It has 0 values, but needs at least 1 (because LAST_ARENA is 0).", self.stdout.getvalue())
+            self.assertIn("The 'CORESIZE_LIST' setting in settings.ini is too short. It has 0 values, but needs 1 (one for each arena).", self.stdout.getvalue())
 
     @mock.patch('shutil.which')
     @mock.patch('os.path.exists')
@@ -95,7 +95,7 @@ class TestValidateConfiguration(unittest.TestCase):
         with mock.patch.object(evolverstage, 'NOTHING_LIST', [1, 1]):
             result = evolverstage.validate_configuration()
             self.assertFalse(result)
-            self.assertIn("The setting 'NOTHING_LIST' in settings.ini must have at least 3 values (one for each evolution era).", self.stdout.getvalue())
+            self.assertIn("The 'NOTHING_LIST' setting in settings.ini must have at least 3 values (one for each evolution era).", self.stdout.getvalue())
 
     @mock.patch('shutil.which')
     @mock.patch('os.path.exists')

@@ -35,13 +35,13 @@ class TestRunTournament(unittest.TestCase):
     @mock.patch('os.path.exists')
     @mock.patch('builtins.print')
     def test_run_tournament_directory_not_found(self, mock_print, mock_exists):
-        """Test tournament with missing directory."""
+        """Test tournament with missing folder."""
         mock_exists.return_value = False
 
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_tournament(self.directory, self.arena_idx)
 
-        mock_print.assert_any_call(f"Error: Directory '{self.directory}' not found.")
+        mock_print.assert_any_call(f"Error: Folder '{self.directory}' not found.")
 
     @mock.patch('os.path.isdir')
     @mock.patch('os.listdir')

@@ -50,8 +50,8 @@ class TestRunBenchmark(unittest.TestCase):
     @mock.patch('os.path.exists')
     @mock.patch('builtins.print')
     def test_run_benchmark_missing_directory(self, mock_print, mock_exists):
-        """Test benchmark with missing directory."""
-        # Side effect: True for warrior_file, False for directory
+        """Test benchmark with missing folder."""
+        # Side effect: True for warrior_file, False for folder
         def exists_side_effect(path):
             return path != self.directory
         mock_exists.side_effect = exists_side_effect
@@ -59,7 +59,7 @@ class TestRunBenchmark(unittest.TestCase):
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_benchmark(self.warrior_file, self.directory, self.arena_idx)
 
-        mock_print.assert_any_call(f"Error: Directory '{self.directory}' not found.")
+        mock_print.assert_any_call(f"Error: Folder '{self.directory}' not found.")
 
     @mock.patch('os.listdir')
     @mock.patch('os.path.exists')
