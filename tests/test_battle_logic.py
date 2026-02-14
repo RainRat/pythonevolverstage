@@ -11,14 +11,32 @@ import evolverstage
 class TestBattleLogic(unittest.TestCase):
     def test_parse_nmars_output_valid(self):
         """Test parsing of valid nmars output."""
-        # Using format: ID Name Author scores Score
-        # ensuring index 0 is ID and index 4 is Score
+        # Standard format
         raw_output = (
             "Header info\n"
             "1 Warrior1 Author scores 100\n"
             "2 Warrior2 Author scores 50\n"
             "Footer info"
         )
+        scores, warriors = evolverstage.parse_nmars_output(raw_output)
+
+        self.assertEqual(scores, [100, 50])
+        self.assertEqual(warriors, [1, 2])
+
+    def test_parse_nmars_output_with_spaces(self):
+        """Test parsing warrior names with multiple spaces."""
+        raw_output = (
+            "1 Super Cool Warrior scores 100\n"
+            "2 Another Awesome Warrior with Spaces scores 50"
+        )
+        scores, warriors = evolverstage.parse_nmars_output(raw_output)
+
+        self.assertEqual(scores, [100, 50])
+        self.assertEqual(warriors, [1, 2])
+
+    def test_parse_nmars_output_minimal(self):
+        """Test parsing minimal output format."""
+        raw_output = "1 scores 100\n2 scores 50"
         scores, warriors = evolverstage.parse_nmars_output(raw_output)
 
         self.assertEqual(scores, [100, 50])
@@ -32,9 +50,10 @@ class TestBattleLogic(unittest.TestCase):
 
     def test_parse_nmars_output_malformed(self):
         """Test parsing malformed lines."""
-        # Line with "scores" but too short
+        # Lines with "scores" but missing ID or score
         raw_output = (
-            "1 scores 100\n" # split len 3
+            "scores 100\n" # Missing ID
+            "1 scores\n" # Missing score
             "2 Warrior2 Author scores 50" # valid
         )
         scores, warriors = evolverstage.parse_nmars_output(raw_output)
