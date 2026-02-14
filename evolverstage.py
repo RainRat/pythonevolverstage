@@ -1,10 +1,10 @@
-# A Python-based Genetic Evolver for Core War
+# A Python-based Evolver for Core War
 # This script manages the evolution, breeding, and battling of warriors across multiple arenas.
 
 '''
 Core War Evolver
 
-Evolve and test Redcode warriors using a genetic algorithm.
+Evolve and test Redcode warriors using an evolutionary process.
 For license information, see LICENSE.md.
 
 Usage:
@@ -30,15 +30,15 @@ Evolution:
 Battle Tools:
   --battle, -b         Run a match between two specific warriors.
                        Usage: --battle <warrior1> <warrior2> [--arena <N>]
-  --tournament, -t     Run a round-robin competition between a group of warriors.
+  --tournament, -t     Run an everyone-vs-everyone tournament between a group of warriors.
                        Use --champions to automatically include winners from every arena.
-                       Usage: --tournament <directory|selectors...> [--champions] [--arena <N>]
-  --benchmark, -m      Test one warrior against every opponent in a directory.
-                       Usage: --benchmark <warrior> <directory> [--arena <N>]
+                       Usage: --tournament <folder|selectors...> [--champions] [--arena <N>]
+  --benchmark, -m      Test one warrior against every opponent in a folder.
+                       Usage: --benchmark <warrior> <folder> [--arena <N>]
 
 Analysis & Utilities:
   --analyze, -i        Get statistics on instructions, opcodes, and addressing modes.
-                       Usage: --analyze <file|dir|selector> [--arena <N>] [--json]
+                       Usage: --analyze <file|folder|selector> [--arena <N>] [--json]
   --compare, -y        Compare two warriors, folders, or selectors side-by-side.
                        Usage: --compare <target1> <target2> [--arena <N>] [--json]
   --view, -v           Display the source code of a warrior.
@@ -46,7 +46,7 @@ Analysis & Utilities:
   --normalize, -n      Clean and standardize a warrior's Redcode format.
                        Usage: --normalize <warrior|selector> [--arena <N>]
   --harvest, -p        Collect the best warriors from the leaderboard into a folder.
-                       Usage: --harvest <directory> [--top <N>] [--arena <N>]
+                       Usage: --harvest <folder> [--top <N>] [--arena <N>]
   --export             Save a warrior with a standard Redcode header and normalization.
                        Usage: --export <selector> [--output <file>] [--arena <N>]
   --collect, -k        Extract and normalize instructions from warriors into a library file.
@@ -221,7 +221,7 @@ def run_custom_battle(file1, file2, arena_idx):
 
 def run_tournament(targets, arena_idx):
     """
-    Runs a round-robin tournament between a directory of warriors or a specific list of warriors.
+    Runs an everyone-vs-everyone tournament between a folder of warriors or a specific list of warriors.
     """
     if isinstance(targets, str):
         targets = [targets]
@@ -233,7 +233,7 @@ def run_tournament(targets, arena_idx):
     abs_files = []
     file_map = {}
 
-    # Check if we are given a single directory or a list of files/selectors
+    # Check if we are given a single folder or a list of files/selectors
     if len(targets) == 1 and os.path.isdir(targets[0]):
         directory = targets[0]
         files = [f for f in os.listdir(directory) if f.endswith('.red')]
@@ -242,10 +242,10 @@ def run_tournament(targets, arena_idx):
             return
         abs_files = [os.path.join(directory, f) for f in files]
         file_map = {path: f for path, f in zip(abs_files, files)}
-        print(f"Tournament: {len(files)} warriors from directory '{directory}'")
+        print(f"Tournament: {len(files)} warriors from folder '{directory}'")
     elif len(targets) == 1 and not os.path.exists(targets[0]):
-        # Maintain backward compatibility for single directory not found error message
-        print(f"Error: Directory '{targets[0]}' not found.")
+        # Maintain backward compatibility for single folder not found error message
+        print(f"Error: Folder '{targets[0]}' not found.")
         return
     else:
         # It's a list of selectors/files
@@ -323,7 +323,7 @@ def run_tournament(targets, arena_idx):
 
 def run_benchmark(warrior_file, directory, arena_idx):
     """
-    Runs a benchmark of a specific warrior against all warriors in a directory.
+    Runs a benchmark of a specific warrior against all warriors in a folder.
     """
     if arena_idx > LAST_ARENA:
         print(f"Error: Arena {arena_idx} does not exist (LAST_ARENA={LAST_ARENA})")
@@ -333,7 +333,7 @@ def run_benchmark(warrior_file, directory, arena_idx):
         print(f"Error: File '{warrior_file}' not found.")
         return
     if not os.path.exists(directory):
-        print(f"Error: Directory '{directory}' not found.")
+        print(f"Error: Folder '{directory}' not found.")
         return
 
     opponents = [f for f in os.listdir(directory) if f.endswith('.red')]
@@ -341,7 +341,7 @@ def run_benchmark(warrior_file, directory, arena_idx):
         print(f"Error: No opponents found. Please ensure the folder '{directory}' contains .red files.")
         return
 
-    print(f"Benchmarking {warrior_file} against {len(opponents)} warriors in {directory}")
+    print(f"Benchmarking {warrior_file} against {len(opponents)} warriors in folder: {directory}")
     print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
 
     stats = {
@@ -421,9 +421,9 @@ def run_benchmark(warrior_file, directory, arena_idx):
 
 def run_normalization(filepath, arena_idx, output_path=None):
     """
-    Reads a warrior file (or directory) and outputs the normalized instructions.
+    Reads a warrior file (or folder) and outputs the normalized instructions.
 
-    If filepath is a directory, output_path must be a directory.
+    If filepath is a folder, output_path must be a folder.
     If filepath is a file:
       - if output_path is set, writes to that file.
       - if output_path is None, prints to stdout.
@@ -436,10 +436,10 @@ def run_normalization(filepath, arena_idx, output_path=None):
         print(f"Error: File '{filepath}' not found.")
         return
 
-    # Directory Mode
+    # Folder Mode
     if os.path.isdir(filepath):
         if not output_path:
-            print("Error: Output directory must be specified when normalizing a directory.")
+            print("Error: Output folder must be specified when normalizing a folder.")
             return
 
         os.makedirs(output_path, exist_ok=True)
@@ -553,7 +553,7 @@ def run_instruction_collection(targets, output_path, arena_idx):
 
 def run_harvest(target_dir, arena_idx=None, limit=10):
     """
-    Collects the top performers from one or all arenas into a single directory.
+    Collects the top performers from one or all arenas into a single folder.
     Renames them to include arena, rank, and win streak information.
     """
     if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
@@ -1168,7 +1168,7 @@ def analyze_files(files, label):
 
 def analyze_population(directory):
     """
-    Aggregates statistics for all warriors in a directory.
+    Aggregates statistics for all warriors in a folder.
     """
     if not os.path.exists(directory):
         return None
@@ -1210,7 +1210,7 @@ def run_trend_analysis(arena_idx):
     """
     arena_dir = f"arena{arena_idx}"
     if not os.path.exists(arena_dir):
-        print(f"{Colors.RED}Arena directory {arena_dir} not found.{Colors.ENDC}")
+        print(f"{Colors.RED}Arena folder {arena_dir} not found.{Colors.ENDC}")
         return
 
     # 1. Analyze Population
@@ -1693,7 +1693,7 @@ if __name__ == "__main__":
     try:
         idx = sys.argv.index("--harvest") if "--harvest" in sys.argv else sys.argv.index("-p")
         if len(sys.argv) < idx + 2:
-            print("Usage: --harvest|-p <directory> [--top <N>] [--arena|-a <N>]")
+            print("Usage: --harvest|-p <folder> [--top <N>] [--arena|-a <N>]")
             sys.exit(1)
 
         target_dir = sys.argv[idx+1]
@@ -1835,7 +1835,7 @@ if __name__ == "__main__":
                   targets.append(sys.argv[i])
 
           if not targets:
-              print("Usage: --tournament|-t <directory|selectors...> [--champions] [--arena|-a <N>]")
+              print("Usage: --tournament|-t <folder|selectors...> [--champions] [--arena|-a <N>]")
               sys.exit(1)
 
           arena_idx = _get_arena_idx()
@@ -1853,7 +1853,7 @@ if __name__ == "__main__":
               idx = sys.argv.index("-m")
 
           if len(sys.argv) < idx + 3:
-              print("Usage: --benchmark|-m <warrior_file> <directory> [--arena|-a <N>]")
+              print("Usage: --benchmark|-m <warrior_file> <folder> [--arena|-a <N>]")
               sys.exit(1)
 
           arena_idx = _get_arena_idx()
@@ -2044,9 +2044,7 @@ if __name__ == "__main__":
       # Clear line and print status
       print_status_line(status_line)
 
-      #in a random arena
       arena=random.randint(0, LAST_ARENA)
-      #two random warriors
       cont1 = random.randint(1, NUMWARRIORS)
       cont2 = cont1
       while cont2 == cont1: #no self fights
@@ -2115,7 +2113,7 @@ if __name__ == "__main__":
       randomwarrior=str(random.randint(1, NUMWARRIORS))
       if VERBOSE:
           print("winner will breed with "+randomwarrior)
-      fr = open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r")  # winner mates with random warrior
+      fr = open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r")
       ranlines = fr.readlines()
       fr.close()
       fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # winner destroys loser
@@ -2174,6 +2172,8 @@ if __name__ == "__main__":
         elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
           if VERBOSE:
               print("Minor mutation")
+          # Split the instruction into its components (opcode, modifier, operand A, operand B).
+          # This allows us to modify one part while keeping the rest of the instruction intact.
           splitline=re.split(r'[ \.,\n]', templine)
           r=random.randint(1,6)
           if r==1:
@@ -2194,6 +2194,8 @@ if __name__ == "__main__":
         elif chosen_marble==Marble.MICRO_MUTATION: #modifies one number by +1 or -1
           if VERBOSE:
               print ("Micro mutation")
+          # Deconstruct the instruction to increment or decrement an address value
+          # without changing the addressing mode or opcode.
           splitline=re.split(r'[ \.,\n]', templine)
           r=random.randint(1,2)
           if r==1:

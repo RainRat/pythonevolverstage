@@ -59,28 +59,49 @@ The script includes several tools for managing evolution and testing warriors.
     *   Shows population size, average warrior length, and current champions. Use `--json` for machine-readable output.
 *   **Leaderboard**: `python evolverstage.py --leaderboard`
     *   Displays top-performing warriors based on recent win streaks.
-*   **Harvest**: `python evolverstage.py --harvest directory/`
+*   **Harvest**: `python evolverstage.py --harvest folder/`
     *   Collects the best warriors from the leaderboard into a specific folder.
+*   **Seed**: `python evolverstage.py --seed folder/`
+    *   Populates an arena with warriors from a specific folder or file.
 *   **Restart/Resume**: Use `--restart` to start fresh or `--resume` to continue from your current files.
 
 ### Analyze and View
 *   **Analyze**: `python evolverstage.py --analyze warrior.red`
     *   Shows details about a warrior's code, such as the types of instructions it uses.
+*   **Trends**: `python evolverstage.py --trends`
+    *   Shows how the population's instructions compare to the top performers.
 *   **Compare**: `python evolverstage.py --compare top@0 top@1`
     *   Provides a side-by-side statistical comparison between two warriors or populations.
 *   **View**: `python evolverstage.py --view top`
     *   Displays the source code of a warrior. Supports keywords like `top` or `random`.
+*   **Export**: `python evolverstage.py --export top --output champion.red`
+    *   Saves a warrior with a standard Redcode header and clean formatting.
+*   **Collect**: `python evolverstage.py --collect folder/ -o library.txt`
+    *   Extracts and standardizes instructions from warriors to create a library.
 
 ### Run Battles
 *   **Single Battle**: `python evolverstage.py --battle warrior1.red warrior2.red`
-*   **Tournament**: `python evolverstage.py --tournament directory/`
-    *   Runs a round-robin competition between all warriors in a folder.
-*   **Benchmark**: `python evolverstage.py --benchmark warrior.red directory/`
+*   **Tournament**: `python evolverstage.py --tournament folder/`
+    *   Runs an everyone-vs-everyone tournament between all warriors in a folder.
+*   **Benchmark**: `python evolverstage.py --benchmark warrior.red folder/`
     *   Tests a warrior against all opponents in a folder.
 *   **Normalize**: `python evolverstage.py --normalize warrior.red`
     *   Standardizes a warrior's code format.
 
 **Note**: Add `--arena N` to any command to use the rules of a specific arena (default is Arena 0).
+
+## Dynamic Selectors
+
+In many commands, you can use keywords instead of a filename to quickly target specific warriors:
+
+*   **top**: Selects the #1 warrior on the leaderboard.
+*   **topN**: Selects the #N warrior (e.g., `top5`).
+*   **random**: Selects a random warrior from the population.
+
+You can also target a specific arena by adding `@N` to any selector or filename:
+*   `top@2`: The champion of Arena 2.
+*   `random@0`: A random warrior from Arena 0.
+*   `1.red@1`: Warrior 1 from Arena 1.
 
 ## Output Explained
 
@@ -113,8 +134,8 @@ python -m unittest discover tests
 
 *   **Multi-Arena Support**: Run many arenas with different rules at the same time.
 *   **Smart Selection**: Automatically chooses useful instructions and numbers as warriors evolve.
-*   **Evolution Phases**:
-    1.  **Exploration**: Makes frequent changes to find new strategies.
-    2.  **Breeding**: Combines successful warriors to pass on their best traits.
-    3.  **Optimization**: Makes small changes to fine-tune your top warriors.
-*   **Dynamic Mutations**: Uses a "Bag of Marbles" system to apply different changes, such as stealing instructions or adjusting "magic numbers."
+*   **Evolution Phases**: As time passes, the tool automatically shifts its strategy:
+    1.  **Exploration**: The tool makes frequent, large changes to discover new strategies from scratch.
+    2.  **Breeding**: Successful warriors are combined together to pass on their winning traits to new generations.
+    3.  **Optimization**: The tool makes small, precise changes to fine-tune the performance of your best warriors.
+*   **Dynamic Mutations**: Uses a "Bag of Marbles" system to apply different types of changes. It can steal successful instructions from other arenas or adjust "magic numbers" that help warriors survive.
