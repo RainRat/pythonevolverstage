@@ -13,6 +13,8 @@ Usage:
 General Commands:
   --check, -c          Check your configuration and simulator setup.
   --status, -s         Display the current status of all arenas and population.
+                       Add --watch or -w for real-time monitoring.
+                       Add --interval <N> to set refresh rate (default 2s).
                        Add --json for machine-readable output.
   --leaderboard, -l    Show the top-performing warriors based on recent win streaks.
                        Usage: --leaderboard [--arena <N>] [--json]
@@ -928,33 +930,38 @@ def get_latest_log_entry():
     """
     Retrieves and parses the last entry from the battle log file.
     """
+    entries = get_recent_log_entries(n=1)
+    return entries[0] if entries else None
+
+def get_recent_log_entries(n=5):
+    """
+    Retrieves and parses the last n entries from the battle log file.
+    """
     if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
-        return None
+        return []
     try:
         with open(BATTLE_LOG_FILE, 'r') as f:
-            lines = deque(f, maxlen=1)
-            if not lines:
-                return None
-
-            last_line = lines[0].strip()
-            if not last_line or "winner,loser" in last_line:
-                return None
-
-            # Manually parse the CSV line to avoid reading the whole file
-            # era,arena,winner,loser,score1,score2,bred_with
-            parts = last_line.split(',')
-            if len(parts) >= 6:
-                return {
-                    'era': parts[0],
-                    'arena': parts[1],
-                    'winner': parts[2],
-                    'loser': parts[3],
-                    'score1': parts[4],
-                    'score2': parts[5]
-                }
-            return None
+            lines = deque(f, maxlen=n)
+            results = []
+            for line in lines:
+                line = line.strip()
+                if not line or "winner,loser" in line:
+                    continue
+                # Manually parse the CSV line
+                # era,arena,winner,loser,score1,score2,bred_with
+                parts = line.split(',')
+                if len(parts) >= 6:
+                    results.append({
+                        'era': parts[0],
+                        'arena': parts[1],
+                        'winner': parts[2],
+                        'loser': parts[3],
+                        'score1': parts[4],
+                        'score2': parts[5]
+                    })
+            return results
     except Exception:
-        return None
+        return []
 
 def get_evolution_status():
     """
@@ -973,6 +980,7 @@ def get_evolution_status():
 
     status = {
         "latest_log": get_latest_log_entry(),
+        "recent_log": get_recent_log_entries(5),
         "total_battles": total_battles,
         "arenas": [],
         "archive": None
@@ -1353,11 +1361,12 @@ def print_status_json(status_data):
     """
     print(json.dumps(status_data, indent=2))
 
-def print_status():
+def print_status(data=None, recent_bps=None):
     """
     Prints the current status of all arenas and the archive in a human-readable format.
     """
-    data = get_evolution_status()
+    if data is None:
+        data = get_evolution_status()
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     cols, _ = shutil.get_terminal_size()
 
@@ -1370,13 +1379,15 @@ def print_status():
     print(sep_double)
 
     # Latest Activity
-    log = data['latest_log']
-    if log:
-        try:
-            summary = f"Era {int(log['era'])+1}, Arena {log['arena']}: {Colors.GREEN}Warrior {log['winner']}{Colors.ENDC} beat {Colors.RED}Warrior {log['loser']}{Colors.ENDC} ({log['score1']}-{log['score2']})"
-            print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} {summary}")
-        except (ValueError, KeyError):
-            print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} {log}")
+    recent = data.get('recent_log', [])
+    if recent:
+        print(f"{Colors.BOLD}Recent Activity (Last {len(recent)} matches):{Colors.ENDC}")
+        for log in reversed(recent):
+            try:
+                summary = f"  - Era {int(log['era'])+1}, Arena {log['arena']}: {Colors.GREEN}Warrior {log['winner']}{Colors.ENDC} beat {Colors.RED}Warrior {log['loser']}{Colors.ENDC} ({log['score1']}-{log['score2']})"
+                print(summary)
+            except (ValueError, KeyError):
+                print(f"  - {log}")
     else:
         print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} No battles recorded yet.")
     print(sep_single)
@@ -1439,6 +1450,8 @@ def print_status():
     total_battles = f"{data['total_battles']:,}"
 
     summary_line = f"Total Battles: {Colors.BOLD}{total_battles}{Colors.ENDC} | Total Population: {Colors.BOLD}{total_warriors}{Colors.ENDC} | Archive: {archive_info}"
+    if recent_bps is not None:
+        summary_line += f" | Performance: {Colors.CYAN}{recent_bps:.1f} bps{Colors.ENDC}"
     print(summary_line)
     print(sep_double + "\n")
 
@@ -1636,10 +1649,58 @@ if __name__ == "__main__":
         sys.exit(1)
 
   if "--status" in sys.argv or "-s" in sys.argv:
+    watch = "--watch" in sys.argv or "-w" in sys.argv
+    interval = 2.0
+    if "--interval" in sys.argv:
+        try:
+            idx = sys.argv.index("--interval")
+            if len(sys.argv) > idx + 1:
+                interval = float(sys.argv[idx+1])
+        except (ValueError, IndexError):
+            pass
+
     if "--json" in sys.argv:
-        print_status_json(get_evolution_status())
+        if watch:
+            try:
+                while True:
+                    print_status_json(get_evolution_status())
+                    time.sleep(interval)
+            except KeyboardInterrupt:
+                print("")
+                sys.exit(0)
+        else:
+            print_status_json(get_evolution_status())
     else:
-        print_status()
+        if watch:
+            last_time = None
+            last_battles = None
+            try:
+                while True:
+                    # Clear terminal
+                    print("\033[H\033[J", end="")
+
+                    status_data = get_evolution_status()
+                    current_time = time.time()
+                    current_battles = status_data['total_battles']
+
+                    recent_bps = None
+                    if last_time is not None and last_battles is not None:
+                        time_delta = current_time - last_time
+                        battle_delta = current_battles - last_battles
+                        if time_delta > 0:
+                            recent_bps = battle_delta / time_delta
+
+                    print_status(data=status_data, recent_bps=recent_bps)
+
+                    last_time = current_time
+                    last_battles = current_battles
+
+                    time.sleep(interval)
+            except KeyboardInterrupt:
+                print(f"\n{Colors.YELLOW}Stopped monitoring.{Colors.ENDC}")
+                sys.exit(0)
+        else:
+            print_status()
     sys.exit(0)
 
   if "--leaderboard" in sys.argv or "-l" in sys.argv:
