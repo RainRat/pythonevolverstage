@@ -14,6 +14,7 @@ General Commands:
   --check, -c          Check your configuration and simulator setup.
   --status, -s         Display the current status of all arenas and population.
                        Add --json for machine-readable output.
+                       Use --watch, -w [N] to refresh every N seconds.
   --leaderboard, -l    Show the top-performing warriors based on recent win streaks.
                        Usage: --leaderboard [--arena <N>] [--json]
   --trends, -r         Analyze evolution trends by comparing the population to the top performers.
@@ -1636,10 +1637,32 @@ if __name__ == "__main__":
         sys.exit(1)
 
   if "--status" in sys.argv or "-s" in sys.argv:
-    if "--json" in sys.argv:
-        print_status_json(get_evolution_status())
+    watch = False
+    interval = 2
+    if "--watch" in sys.argv or "-w" in sys.argv:
+        watch = True
+        idx = sys.argv.index("--watch") if "--watch" in sys.argv else sys.argv.index("-w")
+        if len(sys.argv) > idx + 1 and sys.argv[idx+1].lstrip('-').isdigit():
+            interval = int(sys.argv[idx+1].lstrip('-'))
+
+    if watch:
+        try:
+            while True:
+                if "--json" in sys.argv:
+                    print_status_json(get_evolution_status())
+                else:
+                    # Clear terminal and print status
+                    os.system('cls' if os.name == 'nt' else 'clear')
+                    print_status()
+                time.sleep(interval)
+        except KeyboardInterrupt:
+            print("\n")
+            sys.exit(0)
     else:
-        print_status()
+        if "--json" in sys.argv:
+            print_status_json(get_evolution_status())
+        else:
+            print_status()
     sys.exit(0)
 
   if "--leaderboard" in sys.argv or "-l" in sys.argv:

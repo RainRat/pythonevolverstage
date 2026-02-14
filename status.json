@@ -1,0 +1,318 @@
+{
+  "latest_log": null,
+  "total_battles": 0,
+  "arenas": [
+    {
+      "id": 0,
+      "config": {
+        "size": 80,
+        "cycles": 800,
+        "processes": 80
+      },
+      "directory": "arena0",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 1,
+      "config": {
+        "size": 800,
+        "cycles": 8000,
+        "processes": 800
+      },
+      "directory": "arena1",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 2,
+      "config": {
+        "size": 800,
+        "cycles": 8000,
+        "processes": 8
+      },
+      "directory": "arena2",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 3,
+      "config": {
+        "size": 8000,
+        "cycles": 80000,
+        "processes": 64
+      },
+      "directory": "arena3",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 4,
+      "config": {
+        "size": 8000,
+        "cycles": 80000,
+        "processes": 8000
+      },
+      "directory": "arena4",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 5,
+      "config": {
+        "size": 8000,
+        "cycles": 80000,
+        "processes": 8
+      },
+      "directory": "arena5",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 6,
+      "config": {
+        "size": 8192,
+        "cycles": 100000,
+        "processes": 8000
+      },
+      "directory": "arena6",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 7,
+      "config": {
+        "size": 55440,
+        "cycles": 500000,
+        "processes": 10000
+      },
+      "directory": "arena7",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    }
+  ],
+  "archive": {
+    "exists": false,
+    "count": 0
+  }
+}
+{
+  "latest_log": null,
+  "total_battles": 0,
+  "arenas": [
+    {
+      "id": 0,
+      "config": {
+        "size": 80,
+        "cycles": 800,
+        "processes": 80
+      },
+      "directory": "arena0",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 1,
+      "config": {
+        "size": 800,
+        "cycles": 8000,
+        "processes": 800
+      },
+      "directory": "arena1",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 2,
+      "config": {
+        "size": 800,
+        "cycles": 8000,
+        "processes": 8
+      },
+      "directory": "arena2",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 3,
+      "config": {
+        "size": 8000,
+        "cycles": 80000,
+        "processes": 64
+      },
+      "directory": "arena3",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 4,
+      "config": {
+        "size": 8000,
+        "cycles": 80000,
+        "processes": 8000
+      },
+      "directory": "arena4",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 5,
+      "config": {
+        "size": 8000,
+        "cycles": 80000,
+        "processes": 8
+      },
+      "directory": "arena5",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 6,
+      "config": {
+        "size": 8192,
+        "cycles": 100000,
+        "processes": 8000
+      },
+      "directory": "arena6",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 7,
+      "config": {
+        "size": 55440,
+        "cycles": 500000,
+        "processes": 10000
+      },
+      "directory": "arena7",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    }
+  ],
+  "archive": {
+    "exists": false,
+    "count": 0
+  }
+}
+{
+  "latest_log": null,
+  "total_battles": 0,
+  "arenas": [
+    {
+      "id": 0,
+      "config": {
+        "size": 80,
+        "cycles": 800,
+        "processes": 80
+      },
+      "directory": "arena0",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 1,
+      "config": {
+        "size": 800,
+        "cycles": 8000,
+        "processes": 800
+      },
+      "directory": "arena1",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 2,
+      "config": {
+        "size": 800,
+        "cycles": 8000,
+        "processes": 8
+      },
+      "directory": "arena2",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 3,
+      "config": {
+        "size": 8000,
+        "cycles": 80000,
+        "processes": 64
+      },
+      "directory": "arena3",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 4,
+      "config": {
+        "size": 8000,
+        "cycles": 80000,
+        "processes": 8000
+      },
+      "directory": "arena4",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 5,
+      "config": {
+        "size": 8000,
+        "cycles": 80000,
+        "processes": 8
+      },
+      "directory": "arena5",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 6,
+      "config": {
+        "size": 8192,
+        "cycles": 100000,
+        "processes": 8000
+      },
+      "directory": "arena6",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    },
+    {
+      "id": 7,
+      "config": {
+        "size": 55440,
+        "cycles": 500000,
+        "processes": 10000
+      },
+      "directory": "arena7",
+      "exists": false,
+      "population": 0,
+      "avg_length": 0.0
+    }
+  ],
+  "archive": {
+    "exists": false,
+    "count": 0
+  }
+}
