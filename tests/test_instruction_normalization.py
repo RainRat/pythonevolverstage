@@ -89,6 +89,28 @@ class TestNormalizeInstruction(unittest.TestCase):
         result = evolverstage.normalize_instruction(instr, 8000, 8000)
         self.assertEqual(result, expected)
 
+    def test_operandless_instruction(self):
+        # Test instructions with no operands (e.g., DAT)
+        instr = "DAT"
+        # Should default to .I and $0,$0
+        expected = "DAT.I $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
+
+    def test_operandless_with_modifier(self):
+        # Test instructions with modifier but no operands
+        instr = "DAT.F"
+        expected = "DAT.F $0,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
+
+    def test_single_operand_with_modifier(self):
+        # Test instructions with modifier and single operand
+        instr = "DAT.F $1"
+        expected = "DAT.F $1,$0\n"
+        result = evolverstage.normalize_instruction(instr, 8000, 8000)
+        self.assertEqual(result, expected)
+
     def test_missing_modes(self):
         instr = "MOV.I 0,0"
         expected = "MOV.I $0,$0\n"
