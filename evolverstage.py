@@ -2076,38 +2076,39 @@ if __name__ == "__main__":
             fd.write(line)
 
       if UNARCHIVE_LIST[era]!=0 and random.randint(1,UNARCHIVE_LIST[era])==1:
-        if VERBOSE:
-            print("unarchiving")
-        #replace loser with something from archive
-        with open(os.path.join("archive", random.choice(os.listdir("archive")))) as fs:
-          sourcelines = fs.readlines()
-        #this is more involved. the archive is going to contain warriors from different arenas. which isn't
-        #necessarily bad to get some crossover. A nano warrior would be workable, if inefficient in a normal core.
-        #These are the tasks:
-        #1. Truncate any too long
-        #2. Pad any too short with DATs
-        #3. Sanitize values
-        #4. Try to be tolerant of working with other evolvers that may not space things exactly the same.
-        fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # unarchived warrior destroys loser
-        countoflines=0
-        for line in sourcelines:
-          stripped = line.strip()
-          if not stripped or stripped.startswith(';'):
-              continue
-          countoflines=countoflines+1
-          if countoflines>WARLEN_LIST[arena]:
-            break
-          try:
-              line = normalize_instruction(line, CORESIZE_LIST[arena], SANITIZE_LIST[arena])
-              fl.write(line)
-          except (ValueError, IndexError):
-              countoflines -= 1
-              continue
-        while countoflines<WARLEN_LIST[arena]:
-          countoflines=countoflines+1
-          fl.write('DAT.F $0,$0\n')
-        fl.close()
-        continue #out of while (loser replaced by archive, no point breeding)
+        if os.path.exists("archive") and os.listdir("archive"):
+          if VERBOSE:
+              print("unarchiving")
+          #replace loser with something from archive
+          with open(os.path.join("archive", random.choice(os.listdir("archive")))) as fs:
+            sourcelines = fs.readlines()
+          #this is more involved. the archive is going to contain warriors from different arenas. which isn't
+          #necessarily bad to get some crossover. A nano warrior would be workable, if inefficient in a normal core.
+          #These are the tasks:
+          #1. Truncate any too long
+          #2. Pad any too short with DATs
+          #3. Sanitize values
+          #4. Try to be tolerant of working with other evolvers that may not space things exactly the same.
+          fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # unarchived warrior destroys loser
+          countoflines=0
+          for line in sourcelines:
+            stripped = line.strip()
+            if not stripped or stripped.startswith(';'):
+                continue
+            countoflines=countoflines+1
+            if countoflines>WARLEN_LIST[arena]:
+              break
+            try:
+                line = normalize_instruction(line, CORESIZE_LIST[arena], SANITIZE_LIST[arena])
+                fl.write(line)
+            except (ValueError, IndexError):
+                countoflines -= 1
+                continue
+          while countoflines<WARLEN_LIST[arena]:
+            countoflines=countoflines+1
+            fl.write('DAT.F $0,$0\n')
+          fl.close()
+          continue #out of while (loser replaced by archive, no point breeding)
 
       #the loser is destroyed and the winner can breed with any warrior in the arena
       with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
