@@ -960,8 +960,18 @@ def get_evolution_status():
     """
     champions = get_leaderboard(limit=1)
 
+    # Count total battles from log
+    total_battles = 0
+    if BATTLE_LOG_FILE and os.path.exists(BATTLE_LOG_FILE):
+        try:
+            with open(BATTLE_LOG_FILE, 'r') as f:
+                total_battles = max(0, sum(1 for _ in f) - 1) # Subtract header
+        except Exception:
+            pass
+
     status = {
         "latest_log": get_latest_log_entry(),
+        "total_battles": total_battles,
         "arenas": [],
         "archive": None
     }
@@ -1347,10 +1357,15 @@ def print_status():
     """
     data = get_evolution_status()
     now = time.strftime("%Y-%m-%d %H:%M:%S")
+    cols, _ = shutil.get_terminal_size()
+
+    # Use terminal width for separators
+    sep_double = "=" * min(cols, 100)
+    sep_single = "-" * min(cols, 100)
 
     print(f"\n{Colors.BOLD}{Colors.HEADER}--- Evolver Status Dashboard ---{Colors.ENDC}")
     print(f"Captured: {now}")
-    print("="*78)
+    print(sep_double)
 
     # Latest Activity
     log = data['latest_log']
@@ -1362,12 +1377,19 @@ def print_status():
             print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} {log}")
     else:
         print(f"{Colors.BOLD}Latest Activity:{Colors.ENDC} No battles recorded yet.")
-    print("-" * 78)
+    print(sep_single)
 
-    # Table Header
-    header = f"{'Arena':<5} {'Size':>7} {'Cycles':>8} {'Procs':>6} {'Pop':>5} {'Len':>5} {'Champion':<12} {'Wins':>4} {'Status':<8}"
-    print(f"{Colors.BOLD}{header}{Colors.ENDC}")
-    print("-" * 78)
+    # Two-tier Table Header
+    group1_title = "      ARENA CONFIGURATION      "
+    group2_title = "        POPULATION & CHAMPIONS        "
+
+    # Align the group divider with the column divider (index 30)
+    header_groups = f"{Colors.BOLD}{group1_title:<30} | {group2_title}{Colors.ENDC}"
+    print(header_groups)
+
+    header_cols = f"{'Arena':<5} {'Size':>7} {'Cycles':>8} {'Procs':>6} | {'Pop':>5} {'Len':>5} {'Champion':<12} {'Wins':>4} {'Status':<8}"
+    print(f"{Colors.BOLD}{header_cols}{Colors.ENDC}")
+    print(sep_single)
 
     total_warriors = 0
     for arena in data['arenas']:
@@ -1400,21 +1422,23 @@ def print_status():
         wins_plain = strip_ansi(wins_str)
 
         row = (
-            f"{i:<5} {size:>7} {cycles:>8} {procs:>6} {pop:>5} {avg_len:>5} "
+            f"{i:<5} {size:>7} {cycles:>8} {procs:>6} | {pop:>5} {avg_len:>5} "
             f"{champ_str}{' ' * (12 - len(champ_plain))} "
             f"{' ' * (4 - len(wins_plain))}{wins_str} "
             f"{status}"
         )
         print(row)
 
-    print("-" * 78)
+    print(sep_single)
 
     # Archive and Summary
     archive_count = data['archive']['count']
     archive_info = f"{Colors.GREEN}{archive_count}{Colors.ENDC}" if data['archive']['exists'] else f"{Colors.YELLOW}None{Colors.ENDC}"
+    total_battles = f"{data['total_battles']:,}"
 
-    print(f"Total Population: {Colors.BOLD}{total_warriors}{Colors.ENDC} | Archive: {archive_info}")
-    print("="*78 + "\n")
+    summary_line = f"Total Battles: {Colors.BOLD}{total_battles}{Colors.ENDC} | Total Population: {Colors.BOLD}{total_warriors}{Colors.ENDC} | Archive: {archive_info}"
+    print(summary_line)
+    print(sep_double + "\n")
 
 def _resolve_warrior_path(selector, arena_idx):
     """
