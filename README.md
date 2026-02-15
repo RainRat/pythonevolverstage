@@ -11,12 +11,12 @@ You need the following to run the evolver:
 *   **Python 3**: Install the latest version of Python 3.
 *   **nMars Simulator**:
     1. Download nMars from [SourceForge](https://sourceforge.net/projects/nmars/files/).
-    2. Place the `nmars.exe` (Windows) or `nmars` (Linux/macOS) file in the project folder.
+    2. Place the `nmars.exe` (Windows) or `nmars` (Linux/macOS) file in the project folder or in your system's PATH.
     3. If you use Linux or macOS, open your terminal and run `chmod +x nmars` to give the simulator permission to run.
 
 ## Configuration
 
-Edit `settings.ini` to customize the evolution.
+Edit `settings.ini` to customize the evolution. You can also use command line flags (see **Manage Evolution**) to start a new run or resume without editing the file.
 
 1.  **Time**: Set `CLOCK_TIME` to the number of hours you want the script to run.
 2.  **Seeding**: Set `ALREADYSEEDED = False` to start a new evolution. Set it to `True` to resume from existing warriors.
@@ -48,7 +48,7 @@ To start evolving immediately:
 ## Troubleshooting
 
 *   **No progress**: If the progress bar stays at 0% and no files appear in `arena` folders, ensure you used the `--restart` flag or set `ALREADYSEEDED = False` for your first run.
-*   **nMars errors**: Ensure the `nmars` executable is in the project folder and has the correct permissions.
+*   **nMars errors**: Ensure the `nmars` executable is in the project folder or system PATH, and has the correct permissions.
 
 ## Command Line Tools
 
@@ -56,14 +56,16 @@ The script includes several tools for managing evolution and testing warriors.
 
 ### Manage Evolution
 *   **Status**: `python evolverstage.py --status`
-    *   Shows population size, average warrior length, and current champions. Use `--json` for machine-readable output.
+    *   Shows population size, average warrior length, and current champions. Use `--watch` (or `-w`) for real-time monitoring and `--json` for machine-readable output.
 *   **Leaderboard**: `python evolverstage.py --leaderboard`
     *   Displays top-performing warriors based on recent win streaks.
 *   **Harvest**: `python evolverstage.py --harvest folder/`
     *   Collects the best warriors from the leaderboard into a specific folder.
-*   **Seed**: `python evolverstage.py --seed folder/`
-    *   Populates an arena with warriors from a specific folder or file.
-*   **Restart/Resume**: Use `--restart` to start fresh or `--resume` to continue from your current files.
+*   **Seed**: `python evolverstage.py --seed targets...`
+    *   Populates all arenas (or a specific one with `--arena N`) with warriors from the specified files or folders.
+*   **Restart/Resume**: Use `--restart` to start a new evolution or `--resume` to continue from your current files. These flags override the `ALREADYSEEDED` setting in `settings.ini`.
+*   **Version**: `python evolverstage.py --version`
+    *   Displays the current version of the tool.
 
 ### Analyze and View
 *   **Analyze**: `python evolverstage.py --analyze warrior.red`
@@ -81,8 +83,8 @@ The script includes several tools for managing evolution and testing warriors.
 
 ### Run Battles
 *   **Single Battle**: `python evolverstage.py --battle warrior1.red warrior2.red`
-*   **Tournament**: `python evolverstage.py --tournament folder/`
-    *   Runs an everyone-vs-everyone tournament between all warriors in a folder.
+*   **Tournament**: `python evolverstage.py --tournament targets...`
+    *   Runs an everyone-vs-everyone tournament between all warriors in a folder or a specific list of warriors. Use the `--champions` flag to automatically include winners from every arena.
 *   **Benchmark**: `python evolverstage.py --benchmark warrior.red folder/`
     *   Tests a warrior against all opponents in a folder.
 *   **Normalize**: `python evolverstage.py --normalize warrior.red`
