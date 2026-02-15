@@ -155,18 +155,6 @@ def run_nmars_subprocess(cmd):
         print(f"An unexpected error occurred while running the simulator: {e}")
     return None
 
-def run_nmars_command(arena, cont1, cont2, coresize, cycles, processes, warlen, wardistance, battlerounds):
-  """
-  Runs the nMars simulator to battle two warriors.
-
-  It builds the command string with all the rules for the specific arena (size, cycles, etc.)
-  and returns the raw output from nMars, which contains the scores.
-  """
-  file1 = os.path.join(f"arena{arena}", f"{cont1}.red")
-  file2 = os.path.join(f"arena{arena}", f"{cont2}.red")
-  cmd = construct_battle_command(file1, file2, arena, coresize=coresize, cycles=cycles, processes=processes, warlen=warlen, wardistance=wardistance, rounds=battlerounds)
-  return run_nmars_subprocess(cmd)
-
 def construct_battle_command(file1, file2, arena_idx, coresize=None, cycles=None, processes=None, warlen=None, wardistance=None, rounds=None):
     """
     Constructs the nMars command for battling two specific files.
@@ -2111,9 +2099,10 @@ if __name__ == "__main__":
       cont2 = cont1
       while cont2 == cont1: #no self fights
         cont2 = random.randint(1, NUMWARRIORS)
-      raw_output = run_nmars_command(arena, cont1, cont2, CORESIZE_LIST[arena], CYCLES_LIST[arena], \
-                                     PROCESSES_LIST[arena], WARLEN_LIST[arena], \
-                                     WARDISTANCE_LIST[arena], BATTLEROUNDS_LIST[era])
+      file1 = os.path.join(f"arena{arena}", f"{cont1}.red")
+      file2 = os.path.join(f"arena{arena}", f"{cont2}.red")
+      cmd = construct_battle_command(file1, file2, arena, rounds=BATTLEROUNDS_LIST[era])
+      raw_output = run_nmars_subprocess(cmd)
 
       scores, warriors = parse_nmars_output(raw_output)
 
