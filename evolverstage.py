@@ -40,17 +40,20 @@ Battle Tools:
 
 Analysis & Utilities:
   --analyze, -i        Get statistics on instructions, opcodes, and addressing modes.
-                       Usage: --analyze <file|folder|selector> [--arena <N>] [--json]
+                       Usage: --analyze [file|folder|selector] [--arena <N>] [--json]
+                       Defaults to the current champion ('top') if no target is provided.
   --compare, -y        Compare two warriors, folders, or selectors side-by-side.
                        Usage: --compare <target1> <target2> [--arena <N>] [--json]
   --view, -v           Display the source code of a warrior.
-                       Usage: --view <warrior|selector> [--arena <N>]
+                       Usage: --view [warrior|selector] [--arena <N>]
+                       Defaults to the current champion ('top') if no target is provided.
   --normalize, -n      Clean and standardize a warrior's Redcode format.
                        Usage: --normalize <warrior|selector> [--arena <N>]
   --harvest, -p        Collect the best warriors from the leaderboard into a folder.
                        Usage: --harvest <folder> [--top <N>] [--arena <N>]
-  --export             Save a warrior with a standard Redcode header and normalization.
-                       Usage: --export <selector> [--output <file>] [--arena <N>]
+  --export, -e         Save a warrior with a standard Redcode header and normalization.
+                       Usage: --export [selector] [--output <file>] [--arena <N>]
+                       Defaults to the current champion ('top') if no target is provided.
   --collect, -k        Extract and normalize instructions from warriors into a library file.
                        Usage: --collect <targets...> [-o <output>] [--arena <N>]
 
@@ -1732,12 +1735,13 @@ if __name__ == "__main__":
   if "--view" in sys.argv or "-v" in sys.argv:
     try:
         idx = sys.argv.index("--view") if "--view" in sys.argv else sys.argv.index("-v")
-        if len(sys.argv) < idx + 2:
-            print("Usage: --view|-v <warrior_file|selector> [--arena|-a <N>]")
-            sys.exit(1)
-
         arena_idx = _get_arena_idx()
-        target = _resolve_warrior_path(sys.argv[idx+1], arena_idx)
+
+        target = None
+        if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
+            target = _resolve_warrior_path(sys.argv[idx+1], arena_idx)
+        else:
+            target = _resolve_warrior_path("top", arena_idx)
 
         if not os.path.exists(target):
             print(f"Error: File '{target}' not found.")
@@ -1837,15 +1841,16 @@ if __name__ == "__main__":
         print(f"Error during seeding: {e}")
         sys.exit(1)
 
-  if "--export" in sys.argv:
+  if "--export" in sys.argv or "-e" in sys.argv:
     try:
-        idx = sys.argv.index("--export")
-        if len(sys.argv) < idx + 2:
-            print("Usage: --export <selector> [--output <path>] [--arena|-a <N>]")
-            sys.exit(1)
-
-        target = sys.argv[idx+1]
+        idx = sys.argv.index("--export") if "--export" in sys.argv else sys.argv.index("-e")
         arena_idx = _get_arena_idx()
+
+        target = None
+        if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
+            target = sys.argv[idx+1]
+        else:
+            target = "top"
 
         output_path = None
         if "--output" in sys.argv or "-o" in sys.argv:
@@ -1960,34 +1965,21 @@ if __name__ == "__main__":
 
   if "--analyze" in sys.argv or "-i" in sys.argv:
       try:
-          if "--analyze" in sys.argv:
-              idx = sys.argv.index("--analyze")
-          else:
-              idx = sys.argv.index("-i")
-
-          target = None
+          idx = sys.argv.index("--analyze") if "--analyze" in sys.argv else sys.argv.index("-i")
           arena_idx = _get_arena_idx()
+          target = None
 
-          if "--top" in sys.argv:
-              # Find leader
-              results = get_leaderboard(arena_idx=arena_idx, limit=1)
-              if arena_idx in results and results[arena_idx]:
-                  warrior_id, wins = results[arena_idx][0]
-                  target = os.path.join(f"arena{arena_idx}", f"{warrior_id}.red")
-                  print(f"Targeting Arena {arena_idx} champion: Warrior {warrior_id} ({wins} wins)")
-              else:
-                  print(f"{Colors.YELLOW}No champion found for Arena {arena_idx}.{Colors.ENDC}")
+          if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
+              target = _resolve_warrior_path(sys.argv[idx+1], arena_idx)
+          else:
+              # Default to champion if no target provided
+              target = _resolve_warrior_path("top", arena_idx)
+              if not os.path.exists(target):
+                  print(f"{Colors.YELLOW}No champion found for Arena {arena_idx} to analyze.{Colors.ENDC}")
                   sys.exit(1)
-          elif len(sys.argv) > idx + 1:
-              target = sys.argv[idx+1]
-              # check if target is an option
-              if target.startswith('-'):
-                  target = None
-              else:
-                  target = _resolve_warrior_path(target, arena_idx)
 
           if not target:
-              print("Usage: --analyze|-i <file|dir|selector> [--arena <N>] [--json]")
+              print("Usage: --analyze|-i [file|dir|selector] [--arena <N>] [--json]")
               sys.exit(1)
 
           if os.path.isdir(target):
