@@ -845,8 +845,9 @@ def normalize_instruction(instruction, coresize, sanitize_limit):
     if not clean_instr:
         raise ValueError("Empty instruction")
 
-    # Regex to extract components robustly: OPCODE[.MODIFIER] <MODE>A-VAL[,<MODE>B-VAL]
-    match = re.match(r'^([A-Z]+)(?:\.([A-Z]+))?\s+([^,]+)(?:,\s*(.+))?$', clean_instr, re.I)
+    # Regex to extract components robustly: OPCODE[.MODIFIER] [<MODE>A-VAL[,<MODE>B-VAL]]
+    # This robust version handles operand-less instructions (e.g. DAT or END).
+    match = re.match(r'^([A-Z]+)(?:\.([A-Z]+))?(?:\s+([^,]+)(?:,\s*(.+))?)?$', clean_instr, re.I)
     if not match:
         raise ValueError(f"Invalid instruction format: {clean_instr}")
 
