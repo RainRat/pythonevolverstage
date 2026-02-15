@@ -59,7 +59,7 @@ class TestRunBenchmark(unittest.TestCase):
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_benchmark(self.warrior_file, self.directory, self.arena_idx)
 
-        mock_print.assert_any_call(f"Error: Directory '{self.directory}' not found.")
+        mock_print.assert_any_call(f"Error: Folder '{self.directory}' not found.")
 
     @mock.patch('os.listdir')
     @mock.patch('os.path.exists')
