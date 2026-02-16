@@ -921,12 +921,6 @@ def determine_winner(scores, warriors):
         return warriors[1], warriors[0]
     return warriors[0], warriors[1]
 
-def get_latest_log_entry():
-    """
-    Retrieves and parses the last entry from the battle log file.
-    """
-    entries = get_recent_log_entries(n=1)
-    return entries[0] if entries else None
 
 def get_recent_log_entries(n=5):
     """
@@ -946,14 +940,17 @@ def get_recent_log_entries(n=5):
                 # era,arena,winner,loser,score1,score2,bred_with
                 parts = line.split(',')
                 if len(parts) >= 6:
-                    results.append({
+                    entry = {
                         'era': parts[0],
                         'arena': parts[1],
                         'winner': parts[2],
                         'loser': parts[3],
                         'score1': parts[4],
                         'score2': parts[5]
-                    })
+                    }
+                    if len(parts) >= 7:
+                        entry['bred_with'] = parts[6]
+                    results.append(entry)
             return results
     except Exception:
         return []
@@ -973,9 +970,10 @@ def get_evolution_status():
         except Exception:
             pass
 
+    recent = get_recent_log_entries(5)
     status = {
-        "latest_log": get_latest_log_entry(),
-        "recent_log": get_recent_log_entries(5),
+        "latest_log": recent[-1] if recent else None,
+        "recent_log": recent,
         "total_battles": total_battles,
         "arenas": [],
         "archive": None
