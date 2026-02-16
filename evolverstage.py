@@ -20,6 +20,8 @@ General Commands:
                        Usage: --leaderboard [--arena <N>] [--json]
   --trends, -r         Analyze evolution trends by comparing the population to the top performers.
                        Usage: --trends [--arena <N>]
+  --report, -g         Generate a comprehensive health and performance report for an arena.
+                       Usage: --report [--arena <N>]
   --dump-config, -d    Show the active configuration from settings.ini and exit.
 
 Evolution:
@@ -84,6 +86,7 @@ import configparser
 import subprocess
 from enum import Enum
 import csv
+import hashlib
 from collections import deque
 
 from evolver.logger import DataLogger
@@ -1247,6 +1250,137 @@ def run_trend_analysis(arena_idx):
     # 4. Print Trends
     print_comparison(pop_stats, meta_stats, title=f"Trend Analysis: Arena {arena_idx}")
 
+def get_population_diversity(arena_idx):
+    """
+    Calculates the percentage of unique warrior strategies in an arena.
+    """
+    arena_dir = f"arena{arena_idx}"
+    if not os.path.exists(arena_dir):
+        return 0.0
+
+    files = [f for f in os.listdir(arena_dir) if f.endswith('.red')]
+    if not files:
+        return 0.0
+
+    unique_hashes = set()
+    for f in files:
+        try:
+            with open(os.path.join(arena_dir, f), 'r') as fh:
+                # Strip comments and whitespace to focus on the logic
+                content = "".join([line.strip() for line in fh if line.strip() and not line.strip().startswith(';')])
+                strategy_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+                unique_hashes.add(strategy_hash)
+        except Exception:
+            continue
+
+    return (len(unique_hashes) / len(files)) * 100
+
+def get_lifetime_rankings(arena_idx=None, limit=10, min_battles=5):
+    """
+    Parses the battle log to find the top performing warriors by win rate.
+    """
+    if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
+        return {}
+
+    # arena -> warrior_id -> {wins, battles}
+    stats = {}
+
+    try:
+        with open(BATTLE_LOG_FILE, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    a = int(row['arena'])
+                    if arena_idx is not None and a != arena_idx:
+                        continue
+
+                    if a not in stats:
+                        stats[a] = {}
+
+                    winner = row['winner']
+                    loser = row['loser']
+
+                    if winner not in stats[a]:
+                        stats[a][winner] = {'wins': 0, 'battles': 0}
+                    if loser not in stats[a]:
+                        stats[a][loser] = {'wins': 0, 'battles': 0}
+
+                    stats[a][winner]['wins'] += 1
+                    stats[a][winner]['battles'] += 1
+                    stats[a][loser]['battles'] += 1
+                except (ValueError, KeyError):
+                    continue
+
+        # Calculate win rates and sort
+        results = {}
+        for a in sorted(stats.keys()):
+            ranked = []
+            for warrior_id, data in stats[a].items():
+                if data['battles'] >= min_battles:
+                    win_rate = (data['wins'] / data['battles']) * 100
+                    ranked.append((warrior_id, win_rate, data['wins'], data['battles']))
+
+            # Sort by win rate, then total wins as tiebreaker
+            ranked.sort(key=lambda x: (x[1], x[2]), reverse=True)
+            if ranked:
+                results[a] = ranked[:limit]
+
+        return results
+    except Exception as e:
+        sys.stderr.write(f"Error generating lifetime rankings: {e}\n")
+        return {}
+
+def run_report(arena_idx):
+    """
+    Generates and displays a comprehensive health and performance report for an arena.
+    """
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Arena {arena_idx} Health & Performance Report ---{Colors.ENDC}")
+
+    # 1. Arena Config
+    print(f"\n{Colors.BOLD}Arena Configuration:{Colors.ENDC}")
+    print(f"  Coresize:  {CORESIZE_LIST[arena_idx]}")
+    print(f"  Cycles:    {CYCLES_LIST[arena_idx]}")
+    print(f"  Processes: {PROCESSES_LIST[arena_idx]}")
+    print(f"  Length:    {WARLEN_LIST[arena_idx]}")
+
+    # 2. Population & Diversity
+    diversity = get_population_diversity(arena_idx)
+    status_data = get_evolution_status()
+    arena_data = next((a for a in status_data['arenas'] if a['id'] == arena_idx), None)
+
+    print(f"\n{Colors.BOLD}Population & Diversity:{Colors.ENDC}")
+    if arena_data:
+        print(f"  Total Population: {arena_data['population']} warriors")
+        print(f"  Avg Code Length:  {arena_data['avg_length']:.1f} instructions")
+
+    div_color = Colors.GREEN if diversity > 50 else Colors.YELLOW if diversity > 10 else Colors.RED
+    print(f"  Diversity Index:  {div_color}{diversity:.1f}%{Colors.ENDC} unique strategies")
+
+    # 3. Current Champion (Streak)
+    print(f"\n{Colors.BOLD}Current Top Performers (Recent Streak):{Colors.ENDC}")
+    streaks = get_leaderboard(arena_idx=arena_idx, limit=5)
+    if arena_idx in streaks:
+        for i, (wid, streak) in enumerate(streaks[arena_idx], 1):
+            print(f"  {i}. Warrior {wid:3}: {Colors.GREEN}{streak} consecutive wins{Colors.ENDC}")
+    else:
+        print("  No streak data available.")
+
+    # 4. Lifetime Rankings
+    print(f"\n{Colors.BOLD}Lifetime Rankings (Win Rate):{Colors.ENDC}")
+    rankings = get_lifetime_rankings(arena_idx=arena_idx, limit=5)
+    if arena_idx in rankings:
+        print(f"  {'Rank':<4} | {'Warrior':<7} | {'Win Rate':>8} | {'Wins':>5} | {'Battles':>8}")
+        print("  " + "-" * 45)
+        for i, (wid, rate, wins, battles) in enumerate(rankings[arena_idx], 1):
+            print(f"  {i:<4} | {wid:7} | {rate:>7.1f}% | {wins:5} | {battles:8}")
+    else:
+        print("  No lifetime ranking data available (requires min. 5 battles per warrior).")
+
+    print(f"\n{Colors.BOLD}System Summary:{Colors.ENDC}")
+    print(f"  Total Battles: {status_data['total_battles']:,}")
+    print(f"  Archive Size:  {status_data['archive']['count']} warriors")
+    print("")
+
 def print_comparison(stats1, stats2, title="Comparison"):
     """
     Prints a side-by-side comparison of statistics for two targets.
@@ -1727,6 +1861,11 @@ if __name__ == "__main__":
   if "--trends" in sys.argv or "-r" in sys.argv:
     arena_idx = _get_arena_idx()
     run_trend_analysis(arena_idx)
+    sys.exit(0)
+
+  if "--report" in sys.argv or "-g" in sys.argv:
+    arena_idx = _get_arena_idx()
+    run_report(arena_idx)
     sys.exit(0)
 
   if "--view" in sys.argv or "-v" in sys.argv:
