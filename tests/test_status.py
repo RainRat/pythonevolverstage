@@ -11,15 +11,13 @@ import evolverstage
 class TestStatus(unittest.TestCase):
     @patch('builtins.print')
     @patch('evolverstage.get_recent_log_entries')
-    @patch('evolverstage.get_latest_log_entry')
     @patch('os.path.exists')
     @patch('os.listdir')
-    def test_print_status_structure(self, mock_listdir, mock_exists, mock_get_log, mock_get_recent, mock_print):
+    def test_print_status_structure(self, mock_listdir, mock_exists, mock_get_recent, mock_print):
         # Setup mocks
         log_entry = {
             'era': '0', 'arena': '0', 'winner': '5', 'loser': '10', 'score1': '150', 'score2': '50'
         }
-        mock_get_log.return_value = log_entry
         mock_get_recent.return_value = [log_entry]
         mock_exists.return_value = True
         mock_listdir.return_value = ['1.red', '2.red']

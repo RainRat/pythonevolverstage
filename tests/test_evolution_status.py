@@ -23,13 +23,13 @@ class TestGetEvolutionStatus(unittest.TestCase):
     def tearDown(self):
         self.patcher.stop()
 
-    @mock.patch('evolverstage.get_latest_log_entry')
+    @mock.patch('evolverstage.get_recent_log_entries')
     @mock.patch('evolverstage.get_leaderboard')
     @mock.patch('os.path.exists')
     @mock.patch('os.listdir')
     def test_get_evolution_status_basic(self, mock_listdir, mock_exists, mock_leaderboard, mock_get_log):
         """Test basic status gathering for a single arena."""
-        mock_get_log.return_value = {'era': '1', 'arena': '0', 'winner': '5', 'loser': '10', 'score1': '150', 'score2': '50'}
+        mock_get_log.return_value = [{'era': '1', 'arena': '0', 'winner': '5', 'loser': '10', 'score1': '150', 'score2': '50'}]
         mock_leaderboard.return_value = {0: [('5', 10)]}
 
         def exists_side_effect(path):
@@ -55,12 +55,12 @@ class TestGetEvolutionStatus(unittest.TestCase):
         self.assertEqual(arena0['avg_length'], 2.0)
         self.assertFalse(status['archive']['exists'])
 
-    @mock.patch('evolverstage.get_latest_log_entry')
+    @mock.patch('evolverstage.get_recent_log_entries')
     @mock.patch('evolverstage.get_leaderboard')
     @mock.patch('os.path.exists')
     def test_get_evolution_status_no_arena_dir(self, mock_exists, mock_leaderboard, mock_get_log):
         """Test status when arena directory is missing."""
-        mock_get_log.return_value = None
+        mock_get_log.return_value = []
         mock_leaderboard.return_value = {}
         mock_exists.return_value = False
 
@@ -70,13 +70,13 @@ class TestGetEvolutionStatus(unittest.TestCase):
         self.assertFalse(status['arenas'][0]['exists'])
         self.assertEqual(status['arenas'][0]['population'], 0)
 
-    @mock.patch('evolverstage.get_latest_log_entry')
+    @mock.patch('evolverstage.get_recent_log_entries')
     @mock.patch('evolverstage.get_leaderboard')
     @mock.patch('os.path.exists')
     @mock.patch('os.listdir')
     def test_get_evolution_status_archive(self, mock_listdir, mock_exists, mock_leaderboard, mock_get_log):
         """Test status when archive exists."""
-        mock_get_log.return_value = None
+        mock_get_log.return_value = []
         mock_leaderboard.return_value = {}
 
         def exists_side_effect(path):
