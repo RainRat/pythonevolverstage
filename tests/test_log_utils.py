@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 
 import evolverstage
 
-class TestGetLatestLogEntry(unittest.TestCase):
+class TestGetRecentLogEntries(unittest.TestCase):
     def setUp(self):
         # Save original BATTLE_LOG_FILE to restore later
         self.original_log_file = evolverstage.BATTLE_LOG_FILE
@@ -23,15 +23,15 @@ class TestGetLatestLogEntry(unittest.TestCase):
     def test_log_file_not_found(self, mock_exists):
         """Test behavior when the log file does not exist."""
         mock_exists.return_value = False
-        result = evolverstage.get_latest_log_entry()
-        self.assertIsNone(result)
+        result = evolverstage.get_recent_log_entries(n=1)
+        self.assertEqual(result, [])
 
     @mock.patch('os.path.exists')
     def test_log_file_not_configured(self, _):
         """Test behavior when BATTLE_LOG_FILE is None or empty."""
         evolverstage.BATTLE_LOG_FILE = None
-        result = evolverstage.get_latest_log_entry()
-        self.assertIsNone(result)
+        result = evolverstage.get_recent_log_entries(n=1)
+        self.assertEqual(result, [])
 
     @mock.patch('os.path.exists')
     def test_log_file_empty(self, mock_exists):
@@ -40,9 +40,9 @@ class TestGetLatestLogEntry(unittest.TestCase):
 
         # Mock file opening and deque behavior
         with mock.patch('builtins.open', mock.mock_open(read_data="")):
-             result = evolverstage.get_latest_log_entry()
+             result = evolverstage.get_recent_log_entries(n=1)
 
-        self.assertIsNone(result)
+        self.assertEqual(result, [])
 
     @mock.patch('os.path.exists')
     def test_log_file_with_content(self, mock_exists):
@@ -52,8 +52,10 @@ class TestGetLatestLogEntry(unittest.TestCase):
         log_content = "era,arena,winner,loser,score1,score2,bred_with\n0,1,5,10,150,50,7\n"
 
         with mock.patch('builtins.open', mock.mock_open(read_data=log_content)):
-            result = evolverstage.get_latest_log_entry()
+            result = evolverstage.get_recent_log_entries(n=1)
 
+        self.assertEqual(len(result), 1)
+        result = result[0]
         self.assertEqual(result['era'], '0')
         self.assertEqual(result['arena'], '1')
         self.assertEqual(result['winner'], '5')
@@ -67,6 +69,6 @@ class TestGetLatestLogEntry(unittest.TestCase):
         mock_exists.return_value = True
 
         with mock.patch('builtins.open', side_effect=IOError("Disk error")):
-            result = evolverstage.get_latest_log_entry()
+            result = evolverstage.get_recent_log_entries(n=1)
 
-        self.assertIsNone(result)
+        self.assertEqual(result, [])
