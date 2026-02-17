@@ -33,7 +33,8 @@ Evolution:
 
 Battle Tools:
   --battle, -b         Run a match between two specific warriors.
-                       Usage: --battle <warrior1> <warrior2> [--arena <N>]
+                       Defaults to 'top' vs 'top2' if no warriors provided.
+                       Usage: --battle [warrior1] [warrior2] [--arena <N>]
   --tournament, -t     Run an everyone-vs-everyone tournament between a group of warriors.
                        Use --champions to automatically include winners from every arena.
                        Usage: --tournament <folder|selectors...> [--champions] [--arena <N>]
@@ -67,6 +68,8 @@ Dynamic Selectors:
 
 Examples:
   python evolverstage.py --status
+  python evolverstage.py --battle
+  python evolverstage.py --battle mywarrior.red
   python evolverstage.py --battle top@0 top@1
   python evolverstage.py --compare top@0 top@1
   python evolverstage.py --export top@0 --output champion.red
@@ -209,9 +212,41 @@ def run_custom_battle(file1, file2, arena_idx):
     output = run_nmars_subprocess(cmd)
 
     if output:
-        print("-" * 40)
-        print(output.strip())
-        print("-" * 40)
+        scores, warriors = parse_nmars_output(output)
+        if len(scores) >= 2:
+            # ID 1 is file1, ID 2 is file2 (based on construct_battle_command order)
+            # Map ID to score
+            score_map = {warriors[i]: scores[i] for i in range(len(warriors))}
+            s1 = score_map.get(1, 0)
+            s2 = score_map.get(2, 0)
+
+            res_winner_id, res_loser_id = determine_winner([s1, s2], [1, 2])
+
+            w1_name = os.path.basename(file1)
+            w2_name = os.path.basename(file2)
+
+            # Polished Output Format
+            print("-" * 60)
+            print(f"{Colors.BOLD}BATTLE RESULT (Arena {arena_idx}){Colors.ENDC}")
+            print("-" * 60)
+
+            # Show both warriors and their scores
+            print(f"  Warrior 1: {w1_name:<30} {s1:>5}")
+            print(f"  Warrior 2: {w2_name:<30} {s2:>5}")
+            print("-" * 60)
+
+            if s1 == s2:
+                print(f"  {Colors.BOLD}{Colors.YELLOW}RESULT: TIE{Colors.ENDC}")
+            else:
+                winner_name = w1_name if res_winner_id == 1 else w2_name
+                diff = abs(s1 - s2)
+                print(f"  {Colors.BOLD}WINNER: {Colors.GREEN}{winner_name}{Colors.ENDC} (+{diff})")
+            print("-" * 60)
+        else:
+            # Fallback to raw output if parsing fails
+            print("-" * 40)
+            print(output.strip())
+            print("-" * 40)
     else:
         print(f"{Colors.RED}No output received from nMars.{Colors.ENDC}")
 
@@ -2021,23 +2056,32 @@ if __name__ == "__main__":
 
   if "--battle" in sys.argv or "-b" in sys.argv:
     try:
-        if "--battle" in sys.argv:
-            idx = sys.argv.index("--battle")
-        else:
-            idx = sys.argv.index("-b")
-
-        if len(sys.argv) < idx + 3:
-            print("Usage: --battle|-b <warrior1> <warrior2> [--arena|-a <N>]")
-            sys.exit(1)
-
+        idx = sys.argv.index("--battle") if "--battle" in sys.argv else sys.argv.index("-b")
         arena_idx = _get_arena_idx()
-        w1 = _resolve_warrior_path(sys.argv[idx+1], arena_idx)
-        w2 = _resolve_warrior_path(sys.argv[idx+2], arena_idx)
+
+        # Extract up to 2 warrior arguments that are not flags
+        targets = []
+        for i in range(idx + 1, len(sys.argv)):
+            if sys.argv[i].startswith('-'):
+                break
+            targets.append(sys.argv[i])
+
+        if len(targets) == 0:
+            # Default: Top vs Top2
+            w1 = _resolve_warrior_path("top1", arena_idx)
+            w2 = _resolve_warrior_path("top2", arena_idx)
+        elif len(targets) == 1:
+            # Default: Target vs Top
+            w1 = _resolve_warrior_path(targets[0], arena_idx)
+            w2 = _resolve_warrior_path("top", arena_idx)
+        else:
+            w1 = _resolve_warrior_path(targets[0], arena_idx)
+            w2 = _resolve_warrior_path(targets[1], arena_idx)
 
         run_custom_battle(w1, w2, arena_idx)
         sys.exit(0)
-    except ValueError:
-        print("Invalid arguments.")
+    except Exception as e:
+        print(f"Error during battle: {e}")
         sys.exit(1)
 
   if "--tournament" in sys.argv or "-t" in sys.argv:
