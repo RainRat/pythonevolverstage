@@ -1,72 +1,102 @@
 import sys
 import os
 import unittest
-from unittest import mock
+import tempfile
+import shutil
 
 # Add the root directory to sys.path so we can import evolverstage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 import evolverstage
 
-class TestGetLatestLogEntry(unittest.TestCase):
+class TestGetRecentLogEntries(unittest.TestCase):
     def setUp(self):
         # Save original BATTLE_LOG_FILE to restore later
         self.original_log_file = evolverstage.BATTLE_LOG_FILE
-        # Set a dummy log file path for testing
-        evolverstage.BATTLE_LOG_FILE = "dummy_log.csv"
+        # Create a temporary directory for test logs
+        self.test_dir = tempfile.mkdtemp()
+        self.log_path = os.path.join(self.test_dir, "test_battle.log")
+        evolverstage.BATTLE_LOG_FILE = self.log_path
 
     def tearDown(self):
         # Restore original log file path
         evolverstage.BATTLE_LOG_FILE = self.original_log_file
+        # Remove temporary directory
+        shutil.rmtree(self.test_dir)
 
-    @mock.patch('os.path.exists')
-    def test_log_file_not_found(self, mock_exists):
+    def test_log_file_not_found(self):
         """Test behavior when the log file does not exist."""
-        mock_exists.return_value = False
-        result = evolverstage.get_latest_log_entry()
-        self.assertIsNone(result)
+        # Ensure file doesn't exist
+        if os.path.exists(self.log_path):
+            os.remove(self.log_path)
+        result = evolverstage.get_recent_log_entries(n=1)
+        self.assertEqual(result, [])
 
-    @mock.patch('os.path.exists')
-    def test_log_file_not_configured(self, _):
-        """Test behavior when BATTLE_LOG_FILE is None or empty."""
+    def test_log_file_not_configured(self):
+        """Test behavior when BATTLE_LOG_FILE is None."""
         evolverstage.BATTLE_LOG_FILE = None
-        result = evolverstage.get_latest_log_entry()
-        self.assertIsNone(result)
+        result = evolverstage.get_recent_log_entries(n=1)
+        self.assertEqual(result, [])
 
-    @mock.patch('os.path.exists')
-    def test_log_file_empty(self, mock_exists):
+    def test_log_file_empty(self):
         """Test behavior when the log file is empty."""
-        mock_exists.return_value = True
+        with open(self.log_path, 'w') as f:
+            f.write("")
+        result = evolverstage.get_recent_log_entries(n=1)
+        self.assertEqual(result, [])
 
-        # Mock file opening and deque behavior
-        with mock.patch('builtins.open', mock.mock_open(read_data="")):
-             result = evolverstage.get_latest_log_entry()
+    def test_get_recent_entries(self):
+        """Test retrieving multiple recent entries."""
+        content = (
+            "era,arena,winner,loser,score1,score2,bred_with\n"
+            "0,0,1,2,100,50,0\n"
+            "0,0,3,4,150,20,0\n"
+            "0,0,5,6,80,80,0\n"
+        )
+        with open(self.log_path, 'w') as f:
+            f.write(content)
 
-        self.assertIsNone(result)
+        # Get last 2
+        result = evolverstage.get_recent_log_entries(n=2)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]['winner'], '3')
+        self.assertEqual(result[1]['winner'], '5')
 
-    @mock.patch('os.path.exists')
-    def test_log_file_with_content(self, mock_exists):
-        """Test retrieving and parsing the last line from a populated log file."""
-        mock_exists.return_value = True
-        # era,arena,winner,loser,score1,score2,bred_with
-        log_content = "era,arena,winner,loser,score1,score2,bred_with\n0,1,5,10,150,50,7\n"
+    def test_filter_by_arena(self):
+        """Test filtering log entries by arena index."""
+        content = (
+            "era,arena,winner,loser,score1,score2,bred_with\n"
+            "0,0,1,2,100,50,0\n"
+            "0,1,3,4,150,20,0\n"
+            "0,0,5,6,80,80,0\n"
+        )
+        with open(self.log_path, 'w') as f:
+            f.write(content)
 
-        with mock.patch('builtins.open', mock.mock_open(read_data=log_content)):
-            result = evolverstage.get_latest_log_entry()
+        # Get last entry for Arena 1
+        result = evolverstage.get_recent_log_entries(n=1, arena_idx=1)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]['arena'], '1')
+        self.assertEqual(result[0]['winner'], '3')
 
-        self.assertEqual(result['era'], '0')
-        self.assertEqual(result['arena'], '1')
-        self.assertEqual(result['winner'], '5')
-        self.assertEqual(result['loser'], '10')
-        self.assertEqual(result['score1'], '150')
-        self.assertEqual(result['score2'], '50')
+        # Get entries for Arena 0
+        result = evolverstage.get_recent_log_entries(n=5, arena_idx=0)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]['winner'], '1')
+        self.assertEqual(result[1]['winner'], '5')
 
-    @mock.patch('os.path.exists')
-    def test_log_file_read_error(self, mock_exists):
-        """Test handling of IO exceptions."""
-        mock_exists.return_value = True
+    def test_malformed_lines(self):
+        """Test that malformed lines in the log are gracefully skipped."""
+        content = (
+            "era,arena,winner,loser,score1,score2,bred_with\n"
+            "0,0,1,2,100,50,0\n"
+            "invalid,line,here\n"
+            "0,0,5,6,80,80,0\n"
+        )
+        with open(self.log_path, 'w') as f:
+            f.write(content)
 
-        with mock.patch('builtins.open', side_effect=IOError("Disk error")):
-            result = evolverstage.get_latest_log_entry()
-
-        self.assertIsNone(result)
+        result = evolverstage.get_recent_log_entries(n=5)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]['winner'], '1')
+        self.assertEqual(result[1]['winner'], '5')
