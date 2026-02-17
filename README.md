@@ -64,6 +64,8 @@ You can customize the evolution by editing `settings.ini`.
 The script includes several tools for analyzing and testing your warriors.
 
 ### Analyze and View
+*   **Inspect**: `python evolverstage.py --inspect top`
+    *   Provides a detailed profile of a warrior's performance, strategy, and code.
 *   **Analyze**: `python evolverstage.py --analyze top`
     *   Shows statistics on the instructions used by the current champion.
 *   **Trends**: `python evolverstage.py --trends`
