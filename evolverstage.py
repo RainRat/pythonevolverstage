@@ -959,13 +959,6 @@ def determine_winner(scores, warriors):
         return warriors[1], warriors[0]
     return warriors[0], warriors[1]
 
-def get_latest_log_entry():
-    """
-    Retrieves and parses the last entry from the battle log file.
-    """
-    entries = get_recent_log_entries(n=1)
-    return entries[0] if entries else None
-
 def get_recent_log_entries(n=5, arena_idx=None):
     """
     Retrieves and parses the last n entries from the battle log file.
@@ -1022,8 +1015,9 @@ def get_evolution_status(arena_idx=None):
         except Exception:
             pass
 
+    latest_entries = get_recent_log_entries(n=1)
     status = {
-        "latest_log": get_latest_log_entry(),
+        "latest_log": latest_entries[0] if latest_entries else None,
         "recent_log": get_recent_log_entries(5, arena_idx=arena_idx),
         "total_battles": total_battles,
         "arenas": [],
