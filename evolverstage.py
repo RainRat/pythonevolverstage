@@ -928,15 +928,18 @@ def get_latest_log_entry():
     entries = get_recent_log_entries(n=1)
     return entries[0] if entries else None
 
-def get_recent_log_entries(n=5):
+def get_recent_log_entries(n=5, arena_idx=None):
     """
     Retrieves and parses the last n entries from the battle log file.
+    Optionally filters by arena index.
     """
     if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
         return []
     try:
         with open(BATTLE_LOG_FILE, 'r') as f:
-            lines = deque(f, maxlen=n)
+            # If filtering by arena, scan a deeper buffer to ensure we find matches
+            scan_depth = n * 20 if arena_idx is not None else n
+            lines = deque(f, maxlen=scan_depth)
             results = []
             for line in lines:
                 line = line.strip()
@@ -946,6 +949,13 @@ def get_recent_log_entries(n=5):
                 # era,arena,winner,loser,score1,score2,bred_with
                 parts = line.split(',')
                 if len(parts) >= 6:
+                    try:
+                        this_arena = int(parts[1])
+                        if arena_idx is not None and this_arena != arena_idx:
+                            continue
+                    except ValueError:
+                        continue
+
                     results.append({
                         'era': parts[0],
                         'arena': parts[1],
@@ -954,13 +964,14 @@ def get_recent_log_entries(n=5):
                         'score1': parts[4],
                         'score2': parts[5]
                     })
-            return results
+            return results[-n:] if n > 0 else results
     except Exception:
         return []
 
-def get_evolution_status():
+def get_evolution_status(arena_idx=None):
     """
     Gathers the current status of the evolution system into a dictionary.
+    Optionally filters the arena and log list by arena index.
     """
     champions = get_leaderboard(limit=1)
 
@@ -975,13 +986,14 @@ def get_evolution_status():
 
     status = {
         "latest_log": get_latest_log_entry(),
-        "recent_log": get_recent_log_entries(5),
+        "recent_log": get_recent_log_entries(5, arena_idx=arena_idx),
         "total_battles": total_battles,
         "arenas": [],
         "archive": None
     }
 
-    for i in range(LAST_ARENA + 1):
+    arenas_to_scan = [arena_idx] if arena_idx is not None else range(LAST_ARENA + 1)
+    for i in arenas_to_scan:
         arena_info = {
             "id": i,
             "config": {
@@ -1487,12 +1499,13 @@ def print_status_json(status_data):
     """
     print(json.dumps(status_data, indent=2))
 
-def print_status(data=None, recent_bps=None):
+def print_status(data=None, recent_bps=None, arena_idx=None):
     """
     Prints the current status of all arenas and the archive in a human-readable format.
+    If arena_idx is provided, it shows focused information for that specific arena.
     """
     if data is None:
-        data = get_evolution_status()
+        data = get_evolution_status(arena_idx=arena_idx)
     now = time.strftime("%Y-%m-%d %H:%M:%S")
     cols, _ = shutil.get_terminal_size()
 
@@ -1500,14 +1513,28 @@ def print_status(data=None, recent_bps=None):
     sep_double = "=" * min(cols, 100)
     sep_single = "-" * min(cols, 100)
 
-    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Evolver Status Dashboard ---{Colors.ENDC}")
+    title = "Evolver Status Dashboard"
+    if arena_idx is not None:
+        title += f" (Arena {arena_idx})"
+
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- {title} ---{Colors.ENDC}")
     print(f"Captured: {now}")
     print(sep_double)
+
+    # Focused information for single arena
+    if arena_idx is not None:
+        diversity = get_population_diversity(arena_idx)
+        div_color = Colors.GREEN if diversity > 50 else Colors.YELLOW if diversity > 10 else Colors.RED
+        print(f"{Colors.BOLD}Strategy Diversity:{Colors.ENDC} {div_color}{diversity:.1f}%{Colors.ENDC} unique strategies")
+        print(sep_single)
 
     # Latest Activity
     recent = data.get('recent_log', [])
     if recent:
-        print(f"{Colors.BOLD}Recent Activity (Last {len(recent)} matches):{Colors.ENDC}")
+        act_header = f"Recent Activity (Last {len(recent)} matches):"
+        if arena_idx is not None:
+            act_header = f"Recent Activity for Arena {arena_idx} (Last {len(recent)} matches):"
+        print(f"{Colors.BOLD}{act_header}{Colors.ENDC}")
         for log in reversed(recent):
             try:
                 summary = f"  - Era {int(log['era'])+1}, Arena {log['arena']}: {Colors.GREEN}Warrior {log['winner']}{Colors.ENDC} beat {Colors.RED}Warrior {log['loser']}{Colors.ENDC} ({log['score1']}-{log['score2']})"
@@ -1776,6 +1803,7 @@ if __name__ == "__main__":
 
   if "--status" in sys.argv or "-s" in sys.argv:
     watch = "--watch" in sys.argv or "-w" in sys.argv
+    arena_idx = _get_arena_idx(default=None)
     interval = 2.0
     if "--interval" in sys.argv:
         try:
@@ -1789,13 +1817,13 @@ if __name__ == "__main__":
         if watch:
             try:
                 while True:
-                    print_status_json(get_evolution_status())
+                    print_status_json(get_evolution_status(arena_idx=arena_idx))
                     time.sleep(interval)
             except KeyboardInterrupt:
                 print("")
                 sys.exit(0)
         else:
-            print_status_json(get_evolution_status())
+            print_status_json(get_evolution_status(arena_idx=arena_idx))
     else:
         if watch:
             last_time = None
@@ -1805,7 +1833,7 @@ if __name__ == "__main__":
                     # Clear terminal
                     print("\033[H\033[J", end="")
 
-                    status_data = get_evolution_status()
+                    status_data = get_evolution_status(arena_idx=arena_idx)
                     current_time = time.time()
                     current_battles = status_data['total_battles']
 
@@ -1816,7 +1844,7 @@ if __name__ == "__main__":
                         if time_delta > 0:
                             recent_bps = battle_delta / time_delta
 
-                    print_status(data=status_data, recent_bps=recent_bps)
+                    print_status(data=status_data, recent_bps=recent_bps, arena_idx=arena_idx)
 
                     last_time = current_time
                     last_battles = current_battles
@@ -1826,7 +1854,7 @@ if __name__ == "__main__":
                 print(f"\n{Colors.YELLOW}Stopped monitoring.{Colors.ENDC}")
                 sys.exit(0)
         else:
-            print_status()
+            print_status(arena_idx=arena_idx)
     sys.exit(0)
 
   if "--leaderboard" in sys.argv or "-l" in sys.argv:
