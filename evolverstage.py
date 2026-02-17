@@ -2218,7 +2218,7 @@ if __name__ == "__main__":
 
   try:
     while(True):
-      #before we do anything, determine which era we are in.
+      # Update the evolution era based on how much time has passed.
       prevera=era
       curtime=time.time()
       runtime_in_hours=(curtime-starttime)/60/60
@@ -2253,10 +2253,11 @@ if __name__ == "__main__":
       # Clear line and print status
       print_status_line(status_line)
 
+      # Select a random arena and two different warriors to compete.
       arena=random.randint(0, LAST_ARENA)
       cont1 = random.randint(1, NUMWARRIORS)
       cont2 = cont1
-      while cont2 == cont1: #no self fights
+      while cont2 == cont1:
         cont2 = random.randint(1, NUMWARRIORS)
       file1 = os.path.join(f"arena{arena}", f"{cont1}.red")
       file2 = os.path.join(f"arena{arena}", f"{cont2}.red")
@@ -2274,7 +2275,7 @@ if __name__ == "__main__":
       loser = cont1 if res_loser == 1 else cont2
 
       if ARCHIVE_LIST[era]!=0 and random.randint(1,ARCHIVE_LIST[era])==1:
-        #archive winner
+        # Occasionally save winners to an archive to preserve successful genes long-term.
         if VERBOSE:
             print("storing in archive")
         with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
@@ -2287,17 +2288,11 @@ if __name__ == "__main__":
         if os.path.exists("archive") and os.listdir("archive"):
           if VERBOSE:
               print("unarchiving")
-          #replace loser with something from archive
           with open(os.path.join("archive", random.choice(os.listdir("archive")))) as fs:
             sourcelines = fs.readlines()
-          #this is more involved. the archive is going to contain warriors from different arenas. which isn't
-          #necessarily bad to get some crossover. A nano warrior would be workable, if inefficient in a normal core.
-          #These are the tasks:
-          #1. Truncate any too long
-          #2. Pad any too short with DATs
-          #3. Sanitize values
-          #4. Try to be tolerant of working with other evolvers that may not space things exactly the same.
-          fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # unarchived warrior destroys loser
+          # Reintroduce a warrior from the archive to increase the variety of strategies.
+          # We clean the instructions to ensure they follow the current arena's rules.
+          fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")
           countoflines=0
           for line in sourcelines:
             stripped = line.strip()
@@ -2318,7 +2313,7 @@ if __name__ == "__main__":
           fl.close()
           continue #out of while (loser replaced by archive, no point breeding)
 
-      #the loser is destroyed and the winner can breed with any warrior in the arena
+      # The loser is replaced by a new warrior created from the winner and another random parent.
       with open(os.path.join(f"arena{arena}", f"{winner}.red"), "r") as fw:
         winlines = fw.readlines()
       randomwarrior=str(random.randint(1, NUMWARRIORS))
@@ -2327,14 +2322,15 @@ if __name__ == "__main__":
       fr = open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r")
       ranlines = fr.readlines()
       fr.close()
-      fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")  # winner destroys loser
-      if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1: #shuffle a warrior
+      fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")
+      if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1:
         if VERBOSE:
             print("Transposition")
+        # Randomly swap instructions to discover new tactical sequences.
         for i in range(1, random.randint(1, int((WARLEN_LIST[arena]+1)/2))):
           fromline=random.randint(0,WARLEN_LIST[arena]-1)
           toline=random.randint(0,WARLEN_LIST[arena]-1)
-          if random.randint(1,2)==1: #either shuffle the winner with itself or shuffle loser with itself
+          if random.randint(1,2)==1:
             templine=winlines[toline]
             winlines[toline]=winlines[fromline]
             winlines[fromline]=templine
@@ -2347,10 +2343,10 @@ if __name__ == "__main__":
       else:
         pickingfrom=random.randint(1,2)
 
+      # The 'magic number' helps create a sequence of related memory offsets if the mutation below is chosen.
       magic_number = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
       for i in range(0, WARLEN_LIST[arena]):
-        #first, pick an instruction from either parent, even if
-        #it will get overwritten by a nabbed or random instruction
+        # Combine instructions from both parents (crossover) to pass on winning traits.
         if random.randint(1,CROSSOVERRATE_LIST[era])==1:
           if pickingfrom==1:
             pickingfrom=2
@@ -2363,15 +2359,16 @@ if __name__ == "__main__":
           templine=(ranlines[i])
 
         chosen_marble=random.choice(bag)
-        if chosen_marble==Marble.MAJOR_MUTATION: #completely random
+        if chosen_marble==Marble.MAJOR_MUTATION:
           if VERBOSE:
               print("Major mutation")
+          # Major Mutation: Replace the instruction with a completely random one to explore new possibilities.
           num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
           num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
           templine=random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
                    str(num1)+","+random.choice(INSTR_MODES)+str(num2)+"\n"
         elif chosen_marble==Marble.NAB_INSTRUCTION and (LAST_ARENA!=0):
-          #nab instruction from another arena. Doesn't make sense if not multiple arenas
+          # Borrow an instruction from a warrior in a different arena to introduce new ideas.
           donor_arena=random.randint(0, LAST_ARENA)
           while (donor_arena==arena):
             donor_arena=random.randint(0, LAST_ARENA)
@@ -2380,11 +2377,10 @@ if __name__ == "__main__":
           donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
           with open(donor_file, 'r') as f:
               templine = random.choice(f.readlines())
-        elif chosen_marble==Marble.MINOR_MUTATION: #modifies one aspect of instruction
+        elif chosen_marble==Marble.MINOR_MUTATION:
           if VERBOSE:
               print("Minor mutation")
-          # Split the instruction into its components (opcode, modifier, operand A, operand B).
-          # This allows us to modify one part while keeping the rest of the instruction intact.
+          # Slightly change one part of the instruction (opcode, mode, or value) to fine-tune it.
           splitline=re.split(r'[ \.,\n]', templine)
           r=random.randint(1,6)
           if r==1:
@@ -2402,11 +2398,10 @@ if __name__ == "__main__":
             num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
             splitline[3]=splitline[3][0:1]+str(num1)
           templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
-        elif chosen_marble==Marble.MICRO_MUTATION: #modifies one number by +1 or -1
+        elif chosen_marble==Marble.MICRO_MUTATION:
           if VERBOSE:
               print ("Micro mutation")
-          # Deconstruct the instruction to increment or decrement an address value
-          # without changing the addressing mode or opcode.
+          # Adjust a single address value by 1 to test very small changes.
           splitline=re.split(r'[ \.,\n]', templine)
           r=random.randint(1,2)
           if r==1:
