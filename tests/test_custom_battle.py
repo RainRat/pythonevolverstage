@@ -131,16 +131,47 @@ class TestRunCustomBattle(unittest.TestCase):
     @mock.patch('os.path.exists')
     @mock.patch('builtins.print')
     def test_run_custom_battle_nmars_output(self, mock_print, mock_exists, mock_run):
-        """Test that nmars output is printed."""
+        """Test that formatted battle result is printed when parsing succeeds."""
         mock_exists.return_value = True
-        mock_run.return_value = "Scores: 100 50"
+        # nMars format: "1 name scores 100"
+        mock_run.return_value = "1 warrior1.red scores 100\n2 warrior2.red scores 50"
 
         with mock.patch.multiple(evolverstage, **self.mock_config):
-             with mock.patch('evolverstage.os.name', 'posix'):
+            with mock.patch('evolverstage.os.name', 'posix'):
                 evolverstage.run_custom_battle(self.file1, self.file2, self.arena_idx)
 
-        # Verify output was printed
-        mock_print.assert_any_call("Scores: 100 50")
+        # Verify formatted output was printed
+        mock_print.assert_any_call("-" * 60)
+        mock_print.assert_any_call(f"{evolverstage.Colors.BOLD}BATTLE RESULT (Arena 0){evolverstage.Colors.ENDC}")
+        mock_print.assert_any_call(f"  {evolverstage.Colors.BOLD}WINNER: {evolverstage.Colors.GREEN}warrior1.red{evolverstage.Colors.ENDC} (+50)")
+
+    @mock.patch('evolverstage.run_nmars_subprocess')
+    @mock.patch('os.path.exists')
+    @mock.patch('builtins.print')
+    def test_run_custom_battle_tie(self, mock_print, mock_exists, mock_run):
+        """Test that formatted battle result indicates a tie."""
+        mock_exists.return_value = True
+        mock_run.return_value = "1 warrior1.red scores 100\n2 warrior2.red scores 100"
+
+        with mock.patch.multiple(evolverstage, **self.mock_config):
+            with mock.patch('evolverstage.os.name', 'posix'):
+                evolverstage.run_custom_battle(self.file1, self.file2, self.arena_idx)
+
+        mock_print.assert_any_call(f"  {evolverstage.Colors.BOLD}{evolverstage.Colors.YELLOW}RESULT: TIE{evolverstage.Colors.ENDC}")
+
+    @mock.patch('evolverstage.run_nmars_subprocess')
+    @mock.patch('os.path.exists')
+    @mock.patch('builtins.print')
+    def test_run_custom_battle_parsing_fallback(self, mock_print, mock_exists, mock_run):
+        """Test fallback to raw output if parsing fails."""
+        mock_exists.return_value = True
+        mock_run.return_value = "Some weird output without scores keyword"
+
+        with mock.patch.multiple(evolverstage, **self.mock_config):
+            with mock.patch('evolverstage.os.name', 'posix'):
+                evolverstage.run_custom_battle(self.file1, self.file2, self.arena_idx)
+
+        mock_print.assert_any_call("Some weird output without scores keyword")
 
     @mock.patch('evolverstage.run_nmars_subprocess')
     @mock.patch('os.path.exists')
@@ -151,7 +182,7 @@ class TestRunCustomBattle(unittest.TestCase):
         mock_run.return_value = None
 
         with mock.patch.multiple(evolverstage, **self.mock_config):
-             with mock.patch('evolverstage.os.name', 'posix'):
+            with mock.patch('evolverstage.os.name', 'posix'):
                 evolverstage.run_custom_battle(self.file1, self.file2, self.arena_idx)
 
         mock_print.assert_any_call(f"{evolverstage.Colors.RED}No output received from nMars.{evolverstage.Colors.ENDC}")
