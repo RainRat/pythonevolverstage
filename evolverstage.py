@@ -41,6 +41,9 @@ Battle Tools:
                        Usage: --benchmark <warrior> <folder> [--arena <N>]
 
 Analysis & Utilities:
+  --inspect, -x        Get a comprehensive profile of a warrior's performance and code.
+                       Usage: --inspect [warrior|selector] [--arena <N>]
+                       Defaults to the current champion ('top') if no target is provided.
   --analyze, -i        Get statistics on instructions, opcodes, and addressing modes.
                        Usage: --analyze [file|folder|selector] [--arena <N>] [--json]
                        Defaults to the current champion ('top') if no target is provided.
@@ -1384,6 +1387,112 @@ def run_report(arena_idx):
     print(f"  Archive Size:  {status_data['archive']['count']} warriors")
     print("")
 
+def run_inspection(target, arena_idx):
+    """
+    Provides a comprehensive profile of a warrior, combining metadata,
+    performance statistics, and code analysis.
+    """
+    path = _resolve_warrior_path(target, arena_idx)
+    if not os.path.exists(path):
+        print(f"{Colors.RED}Error: Warrior '{target}' not found.{Colors.ENDC}")
+        return
+
+    # 1. Basic Analysis
+    stats = analyze_warrior(path)
+    if not stats:
+        print(f"{Colors.RED}Error: Could not analyze warrior.{Colors.ENDC}")
+        return
+
+    # 2. Performance Data (Log Parsing)
+    leaderboard = get_leaderboard(arena_idx=arena_idx)
+    streak = 0
+    if arena_idx in leaderboard:
+        for wid, s in leaderboard[arena_idx]:
+            # Use realpath for robust comparison
+            if os.path.realpath(_resolve_warrior_path(str(wid), arena_idx)) == os.path.realpath(path):
+                streak = s
+                break
+
+    # Get lifetime rankings (set min_battles=0 to capture any data)
+    rankings = get_lifetime_rankings(arena_idx=arena_idx, limit=NUMWARRIORS, min_battles=0)
+    win_rate = 0.0
+    total_battles = 0
+    wins = 0
+    # Extract filename as ID for matching
+    warrior_id = os.path.basename(path).replace(".red", "")
+    if arena_idx in rankings:
+        for wid, rate, w, b in rankings[arena_idx]:
+            if str(wid) == warrior_id:
+                win_rate = rate
+                total_battles = b
+                wins = w
+                break
+
+    # 3. Strategy Identification
+    opcodes = stats['opcodes']
+    total = stats['instructions']
+    strategy = "Unknown"
+    if total > 0:
+        mov_pct = (opcodes.get('MOV', 0) / total) * 100
+        spl_pct = (opcodes.get('SPL', 0) / total) * 100
+        djn_pct = (opcodes.get('DJN', 0) / total) * 100
+        add_pct = (opcodes.get('ADD', 0) / total) * 100
+        jmp_pct = (opcodes.get('JMP', 0) / total) * 100
+
+        if spl_pct > 20 and mov_pct > 30:
+            strategy = "Paper (Replicator)"
+        elif djn_pct > 10 and mov_pct > 30:
+            strategy = "Stone (Bomb-thrower)"
+        elif add_pct > 20 and mov_pct > 40:
+            strategy = "Imp (Pulse)"
+        elif jmp_pct > 15 and (mov_pct > 20 or add_pct > 20):
+            strategy = "Vampire / Pittrap"
+        elif mov_pct > 70:
+            strategy = "Mover / Runner"
+
+    # 4. Display Results
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Warrior Profile: {os.path.basename(path)} ---{Colors.ENDC}")
+
+    print(f"\n{Colors.BOLD}General Information:{Colors.ENDC}")
+    print(f"  Path:      {path}")
+    print(f"  Arena:     {arena_idx} (Size: {CORESIZE_LIST[arena_idx]})")
+    print(f"  Strategy:  {Colors.CYAN}{strategy}{Colors.ENDC}")
+
+    print(f"\n{Colors.BOLD}Performance Statistics:{Colors.ENDC}")
+    streak_color = Colors.GREEN if streak > 10 else Colors.ENDC
+    print(f"  Current Win Streak: {streak_color}{streak}{Colors.ENDC}")
+    print(f"  Lifetime Win Rate:  {win_rate:.1f}%")
+    print(f"  Total Battles:      {total_battles} ({wins} wins)")
+
+    print(f"\n{Colors.BOLD}Code Characteristics:{Colors.ENDC}")
+    print(f"  Instruction Count: {stats['instructions']}")
+    print(f"  Vocabulary Size:   {stats['vocabulary_size']} unique instructions")
+
+    # Top 3 Opcodes
+    if total > 0:
+        sorted_ops = sorted(opcodes.items(), key=lambda x: x[1], reverse=True)[:3]
+        op_str = ", ".join([f"{k} ({v/total*100:.0f}%)" for k, v in sorted_ops])
+        print(f"  Primary Opcodes:   {op_str}")
+
+    print(f"\n{Colors.BOLD}Source Code Preview:{Colors.ENDC}")
+    print("-" * 30)
+    try:
+        with open(path, 'r') as f:
+            lines = f.readlines()
+            # Show first 10 non-comment lines
+            count = 0
+            for line in lines:
+                if line.strip() and not line.strip().startswith(';'):
+                    print(f"  {line.strip()}")
+                    count += 1
+                if count >= 10:
+                    break
+            if len(lines) > count + 5: # Small buffer before showing ellipsis
+                print(f"  ...")
+    except Exception as e:
+        print(f"  {Colors.RED}Error reading file: {e}{Colors.ENDC}")
+    print("-" * 30 + "\n")
+
 def print_comparison(stats1, stats2, title="Comparison"):
     """
     Prints a side-by-side comparison of statistics for two targets.
@@ -2116,6 +2225,24 @@ if __name__ == "__main__":
           sys.exit(0)
       except ValueError:
           print("Invalid arguments.")
+          sys.exit(1)
+
+  if "--inspect" in sys.argv or "-x" in sys.argv:
+      try:
+          idx = sys.argv.index("--inspect") if "--inspect" in sys.argv else sys.argv.index("-x")
+          arena_idx = _get_arena_idx()
+          target = None
+
+          if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
+              target = sys.argv[idx+1]
+          else:
+              # Default to champion if no target provided
+              target = "top"
+
+          run_inspection(target, arena_idx)
+          sys.exit(0)
+      except Exception as e:
+          print(f"Error during inspection: {e}")
           sys.exit(1)
 
   if "--analyze" in sys.argv or "-i" in sys.argv:
