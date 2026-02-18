@@ -211,10 +211,12 @@ def run_custom_battle(file1, file2, arena_idx):
         print(f"Error: File '{file2}' not found.")
         return
 
-    cmd = construct_battle_command(file1, file2, arena_idx)
+    # Determine rounds to use for the battle and visual scaling
+    rounds = BATTLEROUNDS_LIST[-1] if BATTLEROUNDS_LIST else 100
+    cmd = construct_battle_command(file1, file2, arena_idx, rounds=rounds)
 
     print(f"{Colors.BOLD}Starting battle: {file1} vs {file2}{Colors.ENDC}")
-    print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
+    print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]}, Rounds: {rounds})")
 
     output = run_nmars_subprocess(cmd)
 
@@ -222,7 +224,6 @@ def run_custom_battle(file1, file2, arena_idx):
         scores, warriors = parse_nmars_output(output)
         if len(scores) >= 2:
             # ID 1 is file1, ID 2 is file2 (based on construct_battle_command order)
-            # Map ID to score
             score_map = {warriors[i]: scores[i] for i in range(len(warriors))}
             s1 = score_map.get(1, 0)
             s2 = score_map.get(2, 0)
@@ -231,16 +232,41 @@ def run_custom_battle(file1, file2, arena_idx):
 
             w1_name = os.path.basename(file1)
             w2_name = os.path.basename(file2)
+            w1_id = w1_name.replace(".red", "")
+            w2_id = w2_name.replace(".red", "")
 
-            # Polished Output Format
-            print("-" * 60)
+            # Retrieve current win-streaks from the leaderboard for performance context
+            leaderboard = get_leaderboard(arena_idx=arena_idx)
+            streaks = {w1_id: 0, w2_id: 0}
+            if arena_idx in leaderboard:
+                for wid, streak in leaderboard[arena_idx]:
+                    if str(wid) == w1_id: streaks[w1_id] = streak
+                    if str(wid) == w2_id: streaks[w2_id] = streak
+
+            # Color-coding for scores (Green for winner, Red for loser, Yellow for tie)
+            c1 = Colors.GREEN if s1 > s2 else Colors.RED if s1 < s2 else Colors.YELLOW
+            c2 = Colors.GREEN if s2 > s1 else Colors.RED if s2 < s1 else Colors.YELLOW
+
+            # Implementation of a visual horizontal comparison bar for scores
+            bar_width = 20
+            total_for_bar = max(s1 + s2, rounds)
+            b1_fill = int(bar_width * s1 / total_for_bar)
+            b2_fill = int(bar_width * s2 / total_for_bar)
+            bar1 = f"[{c1}{'=' * b1_fill}{' ' * (bar_width - b1_fill)}{Colors.ENDC}]"
+            bar2 = f"[{c2}{'=' * b2_fill}{' ' * (bar_width - b2_fill)}{Colors.ENDC}]"
+
+            # Standardized Polished Output Format
+            print("-" * 75)
             print(f"{Colors.BOLD}BATTLE RESULT (Arena {arena_idx}){Colors.ENDC}")
-            print("-" * 60)
+            print("-" * 75)
 
-            # Show both warriors and their scores
-            print(f"  Warrior 1: {w1_name:<30} {s1:>5}")
-            print(f"  Warrior 2: {w2_name:<30} {s2:>5}")
-            print("-" * 60)
+            streak1 = f"(Streak: {streaks[w1_id]})" if streaks[w1_id] > 0 else ""
+            streak2 = f"(Streak: {streaks[w2_id]})" if streaks[w2_id] > 0 else ""
+
+            # Use formatted strings with fixed-width columns
+            print(f"  Warrior 1: {w1_name:<25} {c1}{s1:>5}{Colors.ENDC} {bar1} {Colors.CYAN}{streak1}{Colors.ENDC}")
+            print(f"  Warrior 2: {w2_name:<25} {c2}{s2:>5}{Colors.ENDC} {bar2} {Colors.CYAN}{streak2}{Colors.ENDC}")
+            print("-" * 75)
 
             if s1 == s2:
                 print(f"  {Colors.BOLD}{Colors.YELLOW}RESULT: TIE{Colors.ENDC}")
@@ -248,7 +274,7 @@ def run_custom_battle(file1, file2, arena_idx):
                 winner_name = w1_name if res_winner_id == 1 else w2_name
                 diff = abs(s1 - s2)
                 print(f"  {Colors.BOLD}WINNER: {Colors.GREEN}{winner_name}{Colors.ENDC} (+{diff})")
-            print("-" * 60)
+            print("-" * 75)
         else:
             # Fallback to raw output if parsing fails
             print("-" * 40)
