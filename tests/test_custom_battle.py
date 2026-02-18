@@ -141,7 +141,7 @@ class TestRunCustomBattle(unittest.TestCase):
                 evolverstage.run_custom_battle(self.file1, self.file2, self.arena_idx)
 
         # Verify formatted output was printed
-        mock_print.assert_any_call("-" * 60)
+        mock_print.assert_any_call("-" * 75)
         mock_print.assert_any_call(f"{evolverstage.Colors.BOLD}BATTLE RESULT (Arena 0){evolverstage.Colors.ENDC}")
         mock_print.assert_any_call(f"  {evolverstage.Colors.BOLD}WINNER: {evolverstage.Colors.GREEN}warrior1.red{evolverstage.Colors.ENDC} (+50)")
 
