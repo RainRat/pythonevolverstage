@@ -14,6 +14,31 @@ Core War is a classic programming game. Several programs are placed in the memor
 
 ---
 
+## Core Concepts
+
+Understanding these basic ideas will help you get the most out of the evolver.
+
+### Evolution Phases
+The tool automatically shifts its strategy as it runs through three distinct phases. These correspond to the three values you see for many settings in `settings.ini`.
+
+1.  **Exploration (Era 1)**: The tool makes frequent, large changes to discover new and unusual strategies.
+2.  **Breeding (Era 2)**: The tool focuses on combining the most successful warriors to pass on winning traits.
+3.  **Optimization (Era 3)**: The tool makes small, precise adjustments to fine-tune the performance of top-tier warriors.
+
+### Smart Mutation
+Instead of making completely random changes, the evolver uses several intelligent mutation types:
+*   **Major**: Replaces an entire instruction with a random one to explore new possibilities.
+*   **Minor**: Changes one part of an instruction (like an opcode or value) to refine it.
+*   **Micro**: Adjusts a memory offset by exactly 1 to test very specific tactical changes.
+*   **Magic Number**: Applies a consistent "magic number" across different instructions, which often helps in creating structured memory patterns.
+*   **Library**: Pulls a known successful instruction from a library file (if provided).
+*   **Nab**: Borrows a successful instruction from a warrior in a different arena.
+
+### Arenas
+An "Arena" is a separate environment with its own set of rules (like memory size or maximum program length). Running multiple arenas at once allows you to evolve warriors for different types of competitions simultaneously. Warriors can even "trade" successful instructions between arenas.
+
+---
+
 ## Prerequisites
 
 To use this tool, you need:
@@ -49,13 +74,22 @@ The evolver shows a real-time dashboard as it works:
 
 ## Configuration
 
-You can customize the evolution by editing `settings.ini`.
+You can customize the evolution by editing the `settings.ini` file in the project folder.
 
-*   **Time**: Set `CLOCK_TIME` to the number of hours you want the script to run.
-*   **Arenas**: You can run multiple arenas with different rules (e.g., core size).
-    *   Set `LAST_ARENA` to the total number of arenas minus one (e.g., `7` for 8 arenas).
-    *   Ensure all `_LIST` settings (like `CORESIZE_LIST`) have the same number of values.
-*   **Optimization**: Set `FINAL_ERA_ONLY = True` to skip early phases and focus on fine-tuning your best warriors.
+### Common Settings
+*   **Time**: Set `CLOCK_TIME` to the number of hours you want the evolution to run.
+*   **Arenas**: You can run multiple evolution environments at once.
+    *   **LAST_ARENA**: Set this to the highest numbered arena you want to use. For example, if you want 8 arenas, the numbers are 0 through 7, so set this to `7`.
+    *   **_LIST settings**: Ensure all settings ending in `_LIST` (like `CORESIZE_LIST`) have the same number of values as you have arenas.
+*   **Skip to Fine-tuning**: Set `FINAL_ERA_ONLY = True` to skip the early exploration phases and focus exclusively on the Optimization phase for your best warriors.
+
+### Understanding Three-Value Lists
+Most mutation and strategy settings (like `NOTHING_LIST` or `RANDOM_LIST`) contain three values separated by commas. These correspond to the three evolution phases:
+1.  The first value is used during **Exploration** (Era 1).
+2.  The second value is used during **Breeding** (Era 2).
+3.  The third value is used during **Optimization** (Era 3).
+
+For example, `NOTHING_LIST = 10, 18, 27` means the "Do Nothing" mutation becomes more common as the evolution progresses, helping to stabilize successful programs.
 
 ---
 
@@ -117,13 +151,9 @@ Target a specific arena by adding `@N` to a selector or filename (e.g., `top@2`,
 
 ## Features
 
-*   **Evolution Phases**: The tool automatically shifts strategy as it runs:
-    1.  **Exploration**: Discovers new strategies through frequent, large changes.
-    2.  **Breeding**: Combines successful warriors to pass on winning traits.
-    3.  **Optimization**: Makes small, precise adjustments to fine-tune performance.
 *   **Multi-Arena Support**: Run many arenas with different rules simultaneously.
-*   **Smart Mutation**: Uses a "Bag of Marbles" system to intelligently adjust instructions and "magic numbers."
 *   **Diversity Tracking**: Automatically monitors the population to prevent stagnation.
+*   **Machine-Readable Output**: Most analysis commands support a `--json` flag for easy integration with other tools.
 
 ---
 
