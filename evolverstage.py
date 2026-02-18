@@ -45,6 +45,9 @@ Analysis & Utilities:
   --inspect, -x        Get a comprehensive profile of a warrior's performance and code.
                        Usage: --inspect [warrior|selector] [--arena <N>]
                        Defaults to the current champion ('top') if no target is provided.
+  --lineage, -j        Trace the genealogy (parentage) of a warrior from the battle log.
+                       Usage: --lineage [warrior|selector] [--depth <N>] [--arena <N>]
+                       Defaults to the current champion ('top') if no target is provided.
   --analyze, -i        Get statistics on instructions, opcodes, and addressing modes.
                        Usage: --analyze [file|folder|selector] [--arena <N>] [--json]
                        Defaults to the current champion ('top') if no target is provided.
@@ -79,6 +82,7 @@ Examples:
   python evolverstage.py --tournament --champions
   python evolverstage.py --benchmark top archive/
   python evolverstage.py --view random@2
+  python evolverstage.py --lineage top --depth 5
   python evolverstage.py --seed best_warriors/ --arena 0
 '''
 
@@ -1522,6 +1526,94 @@ def run_inspection(target, arena_idx):
         print(f"  {Colors.RED}Error reading file: {e}{Colors.ENDC}")
     print("-" * 30 + "\n")
 
+def get_lineage(warrior_id, arena_idx, max_depth=3, _current_depth=0, _log_cache=None, _start_idx=0):
+    """
+    Parses the battle log backwards to find the parentage of a warrior.
+    """
+    if _current_depth >= max_depth:
+        return None
+
+    if _log_cache is None:
+        if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
+            return None
+        try:
+            with open(BATTLE_LOG_FILE, 'r') as f:
+                # Read all lines and reverse to search backwards
+                _log_cache = list(csv.DictReader(f))
+                _log_cache.reverse()
+        except Exception:
+            return None
+
+    # Find the most recent birth of this warrior (when it was a loser)
+    # We search backwards from the beginning of the list (which is the end of the log)
+    birth_record = None
+    next_start_idx = _start_idx
+    for i in range(_start_idx, len(_log_cache)):
+        row = _log_cache[i]
+        try:
+            if int(row['arena']) == arena_idx and row['loser'] == str(warrior_id):
+                birth_record = row
+                # We need to continue searching for parents from entries BEFORE this one
+                # in chronological order, which means AFTER this one in our reversed list.
+                next_start_idx = i + 1
+                break
+        except (ValueError, KeyError):
+            continue
+
+    if birth_record:
+        parent1 = birth_record['winner']
+        parent2 = birth_record['bred_with']
+        era = int(birth_record['era']) + 1
+
+        return {
+            'warrior': warrior_id,
+            'era': era,
+            'parents': [
+                get_lineage(parent1, arena_idx, max_depth, _current_depth + 1, _log_cache, next_start_idx),
+                get_lineage(parent2, arena_idx, max_depth, _current_depth + 1, _log_cache, next_start_idx)
+            ]
+        }
+
+    return {'warrior': warrior_id, 'initial': True}
+
+def run_lineage(target, arena_idx, depth=3):
+    """
+    Displays the genealogy tree of a warrior.
+    """
+    path = _resolve_warrior_path(target, arena_idx)
+    warrior_id = os.path.basename(path).replace(".red", "")
+
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Lineage Tracer: Warrior {warrior_id} (Arena {arena_idx}) ---{Colors.ENDC}")
+
+    lineage = get_lineage(warrior_id, arena_idx, max_depth=depth)
+
+    if not lineage:
+        print(f"{Colors.YELLOW}No lineage data found in logs.{Colors.ENDC}")
+        return
+
+    def print_tree(node, prefix="", is_last=True, label=""):
+        if not node:
+            return
+
+        connector = "└── " if is_last else "├── "
+
+        info = f"Warrior {node['warrior']}"
+        if node.get('initial'):
+            info += f" {Colors.CYAN}(Initial Population / Unarchived){Colors.ENDC}"
+        else:
+            info += f" {Colors.GREEN}(Born in Era {node['era']}){Colors.ENDC}"
+
+        print(f"{prefix}{label}{connector}{info}")
+
+        if node.get('parents'):
+            new_prefix = prefix + ("    " if is_last else "│   ")
+            parents = node['parents']
+            print_tree(parents[0], new_prefix, False, "P1: ")
+            print_tree(parents[1], new_prefix, True, "P2: ")
+
+    print_tree(lineage, is_last=True)
+    print("")
+
 def print_comparison(stats1, stats2, title="Comparison"):
     """
     Prints a side-by-side comparison of statistics for two targets.
@@ -2281,6 +2373,29 @@ if __name__ == "__main__":
           sys.exit(0)
       except Exception as e:
           print(f"Error during inspection: {e}")
+          sys.exit(1)
+
+  if "--lineage" in sys.argv or "-j" in sys.argv:
+      try:
+          idx = sys.argv.index("--lineage") if "--lineage" in sys.argv else sys.argv.index("-j")
+          arena_idx = _get_arena_idx()
+          target = None
+
+          if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
+              target = sys.argv[idx+1]
+          else:
+              target = "top"
+
+          depth = 3
+          if "--depth" in sys.argv:
+              d_idx = sys.argv.index("--depth")
+              if len(sys.argv) > d_idx + 1:
+                  depth = int(sys.argv[d_idx+1])
+
+          run_lineage(target, arena_idx, depth=depth)
+          sys.exit(0)
+      except Exception as e:
+          print(f"Error during lineage tracing: {e}")
           sys.exit(1)
 
   if "--analyze" in sys.argv or "-i" in sys.argv:
