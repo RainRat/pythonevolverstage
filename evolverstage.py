@@ -1749,12 +1749,6 @@ def print_analysis(stats):
             pct = (count / total_modes) * 100
             print(f"  {mode:1} : {count:4} ({pct:5.1f}%)")
 
-def print_status_json(status_data):
-    """
-    Prints the status data as a JSON object.
-    """
-    print(json.dumps(status_data, indent=2))
-
 def print_status(data=None, recent_bps=None, arena_idx=None):
     """
     Prints the current status of all arenas and the archive in a human-readable format.
@@ -2073,13 +2067,13 @@ if __name__ == "__main__":
         if watch:
             try:
                 while True:
-                    print_status_json(get_evolution_status(arena_idx=arena_idx))
+                    print(json.dumps(get_evolution_status(arena_idx=arena_idx), indent=2))
                     time.sleep(interval)
             except KeyboardInterrupt:
                 print("")
                 sys.exit(0)
         else:
-            print_status_json(get_evolution_status(arena_idx=arena_idx))
+            print(json.dumps(get_evolution_status(arena_idx=arena_idx), indent=2))
     else:
         if watch:
             last_time = None
