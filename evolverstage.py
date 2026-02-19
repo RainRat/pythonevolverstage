@@ -36,6 +36,7 @@ Battle Tools:
                        Defaults to 'top' vs 'top2' if no warriors provided.
                        Usage: --battle [warrior1] [warrior2] [--arena <N>]
   --tournament, -t     Run an everyone-vs-everyone tournament between a group of warriors.
+                       Defaults to the top 10 warriors of the current arena if no targets provided.
                        Use --champions to automatically include winners from every arena.
                        Usage: --tournament <folder|selectors...> [--champions] [--arena <N>]
   --benchmark, -m      Test one warrior against every opponent in a folder.
@@ -297,7 +298,7 @@ def run_tournament(targets, arena_idx):
     abs_files = []
     file_map = {}
 
-    # Check if we are given a single folder or a list of files/selectors
+    # Check if we are given a single folder
     if len(targets) == 1 and os.path.isdir(targets[0]):
         directory = targets[0]
         files = [f for f in os.listdir(directory) if f.endswith('.red')]
@@ -307,32 +308,34 @@ def run_tournament(targets, arena_idx):
         abs_files = [os.path.join(directory, f) for f in files]
         file_map = {path: f for path, f in zip(abs_files, files)}
         print(f"Tournament: {len(files)} warriors from folder '{directory}'")
-    elif len(targets) == 1 and not os.path.exists(targets[0]):
-        # Maintain backward compatibility for single folder not found error message
-        print(f"Error: Folder '{targets[0]}' not found.")
-        return
     else:
-        # It's a list of selectors/files
+        # It's a list of selectors/files (including the case of a single selector)
         for sel in targets:
             path = _resolve_warrior_path(sel, arena_idx)
             if os.path.exists(path):
                 abs_files.append(path)
                 file_map[path] = sel
             else:
-                print(f"Warning: Warrior '{sel}' not found. Skipping.")
+                if len(targets) == 1:
+                    # Single target that doesn't exist as a folder or resolve as a selector
+                    print(f"Error: Folder or selector '{targets[0]}' not found.")
+                    return
+                else:
+                    print(f"Warning: Warrior '{sel}' not found. Skipping.")
 
         if len(abs_files) < 2:
             print("Error: A tournament requires at least two warriors to compete.")
             return
-        print(f"Tournament: {len(abs_files)} specific warriors.")
+        print(f"Tournament: {len(abs_files)} selected warriors.")
 
     scores = {file_map[f]: 0 for f in abs_files}
 
     # Generate pairs
     pairs = list(itertools.combinations(abs_files, 2))
+    rounds = BATTLEROUNDS_LIST[-1] if BATTLEROUNDS_LIST else 100
     total_battles = len(pairs)
     print(f"Total battles: {total_battles}")
-    print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]})")
+    print(f"Arena: {arena_idx} (Size: {CORESIZE_LIST[arena_idx]}, Cycles: {CYCLES_LIST[arena_idx]}, Rounds: {rounds})")
 
     last_res = ""
     for i, (p1, p2) in enumerate(pairs, 1):
@@ -379,11 +382,28 @@ def run_tournament(targets, arena_idx):
     line = f"{bar} Tournament Complete | {last_res}"
     print_status_line(line, end='\n')
 
-    print(f"\n{Colors.BOLD}Tournament Results:{Colors.ENDC}")
+    # Standardized Polished Results Format
+    print("-" * 75)
+    print(f"{Colors.BOLD}TOURNAMENT RESULTS (Arena {arena_idx}){Colors.ENDC}")
+    print("-" * 75)
+    print(f"{'Rank':<4} {'Warrior':<25} {'Score':>7}  {'Performance'}")
+    print("-" * 75)
+
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    max_possible = (len(abs_files) - 1) * rounds
+
     for rank, (name, score) in enumerate(sorted_scores, 1):
         color = Colors.GREEN if rank == 1 else Colors.ENDC
-        print(f"{color}{rank}. {name}: {score}{Colors.ENDC}")
+        # Use basename for display if it looks like a path
+        display_name = os.path.basename(name)
+
+        # Visual bar
+        bar_width = 20
+        fill = int(bar_width * score / max_possible) if max_possible > 0 else 0
+        bar = f"[{color}{'=' * fill}{' ' * (bar_width - fill)}{Colors.ENDC}]"
+
+        print(f"{rank:>2}.  {display_name:<25} {color}{score:>7}{Colors.ENDC}  {bar}")
+    print("-" * 75)
 
 def run_benchmark(warrior_file, directory, arena_idx):
     """
@@ -2302,6 +2322,7 @@ if __name__ == "__main__":
   if "--tournament" in sys.argv or "-t" in sys.argv:
       try:
           idx = sys.argv.index("--tournament") if "--tournament" in sys.argv else sys.argv.index("-t")
+          arena_idx = _get_arena_idx()
 
           targets = []
           if "--champions" in sys.argv:
@@ -2316,10 +2337,11 @@ if __name__ == "__main__":
                   targets.append(sys.argv[i])
 
           if not targets:
-              print("Usage: --tournament|-t <folder|selectors...> [--champions] [--arena|-a <N>]")
-              sys.exit(1)
+              # Default: Top 10 warriors of the current arena
+              for i in range(1, 11):
+                  targets.append(f"top{i}")
+              print(f"{Colors.CYAN}No targets specified. Running tournament for the top 10 warriors of Arena {arena_idx}.{Colors.ENDC}")
 
-          arena_idx = _get_arena_idx()
           run_tournament(targets, arena_idx)
           sys.exit(0)
       except ValueError:
