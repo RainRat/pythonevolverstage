@@ -53,6 +53,8 @@ Analysis & Utilities:
                        Defaults to the current champion ('top') if no target is provided.
   --compare, -y        Compare two warriors, folders, or selectors side-by-side.
                        Usage: --compare <target1> <target2> [--arena <N>] [--json]
+  --diff, -f           Perform a line-by-line code comparison between two warriors.
+                       Usage: --diff <target1> <target2> [--arena <N>]
   --view, -v           Display the source code of a warrior.
                        Usage: --view [warrior|selector] [--arena <N>]
                        Defaults to the current champion ('top') if no target is provided.
@@ -94,6 +96,7 @@ import time
 import sys
 import shutil
 import json
+import difflib
 #import psutil #Not currently active. See bottom of code for how it could be used.
 import configparser
 import subprocess
@@ -1279,6 +1282,53 @@ def run_comparison(target1, target2, arena_idx, json_output=False):
         print(json.dumps([stats1, stats2], indent=2))
     else:
         print_comparison(stats1, stats2)
+
+def run_diff(target1, target2, arena_idx):
+    """
+    Performs a line-by-line code comparison between two warriors or selectors.
+    """
+    path1 = _resolve_warrior_path(target1, arena_idx)
+    path2 = _resolve_warrior_path(target2, arena_idx)
+
+    if not os.path.exists(path1):
+        print(f"{Colors.RED}Error: Target A '{target1}' not found at {path1}{Colors.ENDC}")
+        return
+    if not os.path.exists(path2):
+        print(f"{Colors.RED}Error: Target B '{target2}' not found at {path2}{Colors.ENDC}")
+        return
+
+    try:
+        with open(path1, 'r') as f1, open(path2, 'r') as f2:
+            lines1 = f1.readlines()
+            lines2 = f2.readlines()
+
+        diff = difflib.unified_diff(
+            lines1, lines2,
+            fromfile=os.path.basename(path1),
+            tofile=os.path.basename(path2)
+        )
+
+        has_diff = False
+        print(f"\n{Colors.BOLD}{Colors.HEADER}--- Code Diff: {os.path.basename(path1)} vs {os.path.basename(path2)} ---{Colors.ENDC}")
+
+        for line in diff:
+            has_diff = True
+            line = line.rstrip()
+            if line.startswith('+') and not line.startswith('+++'):
+                print(f"{Colors.GREEN}{line}{Colors.ENDC}")
+            elif line.startswith('-') and not line.startswith('---'):
+                print(f"{Colors.RED}{line}{Colors.ENDC}")
+            elif line.startswith('@@'):
+                print(f"{Colors.CYAN}{line}{Colors.ENDC}")
+            else:
+                print(line)
+
+        if not has_diff:
+            print(f"{Colors.YELLOW}Warriors are identical.{Colors.ENDC}")
+        print("")
+
+    except Exception as e:
+        print(f"{Colors.RED}Error performing diff: {e}{Colors.ENDC}")
 
 def run_trend_analysis(arena_idx):
     """
@@ -2471,6 +2521,27 @@ if __name__ == "__main__":
           sys.exit(0)
       except Exception as e:
           print(f"Error during comparison: {e}")
+          sys.exit(1)
+
+  if "--diff" in sys.argv or "-f" in sys.argv:
+      try:
+          if "--diff" in sys.argv:
+              idx = sys.argv.index("--diff")
+          else:
+              idx = sys.argv.index("-f")
+
+          if len(sys.argv) < idx + 3:
+              print("Usage: --diff|-f <target1> <target2> [--arena <N>]")
+              sys.exit(1)
+
+          t1 = sys.argv[idx+1]
+          t2 = sys.argv[idx+2]
+          arena_idx = _get_arena_idx()
+
+          run_diff(t1, t2, arena_idx)
+          sys.exit(0)
+      except Exception as e:
+          print(f"Error during diff: {e}")
           sys.exit(1)
 
   if "--dump-config" in sys.argv or "-d" in sys.argv:
