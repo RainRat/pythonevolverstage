@@ -74,6 +74,60 @@ class TestReport(unittest.TestCase):
         self.assertEqual(rankings[0][1][0], '2') # W2
         self.assertEqual(rankings[0][1][1], 50.0)
 
+    def test_get_population_diversity_robustness(self):
+        """Test diversity calculation with varied formatting and comments."""
+        os.makedirs("arena0", exist_ok=True)
+        # Warrior 1: Standard
+        with open("arena0/1.red", "w") as f:
+            f.write("MOV.I $0, $1\n")
+        # Warrior 2: Varied whitespace and trailing comment
+        with open("arena0/2.red", "w") as f:
+            f.write("MOV.I  $0,   $1 ; a comment\n")
+        # Warrior 3: Different instruction
+        with open("arena0/3.red", "w") as f:
+            f.write("DAT.I $0, $0\n")
+
+        # 1 and 2 are logical duplicates. 3 is unique.
+        # Total unique: 2. Total processed: 3. Diversity: 66.66%
+        diversity = evolverstage.get_population_diversity(0)
+        self.assertAlmostEqual(diversity, 66.6666666, places=5)
+
+    def test_get_population_diversity_unreadable(self):
+        """Test diversity calculation with unreadable files."""
+        os.makedirs("arena0", exist_ok=True)
+        with open("arena0/1.red", "w") as f:
+            f.write("MOV.I $0, $1\n")
+
+        bad_file = "arena0/2.red"
+        with open(bad_file, "w") as f:
+            f.write("GARBAGE")
+        os.chmod(bad_file, 0)
+
+        # Only 1 file should be successfully processed. Diversity: 100%
+        diversity = evolverstage.get_population_diversity(0)
+        self.assertEqual(diversity, 100.0)
+
+    def test_get_lifetime_rankings_advanced(self):
+        """Test get_lifetime_rankings with limit and min_battles."""
+        # W1: 1 win, 0 loss (1 battle)
+        self.writer.writerow({'era': '0', 'arena': '0', 'winner': '1', 'loser': '2', 'score1': '100', 'score2': '0', 'bred_with': ''})
+        # W3: 5 wins, 0 loss (5 battles)
+        for _ in range(5):
+            self.writer.writerow({'era': '0', 'arena': '0', 'winner': '3', 'loser': '4', 'score1': '100', 'score2': '0', 'bred_with': ''})
+        self.test_log.flush()
+
+        # With min_battles=5, only W3 and W4 should be considered.
+        # W3: 5 wins, 5 battles. W4: 0 wins, 5 battles.
+        rankings = evolverstage.get_lifetime_rankings(arena_idx=0, min_battles=5)
+        self.assertEqual(len(rankings[0]), 2)
+        self.assertEqual(rankings[0][0][0], '3')
+
+        # With limit=1
+        rankings = evolverstage.get_lifetime_rankings(arena_idx=0, min_battles=1, limit=1)
+        self.assertEqual(len(rankings[0]), 1)
+        self.assertEqual(rankings[0][0][0], '3') # W3 has higher win rate (100%) than W1 (100%)?
+        # Wait, both have 100%. W3 has more wins (5 vs 1). So W3 should be first.
+
     def test_run_report_smoke(self):
         """Smoke test for run_report to ensure it runs without error."""
         os.makedirs("arena0", exist_ok=True)
