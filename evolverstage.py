@@ -17,7 +17,7 @@ General Commands:
                        Add --interval <N> to set refresh rate (default 2s).
                        Add --json for machine-readable output.
   --leaderboard, -l    Show the top-performing warriors based on recent win streaks.
-                       Usage: --leaderboard [--arena <N>] [--json]
+                       Usage: --leaderboard [--arena <N>] [--top <N>] [--json]
   --trends, -r         Analyze evolution trends by comparing the population to the top performers.
                        Usage: --trends [--arena <N>]
   --report, -g         Generate a comprehensive health and performance report for an arena.
@@ -2304,7 +2304,17 @@ if __name__ == "__main__":
   if "--leaderboard" in sys.argv or "-l" in sys.argv:
     arena_idx = _get_arena_idx(default=None)
 
-    results = get_leaderboard(arena_idx=arena_idx)
+    # Determine limit (default 10)
+    limit = 10
+    if "--top" in sys.argv:
+        try:
+            t_idx = sys.argv.index("--top")
+            if len(sys.argv) > t_idx + 1:
+                limit = int(sys.argv[t_idx+1])
+        except ValueError:
+            pass
+
+    results = get_leaderboard(arena_idx=arena_idx, limit=limit)
 
     if "--json" in sys.argv:
         print(json.dumps(results, indent=2))
@@ -2312,13 +2322,44 @@ if __name__ == "__main__":
         if not results:
             print(f"{Colors.YELLOW}No leaderboard data available.{Colors.ENDC}")
         else:
-            print(f"\n{Colors.BOLD}{Colors.HEADER}--- Current Champions (Wins since last loss) ---{Colors.ENDC}")
-            for arena, top in results.items():
-                print(f"{Colors.BOLD}Arena {arena}:{Colors.ENDC}")
-                for i, (warrior, wins) in enumerate(top, 1):
-                    color = Colors.GREEN if i == 1 else Colors.ENDC
-                    print(f"  {i}. Warrior {warrior:3}: {color}{wins} wins{Colors.ENDC}")
-                print("-" * 30)
+            # If no arena specified and multiple arenas have data, show a summary table
+            if arena_idx is None and len(results) > 1:
+                print(f"\n{Colors.BOLD}{Colors.HEADER}--- GLOBAL CHAMPIONS (Rank 1 from all arenas) ---{Colors.ENDC}")
+                print("-" * 65)
+                print(f"{'Arena':<6} {'Warrior':<12} {'Streak':>8}   {'Performance'}")
+                print("-" * 65)
+
+                # Find max streak for scaling the bars
+                all_streaks = [top[0][1] for top in results.values() if top]
+                max_streak = max(all_streaks) if all_streaks else 1
+
+                for a in sorted(results.keys()):
+                    if results[a]:
+                        warrior_id, streak = results[a][0]
+                        # Visual bar
+                        bar_width = 20
+                        fill = int(bar_width * streak / max_streak) if max_streak > 0 else 0
+                        color = Colors.GREEN
+                        bar = f"[{color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
+                        print(f"{a:<6} {warrior_id:<12} {streak:>8}   {bar}")
+                print("-" * 65)
+            else:
+                # Show detailed leaderboard for one or more arenas
+                for a, top in results.items():
+                    print(f"\n{Colors.BOLD}{Colors.HEADER}--- LEADERBOARD: Arena {a} ---{Colors.ENDC}")
+                    print("-" * 65)
+                    print(f"{'Rank':<4} {'Warrior':<12} {'Streak':>8}   {'Performance'}")
+                    print("-" * 65)
+
+                    max_streak = top[0][1] if top else 1
+                    for i, (warrior_id, streak) in enumerate(top, 1):
+                        color = Colors.GREEN if i == 1 else Colors.ENDC
+                        # Visual bar
+                        bar_width = 20
+                        fill = int(bar_width * streak / max_streak) if max_streak > 0 else 0
+                        bar = f"[{color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
+                        print(f"{i:>2}.  {warrior_id:<12} {color}{streak:>8}{Colors.ENDC}   {bar}")
+                    print("-" * 65)
     sys.exit(0)
 
   if "--trends" in sys.argv or "-r" in sys.argv:
