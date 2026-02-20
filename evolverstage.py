@@ -52,6 +52,9 @@ Analysis & Utilities:
   --analyze, -i        Get statistics on instructions, opcodes, and addressing modes.
                        Usage: --analyze [file|folder|selector] [--arena <N>] [--json]
                        Defaults to the current champion ('top') if no target is provided.
+  --meta, -u           Analyze the distribution of strategies in the population or a folder.
+                       Usage: --meta [file|folder|selector] [--arena <N>] [--json]
+                       Defaults to the current arena if no target is provided.
   --compare, -y        Compare two warriors, folders, or selectors side-by-side.
                        Usage: --compare <target1> <target2> [--arena <N>] [--json]
   --diff, -f           Perform a line-by-line code comparison between two warriors.
@@ -1235,6 +1238,38 @@ def analyze_warrior(filepath):
     del stats['unique_instructions']
     return stats
 
+def identify_strategy(stats):
+    """
+    Identifies a warrior's strategy type based on its opcode distribution.
+    """
+    if not stats or stats.get('instructions', 0) == 0:
+        return "Unknown"
+
+    opcodes = stats['opcodes']
+    total = stats['instructions']
+
+    mov_pct = (opcodes.get('MOV', 0) / total) * 100
+    spl_pct = (opcodes.get('SPL', 0) / total) * 100
+    djn_pct = (opcodes.get('DJN', 0) / total) * 100
+    add_pct = (opcodes.get('ADD', 0) / total) * 100
+    jmp_pct = (opcodes.get('JMP', 0) / total) * 100
+    dat_pct = (opcodes.get('DAT', 0) / total) * 100
+
+    if spl_pct > 20 and mov_pct > 30:
+        return "Paper (Replicator)"
+    elif djn_pct > 10 and mov_pct > 30:
+        return "Stone (Bomb-thrower)"
+    elif add_pct > 20 and mov_pct > 40:
+        return "Imp (Pulse)"
+    elif jmp_pct > 15 and (mov_pct > 20 or add_pct > 20):
+        return "Vampire / Pittrap"
+    elif mov_pct > 70:
+        return "Mover / Runner"
+    elif dat_pct > 50:
+        return "Wait / Shield"
+
+    return "Experimental"
+
 def analyze_files(files, label):
     """
     Aggregates statistics for a list of warrior files.
@@ -1384,6 +1419,98 @@ def run_trend_analysis(arena_idx):
 
     # 4. Print Trends
     print_comparison(pop_stats, meta_stats, title=f"Trend Analysis: Arena {arena_idx}")
+
+def run_meta_analysis(target, arena_idx, json_output=False):
+    """
+    Analyzes the distribution of strategies in a target (folder, arena, or selector).
+    If an arena is targeted, it compares the whole population vs the leaderboard.
+    """
+    path = _resolve_warrior_path(target, arena_idx)
+
+    # 1. Gather Strategy Distribution for the Target
+    files_to_scan = []
+
+    if os.path.isdir(path):
+        files_to_scan = [os.path.join(path, f) for f in os.listdir(path) if f.endswith('.red')]
+        label = f"Folder: {os.path.basename(os.path.normpath(path))}"
+    elif os.path.exists(path):
+        files_to_scan = [path]
+        label = f"Target: {target}"
+    else:
+        print(f"{Colors.RED}Error: Target '{target}' not found.{Colors.ENDC}")
+        return
+
+    def get_distribution(files):
+        dist = {}
+        for f in files:
+            s = analyze_warrior(f)
+            strat = identify_strategy(s)
+            dist[strat] = dist.get(strat, 0) + 1
+        return dist
+
+    target_dist = get_distribution(files_to_scan)
+
+    # 2. If it's an arena, get the Meta (Leaderboard) for comparison
+    meta_dist = None
+    # Check if target represents an arena population
+    is_arena = "arena" in target.lower() or target == "" or target is None
+    if is_arena:
+        results = get_leaderboard(arena_idx=arena_idx, limit=10)
+        if arena_idx in results:
+            meta_files = []
+            for wid, streak in results[arena_idx]:
+                p = os.path.join(f"arena{arena_idx}", f"{wid}.red")
+                if os.path.exists(p):
+                    meta_files.append(p)
+            if meta_files:
+                meta_dist = get_distribution(meta_files)
+                if not label or label == "Target: " or label.startswith("Folder: "):
+                    label = f"Arena {arena_idx}"
+
+    # 3. Output
+    if json_output:
+        res = {"target": target_dist}
+        if meta_dist: res["meta"] = meta_dist
+        print(json.dumps(res, indent=2))
+        return
+
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Strategy Meta-Analysis: {label} ---{Colors.ENDC}")
+
+    # Combined set of strategies
+    all_strats = sorted(set(target_dist.keys()) | set(meta_dist.keys() if meta_dist else []))
+
+    header = f"  {'Strategy':<20} | {'Target %':>10}"
+    if meta_dist:
+        header += f" | {'Meta %':>10} | {'Delta':>8}"
+    print(header)
+    print("  " + "-" * (len(header) - 2))
+
+    target_total = sum(target_dist.values())
+    meta_total = sum(meta_dist.values()) if meta_dist else 0
+
+    for strat in all_strats:
+        t_count = target_dist.get(strat, 0)
+        t_pct = (t_count / target_total * 100) if target_total > 0 else 0
+
+        line = f"  {strat:<20} | {t_pct:>9.1f}%"
+
+        if meta_dist:
+            m_count = meta_dist.get(strat, 0)
+            m_pct = (m_count / meta_total * 100) if meta_total > 0 else 0
+            delta = m_pct - t_pct
+
+            delta_val_str = f"{delta:+.1f}%"
+            if delta > 10:
+                delta_str = f"{Colors.GREEN}{delta_val_str:>8}{Colors.ENDC}"
+            elif delta < -10:
+                delta_str = f"{Colors.RED}{delta_val_str:>8}{Colors.ENDC}"
+            else:
+                delta_str = f"{delta_val_str:>8}"
+
+            line += f" | {m_pct:>9.1f}% | {delta_str}"
+
+        print(line)
+    print("")
 
 def get_population_diversity(arena_idx):
     """
@@ -1574,24 +1701,7 @@ def run_inspection(target, arena_idx):
     # 3. Strategy Identification
     opcodes = stats['opcodes']
     total = stats['instructions']
-    strategy = "Unknown"
-    if total > 0:
-        mov_pct = (opcodes.get('MOV', 0) / total) * 100
-        spl_pct = (opcodes.get('SPL', 0) / total) * 100
-        djn_pct = (opcodes.get('DJN', 0) / total) * 100
-        add_pct = (opcodes.get('ADD', 0) / total) * 100
-        jmp_pct = (opcodes.get('JMP', 0) / total) * 100
-
-        if spl_pct > 20 and mov_pct > 30:
-            strategy = "Paper (Replicator)"
-        elif djn_pct > 10 and mov_pct > 30:
-            strategy = "Stone (Bomb-thrower)"
-        elif add_pct > 20 and mov_pct > 40:
-            strategy = "Imp (Pulse)"
-        elif jmp_pct > 15 and (mov_pct > 20 or add_pct > 20):
-            strategy = "Vampire / Pittrap"
-        elif mov_pct > 70:
-            strategy = "Mover / Runner"
+    strategy = identify_strategy(stats)
 
     # 4. Display Results
     print(f"\n{Colors.BOLD}{Colors.HEADER}--- Warrior Profile: {os.path.basename(path)} ---{Colors.ENDC}")
@@ -2535,6 +2645,25 @@ if __name__ == "__main__":
           sys.exit(0)
       except Exception as e:
           print(f"Error during analysis: {e}")
+          sys.exit(1)
+
+  if "--meta" in sys.argv or "-u" in sys.argv:
+      try:
+          idx = sys.argv.index("--meta") if "--meta" in sys.argv else sys.argv.index("-u")
+          arena_idx = _get_arena_idx()
+          target = ""
+
+          if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
+              target = sys.argv[idx+1]
+          else:
+              # Default to arena population if no target provided
+              target = f"arena{arena_idx}"
+
+          json_output = "--json" in sys.argv
+          run_meta_analysis(target, arena_idx, json_output=json_output)
+          sys.exit(0)
+      except Exception as e:
+          print(f"Error during meta-analysis: {e}")
           sys.exit(1)
 
   if "--compare" in sys.argv or "-y" in sys.argv:
