@@ -2784,62 +2784,59 @@ if __name__ == "__main__":
           donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
           with open(donor_file, 'r') as f:
               templine = random.choice(f.readlines())
-        elif chosen_marble==Marble.MINOR_MUTATION:
-          if VERBOSE:
-              print("Minor mutation")
-          # Slightly change one part of the instruction (opcode, mode, or value) to fine-tune it.
-          splitline=re.split(r'[ \.,\n]', templine)
-          r=random.randint(1,6)
-          if r==1:
-            splitline[0]=random.choice(INSTR_SET)
-          elif r==2:
-            splitline[1]=random.choice(INSTR_MODIF)
-          elif r==3:
-            splitline[2]=random.choice(INSTR_MODES)+splitline[2][1:]
-          elif r==4:
-            num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-            splitline[2]=splitline[2][0:1]+str(num1)
-          elif r==5:
-            splitline[3]=random.choice(INSTR_MODES)+splitline[3][1:]
-          elif r==6:
-            num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-            splitline[3]=splitline[3][0:1]+str(num1)
-          templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
-        elif chosen_marble==Marble.MICRO_MUTATION:
-          if VERBOSE:
-              print ("Micro mutation")
-          # Adjust a single address value by 1 to test very small changes.
-          splitline=re.split(r'[ \.,\n]', templine)
-          r=random.randint(1,2)
-          if r==1:
-            num1=int(splitline[2][1:])
-            if random.randint(1,2)==1:
-              num1=num1+1
-            else:
-              num1=num1-1
-            splitline[2]=splitline[2][0:1]+str(num1)
-          else:
-            num1=int(splitline[3][1:])
-            if random.randint(1,2)==1:
-              num1=num1+1
-            else:
-              num1=num1-1
-            splitline[3]=splitline[3][0:1]+str(num1)
-          templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
         elif chosen_marble==Marble.INSTRUCTION_LIBRARY and LIBRARY_PATH and os.path.exists(LIBRARY_PATH):
           if VERBOSE:
               print("Instruction library")
           with open(LIBRARY_PATH, 'r') as f:
               templine = random.choice(f.readlines())
-        elif chosen_marble==Marble.MAGIC_NUMBER_MUTATION:
-          if VERBOSE:
-              print ("Magic number mutation")
-          splitline=re.split(r'[ \.,\n]', templine)
-          r=random.randint(1,2)
-          if r==1:
-            splitline[2]=splitline[2][0:1]+str(magic_number)
-          else:
-            splitline[3]=splitline[3][0:1]+str(magic_number)
+        elif chosen_marble in [Marble.MINOR_MUTATION, Marble.MICRO_MUTATION, Marble.MAGIC_NUMBER_MUTATION]:
+          splitline = re.split(r'[ \.,\n]', templine)
+          if chosen_marble == Marble.MINOR_MUTATION:
+            if VERBOSE:
+                print("Minor mutation")
+            # Slightly change one part of the instruction (opcode, mode, or value) to fine-tune it.
+            r=random.randint(1,6)
+            if r==1:
+              splitline[0]=random.choice(INSTR_SET)
+            elif r==2:
+              splitline[1]=random.choice(INSTR_MODIF)
+            elif r==3:
+              splitline[2]=random.choice(INSTR_MODES)+splitline[2][1:]
+            elif r==4:
+              num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+              splitline[2]=splitline[2][0:1]+str(num1)
+            elif r==5:
+              splitline[3]=random.choice(INSTR_MODES)+splitline[3][1:]
+            elif r==6:
+              num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
+              splitline[3]=splitline[3][0:1]+str(num1)
+          elif chosen_marble == Marble.MICRO_MUTATION:
+            if VERBOSE:
+                print ("Micro mutation")
+            # Adjust a single address value by 1 to test very small changes.
+            r=random.randint(1,2)
+            if r==1:
+              num1=int(splitline[2][1:])
+              if random.randint(1,2)==1:
+                num1=num1+1
+              else:
+                num1=num1-1
+              splitline[2]=splitline[2][0:1]+str(num1)
+            else:
+              num1=int(splitline[3][1:])
+              if random.randint(1,2)==1:
+                num1=num1+1
+              else:
+                num1=num1-1
+              splitline[3]=splitline[3][0:1]+str(num1)
+          elif chosen_marble == Marble.MAGIC_NUMBER_MUTATION:
+            if VERBOSE:
+                print ("Magic number mutation")
+            r=random.randint(1,2)
+            if r==1:
+              splitline[2]=splitline[2][0:1]+str(magic_number)
+            else:
+              splitline[3]=splitline[3][0:1]+str(magic_number)
           templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
 
         templine = normalize_instruction(templine, CORESIZE_LIST[arena], SANITIZE_LIST[arena])
