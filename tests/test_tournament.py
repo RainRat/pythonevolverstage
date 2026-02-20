@@ -32,16 +32,18 @@ class TestRunTournament(unittest.TestCase):
 
         mock_print.assert_any_call(f"Error: Arena 2 does not exist (LAST_ARENA=1)")
 
+    @mock.patch('evolverstage._resolve_warrior_path')
     @mock.patch('os.path.exists')
     @mock.patch('builtins.print')
-    def test_run_tournament_directory_not_found(self, mock_print, mock_exists):
+    def test_run_tournament_directory_not_found(self, mock_print, mock_exists, mock_resolve):
         """Test tournament with missing directory."""
         mock_exists.return_value = False
+        mock_resolve.return_value = self.directory
 
         with mock.patch.multiple(evolverstage, **self.mock_config):
              evolverstage.run_tournament(self.directory, self.arena_idx)
 
-        mock_print.assert_any_call(f"Error: Folder '{self.directory}' not found.")
+        mock_print.assert_any_call(f"Error: Folder or selector '{self.directory}' not found.")
 
     @mock.patch('os.path.isdir')
     @mock.patch('os.listdir')
@@ -108,17 +110,23 @@ class TestRunTournament(unittest.TestCase):
         # W3 was second in (1,3) [0 pts] and second in (2,3) [0 pts] -> 0 pts
 
         # Check that results are printed
-        # Note: The function prints "1. warrior1.red: 200", etc.
-        # The key in scores dict is just filename (from file_map which maps abs path to filename)
+        # Note: The function now prints a polished table.
+        # Max score is (3-1)*100 = 200.
+        # W1 (200 pts): bar is [====================]
+        # W2 (100 pts): bar is [==========          ]
+        # W3 (0 pts): bar is [                    ]
 
-        # We need to be careful about file_map logic in source:
-        # file_map = {os.path.join(directory, f): f for f in files}
-        # scores = {f: 0 for f in files}
-        # In loop: scores[file_map[p1]] += ...
+        bar1 = f"[{evolverstage.Colors.GREEN}{'=' * 20}{''}{evolverstage.Colors.ENDC}]"
+        bar2 = f"[{evolverstage.Colors.ENDC}{'=' * 10}{' ' * 10}{evolverstage.Colors.ENDC}]"
+        bar3 = f"[{evolverstage.Colors.ENDC}{'=' * 0}{' ' * 20}{evolverstage.Colors.ENDC}]"
 
-        mock_print.assert_any_call(f"{evolverstage.Colors.GREEN}1. warrior1.red: 200{evolverstage.Colors.ENDC}")
-        mock_print.assert_any_call(f"{evolverstage.Colors.ENDC}2. warrior2.red: 100{evolverstage.Colors.ENDC}")
-        mock_print.assert_any_call(f"{evolverstage.Colors.ENDC}3. warrior3.red: 0{evolverstage.Colors.ENDC}")
+        display_name1 = "warrior1.red"
+        display_name2 = "warrior2.red"
+        display_name3 = "warrior3.red"
+
+        mock_print.assert_any_call(f"{1:>2}.  {display_name1:<25} {evolverstage.Colors.GREEN}{200:>7}{evolverstage.Colors.ENDC}  {bar1}")
+        mock_print.assert_any_call(f"{2:>2}.  {display_name2:<25} {evolverstage.Colors.ENDC}{100:>7}{evolverstage.Colors.ENDC}  {bar2}")
+        mock_print.assert_any_call(f"{3:>2}.  {display_name3:<25} {evolverstage.Colors.ENDC}{0:>7}{evolverstage.Colors.ENDC}  {bar3}")
 
 if __name__ == '__main__':
     unittest.main()
