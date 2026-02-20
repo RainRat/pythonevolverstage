@@ -1398,17 +1398,31 @@ def get_population_diversity(arena_idx):
         return 0.0
 
     unique_hashes = set()
+    processed_count = 0
     for f in files:
         try:
             with open(os.path.join(arena_dir, f), 'r') as fh:
-                # Strip comments and whitespace to focus on the logic
-                content = "".join([line.strip() for line in fh if line.strip() and not line.strip().startswith(';')])
+                # Strip comments and normalize whitespace to focus on the logic
+                logical_lines = []
+                for line in fh:
+                    # Strip trailing comments
+                    clean = line.split(';')[0].strip()
+                    if clean:
+                        # Normalize internal whitespace
+                        normalized = " ".join(clean.split())
+                        logical_lines.append(normalized)
+
+                content = "".join(logical_lines)
                 strategy_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
                 unique_hashes.add(strategy_hash)
+                processed_count += 1
         except Exception:
             continue
 
-    return (len(unique_hashes) / len(files)) * 100
+    if processed_count == 0:
+        return 0.0
+
+    return (len(unique_hashes) / processed_count) * 100
 
 def get_lifetime_rankings(arena_idx=None, limit=10, min_battles=5):
     """
