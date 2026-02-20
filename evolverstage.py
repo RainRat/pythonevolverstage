@@ -897,6 +897,142 @@ def construct_marble_bag(era):
            [Marble.INSTRUCTION_LIBRARY]*LIBRARY_LIST[era] + \
            [Marble.MAGIC_NUMBER_MUTATION]*MAGIC_NUMBER_LIST[era]
 
+def apply_mutation(templine, marble, arena_idx, magic_number):
+    """
+    Applies a specific mutation (marble) to an instruction string.
+    """
+    if marble == Marble.MAJOR_MUTATION:
+        if VERBOSE:
+            print("Major mutation")
+        # Major Mutation: Replace the instruction with a completely random one to explore new possibilities.
+        num1 = weighted_random_number(CORESIZE_LIST[arena_idx], WARLEN_LIST[arena_idx])
+        num2 = weighted_random_number(CORESIZE_LIST[arena_idx], WARLEN_LIST[arena_idx])
+        return random.choice(INSTR_SET) + "." + random.choice(INSTR_MODIF) + " " + \
+               random.choice(INSTR_MODES) + str(num1) + "," + random.choice(INSTR_MODES) + str(num2) + "\n"
+
+    elif marble == Marble.NAB_INSTRUCTION and (LAST_ARENA != 0):
+        # Borrow an instruction from a warrior in a different arena to introduce new ideas.
+        donor_arena = random.randint(0, LAST_ARENA)
+        while (donor_arena == arena_idx):
+            donor_arena = random.randint(0, LAST_ARENA)
+        if VERBOSE:
+            print(f"Nab instruction from arena {donor_arena}")
+        donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
+        try:
+            with open(donor_file, 'r') as f:
+                return random.choice(f.readlines())
+        except Exception:
+            return templine
+
+    elif marble == Marble.INSTRUCTION_LIBRARY and LIBRARY_PATH and os.path.exists(LIBRARY_PATH):
+        if VERBOSE:
+            print("Instruction library")
+        try:
+            with open(LIBRARY_PATH, 'r') as f:
+                return random.choice(f.readlines())
+        except Exception:
+            return templine
+
+    elif marble in [Marble.MINOR_MUTATION, Marble.MICRO_MUTATION, Marble.MAGIC_NUMBER_MUTATION]:
+        splitline = re.split(r'[ \.,\n]', templine)
+        if len(splitline) < 4:
+            return templine
+
+        if marble == Marble.MINOR_MUTATION:
+            if VERBOSE:
+                print("Minor mutation")
+            # Slightly change one part of the instruction (opcode, mode, or value) to fine-tune it.
+            r = random.randint(1, 6)
+            if r == 1:
+                splitline[0] = random.choice(INSTR_SET)
+            elif r == 2:
+                splitline[1] = random.choice(INSTR_MODIF)
+            elif r == 3:
+                splitline[2] = random.choice(INSTR_MODES) + splitline[2][1:]
+            elif r == 4:
+                num1 = weighted_random_number(CORESIZE_LIST[arena_idx], WARLEN_LIST[arena_idx])
+                splitline[2] = splitline[2][0:1] + str(num1)
+            elif r == 5:
+                splitline[3] = random.choice(INSTR_MODES) + splitline[3][1:]
+            elif r == 6:
+                num1 = weighted_random_number(CORESIZE_LIST[arena_idx], WARLEN_LIST[arena_idx])
+                splitline[3] = splitline[3][0:1] + str(num1)
+        elif marble == Marble.MICRO_MUTATION:
+            if VERBOSE:
+                print("Micro mutation")
+            # Adjust a single address value by 1 to test very small changes.
+            r = random.randint(1, 2)
+            try:
+                if r == 1:
+                    num1 = int(splitline[2][1:])
+                    num1 = num1 + 1 if random.randint(1, 2) == 1 else num1 - 1
+                    splitline[2] = splitline[2][0:1] + str(num1)
+                else:
+                    num1 = int(splitline[3][1:])
+                    num1 = num1 + 1 if random.randint(1, 2) == 1 else num1 - 1
+                    splitline[3] = splitline[3][0:1] + str(num1)
+            except (ValueError, IndexError):
+                pass
+        elif marble == Marble.MAGIC_NUMBER_MUTATION:
+            if VERBOSE:
+                print("Magic number mutation")
+            r = random.randint(1, 2)
+            if r == 1:
+                splitline[2] = splitline[2][0:1] + str(magic_number)
+            else:
+                splitline[3] = splitline[3][0:1] + str(magic_number)
+        return splitline[0] + "." + splitline[1] + " " + splitline[2] + "," + splitline[3] + "\n"
+
+    return templine
+
+def breed_warriors(winlines, ranlines, era, arena_idx, bag):
+    """
+    Creates a new warrior by combining and mutating two parents.
+    Returns a list of normalized instructions.
+    """
+    # Use copies to avoid modifying parents
+    winlines = list(winlines)
+    ranlines = list(ranlines)
+
+    # Transposition
+    if random.randint(1, TRANSPOSITIONRATE_LIST[era]) == 1:
+        if VERBOSE:
+            print("Transposition")
+        # Randomly swap instructions to discover new tactical sequences.
+        for i in range(1, random.randint(1, int((WARLEN_LIST[arena_idx] + 1) / 2))):
+            fromline = random.randint(0, WARLEN_LIST[arena_idx] - 1)
+            toline = random.randint(0, WARLEN_LIST[arena_idx] - 1)
+            if random.randint(1, 2) == 1:
+                winlines[toline], winlines[fromline] = winlines[fromline], winlines[toline]
+            else:
+                ranlines[toline], ranlines[fromline] = ranlines[fromline], ranlines[toline]
+
+    if PREFER_WINNER_LIST[era]:
+        pickingfrom = 1  # if start picking from the winning warrior, more chance of winning genes passed on.
+    else:
+        pickingfrom = random.randint(1, 2)
+
+    # The 'magic number' helps create a sequence of related memory offsets if the mutation below is chosen.
+    magic_number = weighted_random_number(CORESIZE_LIST[arena_idx], WARLEN_LIST[arena_idx])
+    offspring_lines = []
+
+    for i in range(0, WARLEN_LIST[arena_idx]):
+        # Combine instructions from both parents (crossover) to pass on winning traits.
+        if random.randint(1, CROSSOVERRATE_LIST[era]) == 1:
+            pickingfrom = 2 if pickingfrom == 1 else 1
+
+        templine = winlines[i] if pickingfrom == 1 else ranlines[i]
+
+        chosen_marble = random.choice(bag)
+        templine = apply_mutation(templine, chosen_marble, arena_idx, magic_number)
+
+        # Final normalization to ensure the instruction follows the arena's rules.
+        templine = normalize_instruction(templine, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
+        offspring_lines.append(templine)
+        magic_number -= 1
+
+    return offspring_lines
+
 #custom function, Python modulo doesn't work how we want with negative numbers
 def coremod(x, y):
     """
@@ -2726,124 +2862,13 @@ if __name__ == "__main__":
       randomwarrior=str(random.randint(1, NUMWARRIORS))
       if VERBOSE:
           print("winner will breed with "+randomwarrior)
-      fr = open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r")
-      ranlines = fr.readlines()
-      fr.close()
-      fl = open(os.path.join(f"arena{arena}", f"{loser}.red"), "w")
-      if random.randint(1, TRANSPOSITIONRATE_LIST[era])==1:
-        if VERBOSE:
-            print("Transposition")
-        # Randomly swap instructions to discover new tactical sequences.
-        for i in range(1, random.randint(1, int((WARLEN_LIST[arena]+1)/2))):
-          fromline=random.randint(0,WARLEN_LIST[arena]-1)
-          toline=random.randint(0,WARLEN_LIST[arena]-1)
-          if random.randint(1,2)==1:
-            templine=winlines[toline]
-            winlines[toline]=winlines[fromline]
-            winlines[fromline]=templine
-          else:
-            templine=ranlines[toline]
-            ranlines[toline]=ranlines[fromline]
-            ranlines[fromline]=templine
-      if PREFER_WINNER_LIST[era]==True:
-        pickingfrom=1 #if start picking from the winning warrior, more chance of winning genes passed on.
-      else:
-        pickingfrom=random.randint(1,2)
+      with open(os.path.join(f"arena{arena}", f"{randomwarrior}.red"), "r") as fr:
+        ranlines = fr.readlines()
 
-      # The 'magic number' helps create a sequence of related memory offsets if the mutation below is chosen.
-      magic_number = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-      for i in range(0, WARLEN_LIST[arena]):
-        # Combine instructions from both parents (crossover) to pass on winning traits.
-        if random.randint(1,CROSSOVERRATE_LIST[era])==1:
-          if pickingfrom==1:
-            pickingfrom=2
-          else:
-            pickingfrom=1
+      offspring = breed_warriors(winlines, ranlines, era, arena, bag)
 
-        if pickingfrom==1:
-          templine=(winlines[i])
-        else:
-          templine=(ranlines[i])
-
-        chosen_marble=random.choice(bag)
-        if chosen_marble==Marble.MAJOR_MUTATION:
-          if VERBOSE:
-              print("Major mutation")
-          # Major Mutation: Replace the instruction with a completely random one to explore new possibilities.
-          num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-          num2 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-          templine=random.choice(INSTR_SET)+"."+random.choice(INSTR_MODIF)+" "+random.choice(INSTR_MODES)+ \
-                   str(num1)+","+random.choice(INSTR_MODES)+str(num2)+"\n"
-        elif chosen_marble==Marble.NAB_INSTRUCTION and (LAST_ARENA!=0):
-          # Borrow an instruction from a warrior in a different arena to introduce new ideas.
-          donor_arena=random.randint(0, LAST_ARENA)
-          while (donor_arena==arena):
-            donor_arena=random.randint(0, LAST_ARENA)
-          if VERBOSE:
-              print("Nab instruction from arena " + str(donor_arena))
-          donor_file = os.path.join(f"arena{donor_arena}", f"{random.randint(1, NUMWARRIORS)}.red")
-          with open(donor_file, 'r') as f:
-              templine = random.choice(f.readlines())
-        elif chosen_marble==Marble.INSTRUCTION_LIBRARY and LIBRARY_PATH and os.path.exists(LIBRARY_PATH):
-          if VERBOSE:
-              print("Instruction library")
-          with open(LIBRARY_PATH, 'r') as f:
-              templine = random.choice(f.readlines())
-        elif chosen_marble in [Marble.MINOR_MUTATION, Marble.MICRO_MUTATION, Marble.MAGIC_NUMBER_MUTATION]:
-          splitline = re.split(r'[ \.,\n]', templine)
-          if chosen_marble == Marble.MINOR_MUTATION:
-            if VERBOSE:
-                print("Minor mutation")
-            # Slightly change one part of the instruction (opcode, mode, or value) to fine-tune it.
-            r=random.randint(1,6)
-            if r==1:
-              splitline[0]=random.choice(INSTR_SET)
-            elif r==2:
-              splitline[1]=random.choice(INSTR_MODIF)
-            elif r==3:
-              splitline[2]=random.choice(INSTR_MODES)+splitline[2][1:]
-            elif r==4:
-              num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-              splitline[2]=splitline[2][0:1]+str(num1)
-            elif r==5:
-              splitline[3]=random.choice(INSTR_MODES)+splitline[3][1:]
-            elif r==6:
-              num1 = weighted_random_number(CORESIZE_LIST[arena], WARLEN_LIST[arena])
-              splitline[3]=splitline[3][0:1]+str(num1)
-          elif chosen_marble == Marble.MICRO_MUTATION:
-            if VERBOSE:
-                print ("Micro mutation")
-            # Adjust a single address value by 1 to test very small changes.
-            r=random.randint(1,2)
-            if r==1:
-              num1=int(splitline[2][1:])
-              if random.randint(1,2)==1:
-                num1=num1+1
-              else:
-                num1=num1-1
-              splitline[2]=splitline[2][0:1]+str(num1)
-            else:
-              num1=int(splitline[3][1:])
-              if random.randint(1,2)==1:
-                num1=num1+1
-              else:
-                num1=num1-1
-              splitline[3]=splitline[3][0:1]+str(num1)
-          elif chosen_marble == Marble.MAGIC_NUMBER_MUTATION:
-            if VERBOSE:
-                print ("Magic number mutation")
-            r=random.randint(1,2)
-            if r==1:
-              splitline[2]=splitline[2][0:1]+str(magic_number)
-            else:
-              splitline[3]=splitline[3][0:1]+str(magic_number)
-          templine=splitline[0]+"."+splitline[1]+" "+splitline[2]+","+splitline[3]+"\n"
-
-        templine = normalize_instruction(templine, CORESIZE_LIST[arena], SANITIZE_LIST[arena])
-        fl.write(templine)
-        magic_number=magic_number-1
-
-      fl.close()
+      with open(os.path.join(f"arena{arena}", f"{loser}.red"), "w") as fl:
+        fl.writelines(offspring)
       data_logger.log_row(era=era, arena=arena, winner=winner, loser=loser, score1=scores[0], score2=scores[1], \
                           bred_with=randomwarrior)
 
