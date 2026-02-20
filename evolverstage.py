@@ -2245,27 +2245,24 @@ def _get_arena_idx(default=0):
     """
     Helper to extract arena index from command line arguments.
     """
-    arena_idx = default
-    if "--arena" in sys.argv or "-a" in sys.argv:
-        if "--arena" in sys.argv:
-            a_idx = sys.argv.index("--arena")
-        else:
-            a_idx = sys.argv.index("-a")
+    for flag in ["--arena", "-a"]:
+        if flag in sys.argv:
+            idx = sys.argv.index(flag)
+            if len(sys.argv) > idx + 1:
+                return int(sys.argv[idx + 1])
+            return default
 
-        if len(sys.argv) > a_idx + 1:
-            arena_idx = int(sys.argv[a_idx+1])
-    else:
-        # Smart Arena Inference: look for arenaN/ or arenaN\ or selector@N in any argument
-        for arg in sys.argv[1:]:
-            match = re.search(r'arena(\d+)[/\\]', arg)
-            if match:
-                return int(match.group(1))
-            # Support @N suffix (e.g., top@5, random@2)
-            match = re.search(r'@(\d+)$', arg)
-            if match:
-                return int(match.group(1))
+    # Smart Arena Inference: look for arenaN/ or arenaN\ or selector@N in any argument
+    for arg in sys.argv[1:]:
+        match = re.search(r'arena(\d+)[/\\]', arg)
+        if match:
+            return int(match.group(1))
+        # Support @N suffix (e.g., top@5, random@2)
+        match = re.search(r'@(\d+)$', arg)
+        if match:
+            return int(match.group(1))
 
-    return arena_idx
+    return default
 
 def validate_configuration():
     """
