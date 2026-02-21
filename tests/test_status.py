@@ -35,9 +35,9 @@ class TestStatus(unittest.TestCase):
         self.assertTrue(any("Recent Activity (Last 1 matches):" in s for s in printed_strings))
         self.assertTrue(any("- Era 1, Arena 0: Warrior 5 beat Warrior 10 (150-50)" in s for s in printed_strings))
         # Check for table headers
-        self.assertTrue(any("Arena" in s and "Size" in s and "Pop" in s and "Champion" in s for s in printed_strings))
+        self.assertTrue(any("Arena" in s and "Size" in s and "Pop" in s and "Champ" in s for s in printed_strings))
         self.assertTrue(any("ARENA CONFIGURATION" in s for s in printed_strings))
-        self.assertTrue(any("POPULATION & CHAMPIONS" in s for s in printed_strings))
+        self.assertTrue(any("POPULATION, PERFORMANCE & STRATEGY" in s for s in printed_strings))
         # Check if arena 0 data is present (Arena 0, Pop 2)
         self.assertTrue(any(s.strip().startswith("0") and " 2 " in s for s in printed_strings))
 
