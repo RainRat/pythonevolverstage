@@ -61,15 +61,16 @@ class TestComparativeTournament(unittest.TestCase):
         """Test run_tournament with a list of selectors."""
         mock_isdir.return_value = False
         mock_exists.return_value = True
-        mock_resolve.side_effect = ["arena0/1.red", "arena1/2.red"]
+        # Need 4 return values: 2 for initial resolution, 2 for strategy identification in standings
+        mock_resolve.side_effect = ["arena0/1.red", "arena1/2.red", "arena0/1.red", "arena1/2.red"]
         mock_nmars.return_value = "1 scores 100\n2 scores 50\n"
 
         # Should run 1 battle for 2 warriors
         evolverstage.run_tournament(["top@0", "top@1"], 0)
 
         self.assertEqual(mock_nmars.call_count, 1)
-        # Check that it resolved both targets
-        self.assertEqual(mock_resolve.call_count, 2)
+        # Check that it resolved targets both initially and for strategy
+        self.assertEqual(mock_resolve.call_count, 4)
 
     @mock.patch('evolverstage._resolve_warrior_path')
     @mock.patch('os.path.isdir')
@@ -78,6 +79,7 @@ class TestComparativeTournament(unittest.TestCase):
         """Test that it still supports directory-based tournaments (backward compatibility)."""
         mock_isdir.return_value = True
         mock_exists.return_value = True
+        mock_resolve.side_effect = ["w2.red", "w1.red"]
 
         with mock.patch('os.listdir') as mock_listdir:
             mock_listdir.return_value = ["w1.red", "w2.red"]
@@ -89,8 +91,8 @@ class TestComparativeTournament(unittest.TestCase):
 
                 # Should have found 2 files and run 1 battle
                 self.assertEqual(mock_nmars.call_count, 1)
-                # Should NOT have used _resolve_warrior_path because it's a directory
-                self.assertEqual(mock_resolve.call_count, 0)
+                # Now calls _resolve_warrior_path for strategy identification in results
+                self.assertEqual(mock_resolve.call_count, 2)
 
 if __name__ == '__main__':
     unittest.main()
