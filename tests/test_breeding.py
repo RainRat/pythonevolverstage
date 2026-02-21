@@ -117,6 +117,17 @@ class TestBreeding(unittest.TestCase):
             result = evolverstage.apply_mutation(instr, Marble.MAGIC_NUMBER_MUTATION, 0, 42)
             self.assertEqual(result, "MOV.I $42,$0\n")
 
+    def test_apply_mutation_with_space(self):
+        """Regression test for bug where spaces after commas caused operand loss."""
+        instr = "MOV.I $0, $1\n"
+        # Use MINOR_MUTATION but r=1 (opcode change) so it doesn't try to parse operands as ints
+        with mock.patch('random.randint', return_value=1):
+            with mock.patch('random.choice', return_value="ADD"):
+                result = evolverstage.apply_mutation(instr, Marble.MINOR_MUTATION, 0, 123)
+                # Should be "ADD.I $0,$1\n" and definitely should contain "$1"
+                self.assertIn("$1", result)
+                self.assertEqual(result, "ADD.I $0,$1\n")
+
     def test_breed_warriors_basic(self):
         parent1 = ["MOV.I $1,$1\n"] * 5
         parent2 = ["ADD.F #2,#2\n"] * 5
