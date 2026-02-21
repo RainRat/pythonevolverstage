@@ -1238,13 +1238,20 @@ def get_evolution_status(arena_idx=None):
             count = len(files)
             arena_info["population"] = count
 
-            # Add champion info if available
+            # Add champion info and strategy if available
             if i in champions and champions[i]:
-                arena_info["champion"] = champions[i][0][0]
+                champ_id = champions[i][0][0]
+                arena_info["champion"] = champ_id
                 arena_info["champion_wins"] = champions[i][0][1]
+
+                # Identify champion strategy
+                champ_path = os.path.join(dir_name, f"{champ_id}.red")
+                champ_stats = analyze_warrior(champ_path)
+                arena_info["champion_strategy"] = identify_strategy(champ_stats)
             else:
                 arena_info["champion"] = None
                 arena_info["champion_wins"] = 0
+                arena_info["champion_strategy"] = "-"
 
             if count > 0:
                 total_lines = 0
@@ -2127,13 +2134,13 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
 
     # Two-tier Table Header
     group1_title = "      ARENA CONFIGURATION      "
-    group2_title = "        POPULATION & CHAMPIONS        "
+    group2_title = "          POPULATION, PERFORMANCE & STRATEGY          "
 
     # Align the group divider with the column divider (index 30)
     header_groups = f"{Colors.BOLD}{group1_title:<30} | {group2_title}{Colors.ENDC}"
     print(header_groups)
 
-    header_cols = f"{'Arena':<5} {'Size':>7} {'Cycles':>8} {'Procs':>6} | {'Pop':>5} {'Len':>5} {'Champion':<12} {'Wins':>4} {'Status':<8}"
+    header_cols = f"{'Arena':<5} {'Size':>7} {'Cycles':>8} {'Procs':>6} | {'Pop':>5} {'Len':>5} {'Champ':>6} {'Wins':>4} {'Strategy':<20} {'Status':<8}"
     print(f"{Colors.BOLD}{header_cols}{Colors.ENDC}")
     print(sep_single)
 
@@ -2146,6 +2153,7 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
 
         champ_str = "-"
         wins_str = "-"
+        strat_str = "-"
 
         if arena['exists']:
             pop = str(arena['population'])
@@ -2154,11 +2162,15 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
             status = f"{Colors.GREEN}OK{Colors.ENDC}"
 
             if arena.get('champion'):
-                champ_str = f"#{arena['champion']}"
+                champ_id = arena['champion']
+                champ_str = f"#{champ_id}"
                 wins_str = str(arena['champion_wins'])
+                strat_str = arena.get('champion_strategy', '-')
+
                 if arena['champion_wins'] > 0:
                     champ_str = f"{Colors.CYAN}{champ_str}{Colors.ENDC}"
                     wins_str = f"{Colors.BOLD}{Colors.GREEN}{wins_str}{Colors.ENDC}"
+                    strat_str = f"{Colors.CYAN}{strat_str}{Colors.ENDC}"
         else:
             pop = "-"
             avg_len = "-"
@@ -2166,11 +2178,13 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
 
         champ_plain = strip_ansi(champ_str)
         wins_plain = strip_ansi(wins_str)
+        strat_plain = strip_ansi(strat_str)
 
         row = (
             f"{i:<5} {size:>7} {cycles:>8} {procs:>6} | {pop:>5} {avg_len:>5} "
-            f"{champ_str}{' ' * (12 - len(champ_plain))} "
-            f"{' ' * (4 - len(wins_plain))}{wins_str} "
+            f"{champ_str:>{6 + (len(champ_str) - len(champ_plain))}} "
+            f"{wins_str:>{4 + (len(wins_str) - len(wins_plain))}} "
+            f"{strat_str:<{20 + (len(strat_str) - len(strat_plain))}} "
             f"{status}"
         )
         print(row)
