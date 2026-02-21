@@ -44,8 +44,8 @@ Battle Tools:
 
 Analysis & Utilities:
   --inspect, -x        Get a comprehensive profile of a warrior's performance and code.
-                       Usage: --inspect [warrior|selector] [--arena <N>]
-                       Defaults to the current champion ('top') if no target is provided.
+                       Usage: --inspect [targets...] [--arena <N>]
+                       Supports multiple targets. Defaults to 'top' if none provided.
   --lineage, -j        Trace the genealogy (parentage) of a warrior from the battle log.
                        Usage: --lineage [warrior|selector] [--depth <N>] [--arena <N>]
                        Defaults to the current champion ('top') if no target is provided.
@@ -80,8 +80,8 @@ Dynamic Selectors:
 
 Examples:
   python evolverstage.py --status
-  python evolverstage.py --battle
-  python evolverstage.py --battle mywarrior.red
+  python evolverstage.py --battle top1 top2
+  python evolverstage.py --inspect top1 top2 top3
   python evolverstage.py --battle top@0 top@1
   python evolverstage.py --compare top@0 top@1
   python evolverstage.py --export top@0 --output champion.red
@@ -155,10 +155,17 @@ def draw_progress_bar(percent, width=30):
 
 def print_status_line(text, end='\r'):
     """Clears the current line and prints the status text with proper terminal width handling."""
-    cols, _ = shutil.get_terminal_size()
-    visible_len = len(strip_ansi(text))
-    padding = " " * max(0, cols - visible_len - 1)
-    print(f"\r{text}{padding}", end=end, flush=True)
+    try:
+        cols, _ = shutil.get_terminal_size()
+        visible_len = len(strip_ansi(text))
+        padding = " " * max(0, cols - visible_len - 1)
+        print(f"\r{text}{padding}", end=end, flush=True)
+    except (OSError, ValueError):
+        try:
+            # Fallback for environments without a proper terminal or closed stdout
+            print(text, end='\n', flush=True)
+        except OSError:
+            pass
 
 def _get_nmars_cmd():
     """Returns the nMars executable name based on the operating system."""
@@ -267,12 +274,16 @@ def run_custom_battle(file1, file2, arena_idx):
             print(f"{Colors.BOLD}BATTLE RESULT (Arena {arena_idx}){Colors.ENDC}")
             print("-" * 75)
 
+            # Identify strategies for both contestants to provide tactical context
+            s1_strat = identify_strategy(analyze_warrior(file1))
+            s2_strat = identify_strategy(analyze_warrior(file2))
+
             streak1 = f"(Streak: {streaks[w1_id]})" if streaks[w1_id] > 0 else ""
             streak2 = f"(Streak: {streaks[w2_id]})" if streaks[w2_id] > 0 else ""
 
             # Use formatted strings with fixed-width columns
-            print(f"  Warrior 1: {w1_name:<25} {c1}{s1:>5}{Colors.ENDC} {bar1} {Colors.CYAN}{streak1}{Colors.ENDC}")
-            print(f"  Warrior 2: {w2_name:<25} {c2}{s2:>5}{Colors.ENDC} {bar2} {Colors.CYAN}{streak2}{Colors.ENDC}")
+            print(f"  Warrior 1: {w1_name:<25} {c1}{s1:>5}{Colors.ENDC} {bar1} {Colors.CYAN}{streak1:<13} {s1_strat}{Colors.ENDC}")
+            print(f"  Warrior 2: {w2_name:<25} {c2}{s2:>5}{Colors.ENDC} {bar2} {Colors.CYAN}{streak2:<13} {s2_strat}{Colors.ENDC}")
             print("-" * 75)
 
             if s1 == s2:
@@ -392,7 +403,7 @@ def run_tournament(targets, arena_idx):
     print("-" * 75)
     print(f"{Colors.BOLD}TOURNAMENT RESULTS (Arena {arena_idx}){Colors.ENDC}")
     print("-" * 75)
-    print(f"{'Rank':<4} {'Warrior':<25} {'Score':>7}  {'Performance'}")
+    print(f"{'Rank':<4} {'Warrior':<25} {'Strategy':<20} {'Score':>7}  {'Performance'}")
     print("-" * 75)
 
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
@@ -402,13 +413,15 @@ def run_tournament(targets, arena_idx):
         color = Colors.GREEN if rank == 1 else Colors.ENDC
         # Use basename for display if it looks like a path
         display_name = os.path.basename(name)
+        path = _resolve_warrior_path(name, arena_idx)
+        strat = identify_strategy(analyze_warrior(path))
 
         # Visual bar
         bar_width = 20
         fill = int(bar_width * score / max_possible) if max_possible > 0 else 0
         bar = f"[{color}{'=' * fill}{' ' * (bar_width - fill)}{Colors.ENDC}]"
 
-        print(f"{rank:>2}.  {display_name:<25} {color}{score:>7}{Colors.ENDC}  {bar}")
+        print(f"{rank:>2}.  {display_name:<25} {strat:<20} {color}{score:>7}{Colors.ENDC}  {bar}")
     print("-" * 75)
 
 def run_benchmark(warrior_file, directory, arena_idx):
@@ -1773,7 +1786,9 @@ def run_report(arena_idx):
     streaks = get_leaderboard(arena_idx=arena_idx, limit=5)
     if arena_idx in streaks:
         for i, (wid, streak) in enumerate(streaks[arena_idx], 1):
-            print(f"  {i}. Warrior {wid:3}: {Colors.GREEN}{streak} consecutive wins{Colors.ENDC}")
+            path = _resolve_warrior_path(str(wid), arena_idx)
+            strat = identify_strategy(analyze_warrior(path))
+            print(f"  {i}. Warrior {wid:3} ({Colors.CYAN}{strat}{Colors.ENDC}): {Colors.GREEN}{streak} consecutive wins{Colors.ENDC}")
     else:
         print("  No streak data available.")
 
@@ -1781,10 +1796,12 @@ def run_report(arena_idx):
     print(f"\n{Colors.BOLD}Lifetime Rankings (Win Rate):{Colors.ENDC}")
     rankings = get_lifetime_rankings(arena_idx=arena_idx, limit=5)
     if arena_idx in rankings:
-        print(f"  {'Rank':<4} | {'Warrior':<7} | {'Win Rate':>8} | {'Wins':>5} | {'Battles':>8}")
-        print("  " + "-" * 45)
+        print(f"  {'Rank':<4} | {'Warrior':<7} | {'Strategy':<20} | {'Win Rate':>8} | {'Wins':>5} | {'Battles':>8}")
+        print("  " + "-" * 73)
         for i, (wid, rate, wins, battles) in enumerate(rankings[arena_idx], 1):
-            print(f"  {i:<4} | {wid:7} | {rate:>7.1f}% | {wins:5} | {battles:8}")
+            path = _resolve_warrior_path(str(wid), arena_idx)
+            strat = identify_strategy(analyze_warrior(path))
+            print(f"  {i:<4} | {wid:7} | {strat:<20} | {rate:>7.1f}% | {wins:5} | {battles:8}")
     else:
         print("  No lifetime ranking data available (requires min. 5 battles per warrior).")
 
@@ -2751,15 +2768,19 @@ if __name__ == "__main__":
       try:
           idx = sys.argv.index("--inspect") if "--inspect" in sys.argv else sys.argv.index("-x")
           arena_idx = _get_arena_idx()
-          target = None
 
-          if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
-              target = sys.argv[idx+1]
-          else:
+          targets = []
+          for i in range(idx + 1, len(sys.argv)):
+              if sys.argv[i].startswith('-'):
+                  break
+              targets.append(sys.argv[i])
+
+          if not targets:
               # Default to champion if no target provided
-              target = "top"
+              targets = ["top"]
 
-          run_inspection(target, arena_idx)
+          for target in targets:
+              run_inspection(target, arena_idx)
           sys.exit(0)
       except Exception as e:
           print(f"Error during inspection: {e}")
