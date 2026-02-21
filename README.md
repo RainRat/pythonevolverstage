@@ -72,6 +72,16 @@ The evolver shows a real-time dashboard as it works:
 
 ---
 
+## File Organization
+
+As the evolver runs, it creates and manages several files and folders:
+
+*   **arenaN/**: Each arena has its own folder (like `arena0`, `arena1`). This is where the actual warrior programs (.red files) are stored.
+*   **archive/**: The tool occasionally saves the most successful warriors here to ensure their strategies are not lost as the population evolves.
+*   **battle_log.csv**: This file contains a detailed history of every match. It records which warriors won, who they bred with, and the final scores.
+
+---
+
 ## Configuration
 
 You can customize the evolution by editing the `settings.ini` file in the project folder.
