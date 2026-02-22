@@ -950,7 +950,7 @@ def apply_mutation(templine, marble, arena_idx, magic_number):
             return templine
 
     elif marble in [Marble.MINOR_MUTATION, Marble.MICRO_MUTATION, Marble.MAGIC_NUMBER_MUTATION]:
-        splitline = re.split(r'[ \.,\n]', templine)
+        splitline = re.split(r'[\s\.,]+', templine.strip())
         if len(splitline) < 4:
             return templine
 
