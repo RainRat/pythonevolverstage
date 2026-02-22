@@ -113,6 +113,10 @@ from evolver.logger import DataLogger
 
 VERSION = "1.1.0"
 
+# Standard Redcode instruction parser regex
+# Format: OPCODE[.MODIFIER] [<MODE>A-VAL[,<MODE>B-VAL]]
+RE_INSTRUCTION = re.compile(r'^([A-Z]+)(?:\.([A-Z]+))?(?:\s+([^,]+)(?:,\s*(.+))?)?$', re.I)
+
 class Colors:
     HEADER = '\033[95m'
     BLUE = '\033[94m'
@@ -1082,9 +1086,8 @@ def normalize_instruction(instruction, coresize, sanitize_limit):
     if not clean_instr:
         raise ValueError("Empty instruction")
 
-    # Regex to extract components robustly: OPCODE[.MODIFIER] [<MODE>A-VAL[,<MODE>B-VAL]]
     # This robust version handles operand-less instructions (e.g. DAT or END).
-    match = re.match(r'^([A-Z]+)(?:\.([A-Z]+))?(?:\s+([^,]+)(?:,\s*(.+))?)?$', clean_instr, re.I)
+    match = RE_INSTRUCTION.match(clean_instr)
     if not match:
         raise ValueError(f"Invalid instruction format: {clean_instr}")
 
@@ -1362,8 +1365,7 @@ def analyze_warrior(filepath):
                 stats['unique_instructions'].add(line.upper())
 
                 # Regex to extract components robustly
-                # Handles: OPCODE[.MODIFIER] [<MODE>A[,<MODE>B]]
-                match = re.match(r'^([A-Z]+)(?:\.([A-Z]+))?(?:\s+([^,]+)(?:,\s*(.+))?)?$', line, re.I)
+                match = RE_INSTRUCTION.match(line)
                 if match:
                     opcode, modifier, operand_a, operand_b = match.groups()
                     opcode = opcode.upper()
