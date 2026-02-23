@@ -55,6 +55,9 @@ Analysis & Utilities:
   --meta, -u           Analyze the distribution of strategies in the population or a folder.
                        Usage: --meta [file|folder|selector] [--arena <N>] [--json]
                        Defaults to the current arena if no target is provided.
+  --gauntlet, -G       Test a warrior against the champions of all arenas.
+                       Usage: --gauntlet [warrior|selector] [--arena <N>]
+                       Defaults to the current champion ('top') if no target is provided.
   --compare, -y        Compare two warriors, folders, or selectors side-by-side.
                        Usage: --compare <target1> <target2> [--arena <N>] [--json]
   --diff, -f           Perform a line-by-line code comparison between two warriors.
@@ -90,6 +93,7 @@ Examples:
   python evolverstage.py --view random@2
   python evolverstage.py --lineage top --depth 5
   python evolverstage.py --seed best_warriors/ --arena 0
+  python evolverstage.py --gauntlet top
 '''
 
 import random
@@ -521,6 +525,76 @@ def run_benchmark(warrior_file, directory, arena_idx):
         print(f"  {Colors.YELLOW}Ties:   {stats['ties']} ({stats['ties']/len(opponents)*100:.1f}%){Colors.ENDC}")
         print(f"  Total Score: {stats['score']}")
         print(f"  Average Score: {stats['score']/len(opponents):.2f}")
+
+def run_gauntlet(target, arena_idx):
+    """
+    Tests a warrior against the champions (top1) of all existing arenas.
+    Each battle uses the rules and configuration of the respective arena.
+    """
+    path = _resolve_warrior_path(target, arena_idx)
+    if not os.path.exists(path):
+        print(f"{Colors.RED}Error: Warrior '{target}' not found.{Colors.ENDC}")
+        return
+
+    # Identify target's strategy
+    target_strat = identify_strategy(analyze_warrior(path))
+    target_name = os.path.basename(path)
+
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- THE GAUNTLET: {target_name} ({target_strat}) ---{Colors.ENDC}")
+    print(f"Testing against all arena champions using their home rules.")
+    print("-" * 85)
+    print(f"{Colors.BOLD}{'Arena':<6} {'Champion':<15} {'Strategy':<20} {'Result':<10} {'Score':<10} {'Rules'}{Colors.ENDC}")
+    print("-" * 85)
+
+    wins = 0
+    ties = 0
+    total = 0
+
+    # Use absolute path for target to avoid issues
+    abs_path = os.path.abspath(path)
+
+    for i in range(LAST_ARENA + 1):
+        champ_path = _resolve_warrior_path("top", i)
+        if not os.path.exists(champ_path):
+            continue
+
+        total += 1
+        champ_name = os.path.basename(champ_path)
+        champ_strat = identify_strategy(analyze_warrior(champ_path))
+
+        # Home rules
+        rules = f"S:{CORESIZE_LIST[i]} C:{CYCLES_LIST[i]}"
+
+        # Use final era rounds as standard for tests
+        rounds = BATTLEROUNDS_LIST[-1] if BATTLEROUNDS_LIST else 100
+        cmd = construct_battle_command(abs_path, champ_path, i, rounds=rounds)
+        output = run_nmars_subprocess(cmd)
+
+        res_label = f"{Colors.RED}LOSS{Colors.ENDC}"
+        score_str = "0-0"
+
+        if output:
+            scores, warriors = parse_nmars_output(output)
+            if len(scores) >= 2:
+                # ID 1 is target, ID 2 is champ_path
+                score_map = {warriors[k]: scores[k] for k in range(len(warriors))}
+                s1 = score_map.get(1, 0)
+                s2 = score_map.get(2, 0)
+                score_str = f"{s1}-{s2}"
+
+                if s1 > s2:
+                    res_label = f"{Colors.GREEN}WIN{Colors.ENDC}"
+                    wins += 1
+                elif s1 == s2:
+                    res_label = f"{Colors.YELLOW}TIE{Colors.ENDC}"
+                    ties += 1
+
+        print(f"{i:<6} {champ_name:<15} {champ_strat:<20} {res_label:<20} {score_str:<10} {rules}")
+
+    print("-" * 85)
+    win_rate = (wins / total * 100) if total > 0 else 0
+    print(f"{Colors.BOLD}OVERALL PERFORMANCE:{Colors.ENDC} {wins} Wins, {ties} Ties, {total - wins - ties} Losses ({win_rate:.1f}% win rate)")
+    print("-" * 85)
 
 def run_normalization(filepath, arena_idx, output_path=None):
     """
@@ -2873,6 +2947,23 @@ if __name__ == "__main__":
           sys.exit(0)
       except Exception as e:
           print(f"Error during meta-analysis: {e}")
+          sys.exit(1)
+
+  if "--gauntlet" in sys.argv or "-G" in sys.argv:
+      try:
+          idx = sys.argv.index("--gauntlet") if "--gauntlet" in sys.argv else sys.argv.index("-G")
+          arena_idx = _get_arena_idx()
+          target = None
+
+          if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
+              target = sys.argv[idx+1]
+          else:
+              target = "top"
+
+          run_gauntlet(target, arena_idx)
+          sys.exit(0)
+      except Exception as e:
+          print(f"Error during gauntlet run: {e}")
           sys.exit(1)
 
   if "--compare" in sys.argv or "-y" in sys.argv:
