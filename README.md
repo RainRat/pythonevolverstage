@@ -14,7 +14,7 @@ Core War is a classic programming game. Several programs are placed in the memor
 
 ---
 
-## Core Concepts
+## Main Ideas
 
 Understanding these basic ideas will help you get the most out of the evolver.
 
@@ -39,7 +39,7 @@ An "Arena" is a separate environment with its own set of rules (like memory size
 
 ---
 
-## Prerequisites
+## What You Need
 
 To use this tool, you need:
 
@@ -65,6 +65,14 @@ The evolver shows a real-time dashboard as it works:
 08:00:00 left | [========----------------------]  25.00% | Era 1 | Battles: 1,200 (15.5/s)
 ```
 
+#### Reading the Dashboard
+The status line tells you how the evolution is progressing:
+*   **Time left**: How much longer the evolution will run.
+*   **Progress bar**: A visual representation of the total time completed.
+*   **Era**: The current evolution phase (1, 2, or 3).
+*   **Battles**: The total number of matches completed.
+*   **Speed (bps)**: How many battles are happening every second.
+
 *   **Monitor**: Use `python evolverstage.py --status --watch` for a detailed real-time view.
 *   **Stop**: Press `Ctrl+C` at any time. Your progress is saved automatically.
 *   **Resume**: Run `python evolverstage.py` to continue where you left off.
@@ -72,7 +80,7 @@ The evolver shows a real-time dashboard as it works:
 
 ---
 
-## File Organization
+## Files and Folders
 
 As the evolver runs, it creates and manages several files and folders:
 
@@ -82,7 +90,7 @@ As the evolver runs, it creates and manages several files and folders:
 
 ---
 
-## Configuration
+## Settings
 
 You can customize the evolution by editing the `settings.ini` file in the project folder.
 
@@ -147,6 +155,7 @@ You can use these keywords instead of a filename in most commands:
 *   **top**: Selects the #1 warrior on the leaderboard.
 *   **topN**: Selects the #N warrior (e.g., `top5`).
 *   **random**: Selects a random warrior from the population.
+*   **Warrior ID**: Selects a specific warrior by its ID number (e.g., `123`).
 
 Target a specific arena by adding `@N` to a selector or filename (e.g., `top@2`, `random@0`).
 
