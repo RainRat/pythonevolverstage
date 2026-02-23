@@ -33,8 +33,8 @@ Evolution:
 
 Battle Tools:
   --battle, -b         Run a match between two specific warriors.
-                       Defaults to 'top' vs 'top2' if no warriors provided.
-                       Usage: --battle [warrior1] [warrior2] [--arena <N>]
+                       Defaults to 'top' vs 'top2' if no targets provided.
+                       Usage: --battle [target1] [target2] [--arena <N>]
   --tournament, -t     Run an everyone-vs-everyone tournament between a group of warriors.
                        Defaults to the top 10 warriors of the current arena if no targets provided.
                        Use --champions to automatically include winners from every arena.
@@ -59,9 +59,11 @@ Analysis & Utilities:
                        Usage: --gauntlet [warrior|selector] [--arena <N>]
                        Defaults to the current champion ('top') if no target is provided.
   --compare, -y        Compare two warriors, folders, or selectors side-by-side.
-                       Usage: --compare <target1> <target2> [--arena <N>] [--json]
+                       Defaults to 'top' vs 'top2' if no targets provided.
+                       Usage: --compare [target1] [target2] [--arena <N>] [--json]
   --diff, -f           Perform a line-by-line code comparison between two warriors.
-                       Usage: --diff <target1> <target2> [--arena <N>]
+                       Defaults to 'top' vs 'top2' if no targets provided.
+                       Usage: --diff [target1] [target2] [--arena <N>]
   --view, -v           Display the source code of a warrior.
                        Usage: --view [warrior|selector] [--arena <N>]
                        Defaults to the current champion ('top') if no target is provided.
@@ -2756,15 +2758,18 @@ if __name__ == "__main__":
 
         if len(targets) == 0:
             # Default: Top vs Top2
-            w1 = _resolve_warrior_path("top1", arena_idx)
-            w2 = _resolve_warrior_path("top2", arena_idx)
+            w1_path = "top1"
+            w2_path = "top2"
         elif len(targets) == 1:
-            # Default: Target vs Top
-            w1 = _resolve_warrior_path(targets[0], arena_idx)
-            w2 = _resolve_warrior_path("top", arena_idx)
+            # Default: Target vs Top (or Top2 if Target is Top)
+            w1_path = targets[0]
+            w2_path = "top2" if w1_path.lower() in ["top", "top1"] else "top1"
         else:
-            w1 = _resolve_warrior_path(targets[0], arena_idx)
-            w2 = _resolve_warrior_path(targets[1], arena_idx)
+            w1_path = targets[0]
+            w2_path = targets[1]
+
+        w1 = _resolve_warrior_path(w1_path, arena_idx)
+        w2 = _resolve_warrior_path(w2_path, arena_idx)
 
         run_custom_battle(w1, w2, arena_idx)
         sys.exit(0)
@@ -2968,18 +2973,26 @@ if __name__ == "__main__":
 
   if "--compare" in sys.argv or "-y" in sys.argv:
       try:
-          if "--compare" in sys.argv:
-              idx = sys.argv.index("--compare")
-          else:
-              idx = sys.argv.index("-y")
-
-          if len(sys.argv) < idx + 3:
-              print("Usage: --compare|-y <target1> <target2> [--arena <N>] [--json]")
-              sys.exit(1)
-
-          t1 = sys.argv[idx+1]
-          t2 = sys.argv[idx+2]
+          idx = sys.argv.index("--compare") if "--compare" in sys.argv else sys.argv.index("-y")
           arena_idx = _get_arena_idx()
+
+          # Extract up to 2 warrior arguments that are not flags
+          targets = []
+          for i in range(idx + 1, len(sys.argv)):
+              if sys.argv[i].startswith('-'):
+                  break
+              targets.append(sys.argv[i])
+
+          if len(targets) == 0:
+              t1 = "top1"
+              t2 = "top2"
+          elif len(targets) == 1:
+              t1 = targets[0]
+              t2 = "top2" if t1.lower() in ["top", "top1"] else "top1"
+          else:
+              t1 = targets[0]
+              t2 = targets[1]
+
           json_output = "--json" in sys.argv
 
           run_comparison(t1, t2, arena_idx, json_output=json_output)
@@ -2990,18 +3003,25 @@ if __name__ == "__main__":
 
   if "--diff" in sys.argv or "-f" in sys.argv:
       try:
-          if "--diff" in sys.argv:
-              idx = sys.argv.index("--diff")
-          else:
-              idx = sys.argv.index("-f")
-
-          if len(sys.argv) < idx + 3:
-              print("Usage: --diff|-f <target1> <target2> [--arena <N>]")
-              sys.exit(1)
-
-          t1 = sys.argv[idx+1]
-          t2 = sys.argv[idx+2]
+          idx = sys.argv.index("--diff") if "--diff" in sys.argv else sys.argv.index("-f")
           arena_idx = _get_arena_idx()
+
+          # Extract up to 2 warrior arguments that are not flags
+          targets = []
+          for i in range(idx + 1, len(sys.argv)):
+              if sys.argv[i].startswith('-'):
+                  break
+              targets.append(sys.argv[i])
+
+          if len(targets) == 0:
+              t1 = "top1"
+              t2 = "top2"
+          elif len(targets) == 1:
+              t1 = targets[0]
+              t2 = "top2" if t1.lower() in ["top", "top1"] else "top1"
+          else:
+              t1 = targets[0]
+              t2 = targets[1]
 
           run_diff(t1, t2, arena_idx)
           sys.exit(0)
