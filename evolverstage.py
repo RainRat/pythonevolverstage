@@ -1117,13 +1117,18 @@ def breed_warriors(winlines, ranlines, era, arena_idx, bag):
         if random.randint(1, CROSSOVERRATE_LIST[era]) == 1:
             pickingfrom = 2 if pickingfrom == 1 else 1
 
-        templine = winlines[i] if pickingfrom == 1 else ranlines[i]
+        original_templine = winlines[i] if pickingfrom == 1 else ranlines[i]
 
         chosen_marble = random.choice(bag)
-        templine = apply_mutation(templine, chosen_marble, arena_idx, magic_number)
+        templine = apply_mutation(original_templine, chosen_marble, arena_idx, magic_number)
 
         # Final normalization to ensure the instruction follows the arena's rules.
-        templine = normalize_instruction(templine, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
+        try:
+            templine = normalize_instruction(templine, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
+        except (ValueError, IndexError):
+            # If mutation results in an invalid instruction (e.g. nabbing a comment), fallback to parent
+            templine = normalize_instruction(original_templine, CORESIZE_LIST[arena_idx], SANITIZE_LIST[arena_idx])
+
         offspring_lines.append(templine)
         magic_number -= 1
 
