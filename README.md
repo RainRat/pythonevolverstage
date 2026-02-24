@@ -25,12 +25,13 @@ The tool automatically shifts its strategy as it runs through three distinct pha
 2.  **Breeding (Era 2)**: The tool focuses on combining the most successful warriors to pass on winning traits.
 3.  **Optimization (Era 3)**: The tool makes small, precise adjustments to fine-tune the performance of top-tier warriors.
 
-### Smart Mutation
-Instead of making completely random changes, the evolver uses several intelligent mutation types:
-*   **Major**: Replaces an entire instruction with a random one to explore new possibilities.
-*   **Minor**: Changes one part of an instruction (like an opcode or value) to refine it.
-*   **Micro**: Adjusts a memory offset by exactly 1 to test very specific tactical changes.
-*   **Magic Number**: Applies a consistent "magic number" across different instructions, which often helps in creating structured memory patterns.
+### Evolution Strategies
+Instead of making completely random changes, the evolver uses seven intelligent strategies to create new warriors:
+*   **Do Nothing**: Occasionally makes no changes, which helps to preserve successful programs as they are.
+*   **Major Mutation**: Replaces an entire instruction with a random one to explore new possibilities.
+*   **Minor Mutation**: Changes one part of an instruction (like an opcode or value) to refine it.
+*   **Micro Mutation**: Adjusts a memory offset by exactly 1 to test very specific tactical changes.
+*   **Magic Number**: Applies a consistent "magic number" across instructions to help create structured memory patterns.
 *   **Library**: Pulls a known successful instruction from a library file (if provided).
 *   **Nab**: Borrows a successful instruction from a warrior in a different arena.
 
@@ -62,7 +63,7 @@ To use this tool, you need:
 ### Managing the Evolution
 The evolver shows a real-time dashboard as it works:
 ```text
-08:00:00 left | [========----------------------]  25.00% | Era 1 | Battles: 1,200 (15.5/s)
+08:00:00 left | [==--------]  25.00% | Era 1 | Battles: 1,200 (15.5/s)
 ```
 
 #### Reading the Dashboard
@@ -71,7 +72,7 @@ The status line tells you how the evolution is progressing:
 *   **Progress bar**: A visual representation of the total time completed.
 *   **Era**: The current evolution phase (1, 2, or 3).
 *   **Battles**: The total number of matches completed.
-*   **Speed (bps)**: How many battles are happening every second.
+*   **Speed**: How many battles are happening every second (e.g., 15.5/s).
 
 *   **Monitor**: Use `python evolverstage.py --status --watch` for a detailed real-time view.
 *   **Stop**: Press `Ctrl+C` at any time. Your progress is saved automatically.
@@ -95,6 +96,7 @@ As the evolver runs, it creates and manages several files and folders:
 You can customize the evolution by editing the `settings.ini` file in the project folder.
 
 ### Common Settings
+*   **Start/Resume**: The `ALREADYSEEDED` setting controls whether you start a new evolution (`False`) or resume an existing one (`True`).
 *   **Time**: Set `CLOCK_TIME` to the number of hours you want the evolution to run.
 *   **Arenas**: You can run multiple evolution environments at once.
     *   **LAST_ARENA**: Set this to the highest numbered arena you want to use. For example, if you want 8 arenas, the numbers are 0 through 7, so set this to `7`.
