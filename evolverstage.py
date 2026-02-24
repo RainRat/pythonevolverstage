@@ -2467,7 +2467,10 @@ def _get_arena_idx(default=0):
         if flag in sys.argv:
             idx = sys.argv.index(flag)
             if len(sys.argv) > idx + 1:
-                return int(sys.argv[idx + 1])
+                try:
+                    return int(sys.argv[idx + 1])
+                except ValueError:
+                    pass
             return default
 
     # Smart Arena Inference: look for arenaN/ or arenaN\ or selector@N in any argument
