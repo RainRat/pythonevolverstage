@@ -2671,9 +2671,9 @@ if __name__ == "__main__":
             # If no arena specified and multiple arenas have data, show a summary table
             if arena_idx is None and len(results) > 1:
                 print(f"\n{Colors.BOLD}{Colors.HEADER}--- GLOBAL CHAMPIONS (Rank 1 from all arenas) ---{Colors.ENDC}")
-                print("-" * 65)
-                print(f"{'Arena':<6} {'Warrior':<12} {'Streak':>8}   {'Performance'}")
-                print("-" * 65)
+                print("-" * 85)
+                print(f"{'Arena':<6} {'Warrior':<12} {'Strategy':<20} {'Streak':>8}   {'Performance'}")
+                print("-" * 85)
 
                 # Find max streak for scaling the bars
                 all_streaks = [top[0][1] for top in results.values() if top]
@@ -2682,30 +2682,43 @@ if __name__ == "__main__":
                 for a in sorted(results.keys()):
                     if results[a]:
                         warrior_id, streak = results[a][0]
+                        path = _resolve_warrior_path(str(warrior_id), a)
+                        strat = identify_strategy(analyze_warrior(path))
+                        strat_str = f"{Colors.CYAN}{strat}{Colors.ENDC}"
+                        strat_plain = strip_ansi(strat_str)
+
                         # Visual bar
                         bar_width = 20
                         fill = int(bar_width * streak / max_streak) if max_streak > 0 else 0
                         color = Colors.GREEN
                         bar = f"[{color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
-                        print(f"{a:<6} {warrior_id:<12} {streak:>8}   {bar}")
-                print("-" * 65)
+                        print(f"{a:<6} {warrior_id:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {streak:>8}   {bar}")
+                print("-" * 85)
             else:
                 # Show detailed leaderboard for one or more arenas
                 for a, top in results.items():
                     print(f"\n{Colors.BOLD}{Colors.HEADER}--- LEADERBOARD: Arena {a} ---{Colors.ENDC}")
-                    print("-" * 65)
-                    print(f"{'Rank':<4} {'Warrior':<12} {'Streak':>8}   {'Performance'}")
-                    print("-" * 65)
+                    print("-" * 85)
+                    print(f"{'Rank':<4} {'Warrior':<12} {'Strategy':<20} {'Streak':>8}   {'Performance'}")
+                    print("-" * 85)
 
                     max_streak = top[0][1] if top else 1
                     for i, (warrior_id, streak) in enumerate(top, 1):
+                        path = _resolve_warrior_path(str(warrior_id), a)
+                        strat = identify_strategy(analyze_warrior(path))
+                        strat_str = f"{Colors.CYAN}{strat}{Colors.ENDC}"
+                        strat_plain = strip_ansi(strat_str)
+
                         color = Colors.GREEN if i == 1 else Colors.ENDC
                         # Visual bar
                         bar_width = 20
                         fill = int(bar_width * streak / max_streak) if max_streak > 0 else 0
                         bar = f"[{color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
-                        print(f"{i:>2}.  {warrior_id:<12} {color}{streak:>8}{Colors.ENDC}   {bar}")
-                    print("-" * 65)
+                        streak_str = f"{color}{streak:>8}{Colors.ENDC}"
+                        streak_plain = strip_ansi(streak_str)
+
+                        print(f"{i:>2}.  {warrior_id:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {streak_str:>{8 + (len(streak_str) - len(streak_plain))}}   {bar}")
+                    print("-" * 85)
     sys.exit(0)
 
   if "--trends" in sys.argv or "-r" in sys.argv:
