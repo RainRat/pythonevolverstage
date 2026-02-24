@@ -2772,14 +2772,7 @@ if __name__ == "__main__":
         target_dir = sys.argv[idx+1]
 
         # Determine arena index (default all)
-        arena_idx = None
-        if "--arena" in sys.argv or "-a" in sys.argv:
-            try:
-                a_idx = sys.argv.index("--arena") if "--arena" in sys.argv else sys.argv.index("-a")
-                if len(sys.argv) > a_idx + 1:
-                    arena_idx = int(sys.argv[a_idx+1])
-            except ValueError:
-                pass
+        arena_idx = _get_arena_idx(default=None)
 
         # Determine limit (default 10)
         limit = 10
