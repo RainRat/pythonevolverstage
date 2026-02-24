@@ -69,6 +69,9 @@ Analysis & Utilities:
                        Defaults to the current champion ('top') if no target is provided.
   --normalize, -n      Clean and standardize a warrior's Redcode format.
                        Usage: --normalize <warrior|selector> [--arena <N>]
+  --optimize           Improve a warrior by running a local tournament of its mutations.
+                       Usage: --optimize [warrior|selector] [--arena <N>]
+                       Defaults to the current champion ('top') if no target is provided.
   --harvest, -p        Collect the best warriors from the leaderboard into a folder.
                        Usage: --harvest <folder> [--top <N>] [--arena <N>]
   --export, -e         Save a warrior with a standard Redcode header and normalization.
@@ -96,6 +99,7 @@ Examples:
   python evolverstage.py --lineage top --depth 5
   python evolverstage.py --seed best_warriors/ --arena 0
   python evolverstage.py --gauntlet top
+  python evolverstage.py --optimize top
 '''
 
 import random
@@ -601,6 +605,106 @@ def run_gauntlet(target, arena_idx):
     win_rate = (wins / total * 100) if total > 0 else 0
     print(f"{Colors.BOLD}OVERALL PERFORMANCE:{Colors.ENDC} {wins} Wins, {ties} Ties, {total - wins - ties} Losses ({win_rate:.1f}% win rate)")
     print("-" * 85)
+
+def run_optimization(target, arena_idx):
+    """
+    Takes a warrior and runs a local tournament of its own mutations
+    to find a slightly better version (Hill Climbing).
+    """
+    path = _resolve_warrior_path(target, arena_idx)
+    if not os.path.exists(path):
+        print(f"{Colors.RED}Error: Warrior '{target}' not found.{Colors.ENDC}")
+        return
+
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Optimizing Warrior: {os.path.basename(path)} (Arena {arena_idx}) ---{Colors.ENDC}")
+
+    try:
+        with open(path, 'r') as f:
+            target_lines = f.readlines()
+    except Exception as e:
+        print(f"Error reading warrior: {e}")
+        return
+
+    # Use Era 3 (index 2) settings for fine-tuning
+    bag = construct_marble_bag(2)
+
+    # Generate mutations in memory
+    mutations = [target_lines] # Index 0 is original
+    for i in range(7):
+        mutations.append(breed_warriors(target_lines, target_lines, 2, arena_idx, bag))
+
+    # To run battles, we MUST save them to files (nMars requirement)
+    temp_dir = "opt_temp"
+    if os.path.exists(temp_dir):
+        shutil.rmtree(temp_dir)
+    os.makedirs(temp_dir)
+
+    try:
+        filenames = []
+        for i, lines in enumerate(mutations):
+            fname = "original.red" if i == 0 else f"mut_{i}.red"
+            fpath = os.path.join(temp_dir, fname)
+            with open(fpath, 'w') as f:
+                f.writelines(lines)
+            filenames.append(fpath)
+
+        # Round-robin tournament
+        scores = {fname: 0 for fname in filenames}
+        pairs = list(itertools.combinations(filenames, 2))
+        total_battles = len(pairs)
+
+        print(f"Running {total_battles} matches between original and 7 mutations...")
+
+        for i, (p1, p2) in enumerate(pairs, 1):
+            percent = ((i - 1) / total_battles) * 100
+            bar = draw_progress_bar(percent, width=15)
+            print_status_line(f"{bar} Battle {i}/{total_battles}")
+
+            cmd = construct_battle_command(p1, p2, arena_idx)
+            output = run_nmars_subprocess(cmd)
+            s, warriors = parse_nmars_output(output)
+
+            # Map ID to filename
+            for idx, warrior_id in enumerate(warriors):
+                points = s[idx]
+                if warrior_id == 1: scores[p1] += points
+                elif warrior_id == 2: scores[p2] += points
+
+        print_status_line(f"{draw_progress_bar(100.0, width=15)} Tournament Complete.", end='\n')
+
+        # Results
+        sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+        print("-" * 60)
+        print(f"{'Rank':<5} {'Warrior':<15} {'Score':>8} {'Status'}")
+        print("-" * 60)
+
+        best_f, best_s = sorted_scores[0]
+        orig_s = scores[filenames[0]]
+
+        for rank, (fname, score) in enumerate(sorted_scores, 1):
+            display_name = os.path.basename(fname)
+            status = ""
+            if fname == filenames[0]: status = " (Original)"
+            elif score > orig_s: status = f" {Colors.GREEN}Improved (+{score - orig_s}){Colors.ENDC}"
+
+            print(f"{rank:>2}.    {display_name:<15} {score:>8} {status}")
+        print("-" * 60)
+
+        if best_f != filenames[0] and best_s > orig_s:
+            improvement = ((best_s - orig_s) / orig_s * 100) if orig_s > 0 else 0
+            print(f"\n{Colors.GREEN}{Colors.BOLD}SUCCESS!{Colors.ENDC} Mutation '{os.path.basename(best_f)}' improved performance by {improvement:.1f}%.")
+
+            # Suggest exporting
+            suggested_name = f"opt_{os.path.basename(path)}"
+            shutil.copy2(best_f, suggested_name)
+            print(f"Optimized warrior saved as: {Colors.YELLOW}{suggested_name}{Colors.ENDC}")
+        else:
+            print(f"\nNo superior mutations found in this generation. Try running optimization again!")
+
+    finally:
+        if os.path.exists(temp_dir):
+            shutil.rmtree(temp_dir)
 
 def run_normalization(filepath, arena_idx, output_path=None):
     """
@@ -2857,6 +2961,23 @@ if __name__ == "__main__":
           sys.exit(0)
       except ValueError:
           print("Invalid arguments.")
+          sys.exit(1)
+
+  if "--optimize" in sys.argv:
+      try:
+          idx = sys.argv.index("--optimize")
+          arena_idx = _get_arena_idx()
+          target = None
+
+          if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
+              target = sys.argv[idx+1]
+          else:
+              target = "top"
+
+          run_optimization(target, arena_idx)
+          sys.exit(0)
+      except Exception as e:
+          print(f"Error during optimization: {e}")
           sys.exit(1)
 
   if "--inspect" in sys.argv or "-x" in sys.argv:
