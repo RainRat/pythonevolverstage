@@ -58,6 +58,8 @@ Analysis & Utilities:
   --gauntlet, -G       Test a warrior against the champions of all arenas.
                        Usage: --gauntlet [warrior|selector] [--arena <N>]
                        Defaults to the current champion ('top') if no target is provided.
+  --hall-of-fame, -H    Display the all-time best warrior for each tactical category.
+                       Usage: --hall-of-fame [--arena <N>] [--json]
   --compare, -y        Compare two warriors, folders, or selectors side-by-side.
                        Defaults to 'top' vs 'top2' if no targets provided.
                        Usage: --compare [target1] [target2] [--arena <N>] [--json]
@@ -100,6 +102,7 @@ Examples:
   python evolverstage.py --seed best_warriors/ --arena 0
   python evolverstage.py --gauntlet top
   python evolverstage.py --optimize top
+  python evolverstage.py --hall-of-fame
 '''
 
 import random
@@ -2004,6 +2007,92 @@ def run_report(arena_idx):
     print(f"  Archive Size:  {status_data['archive']['count']} warriors")
     print("")
 
+def run_hall_of_fame(arena_idx=None, json_output=False):
+    """
+    Identifies and displays the all-time best warrior for each tactical category.
+    """
+    # 1. Get high-limit lifetime rankings (scan top 100 per arena)
+    rankings = get_lifetime_rankings(arena_idx=arena_idx, limit=100, min_battles=1)
+
+    # 2. Get current streaks for context
+    streaks = get_leaderboard(arena_idx=arena_idx, limit=100)
+
+    # best_by_strat = { strategy_name: {wid, arena, rate, wins, battles, streak, path} }
+    best_by_strat = {}
+
+    for a, top in rankings.items():
+        # Map streaks for this arena
+        arena_streaks = {}
+        if a in streaks:
+            for wid, streak in streaks[a]:
+                arena_streaks[str(wid)] = streak
+
+        for wid, rate, wins, battles in top:
+            path = _resolve_warrior_path(str(wid), a)
+            if not os.path.exists(path):
+                continue
+
+            stats = analyze_warrior(path)
+            strat = identify_strategy(stats)
+
+            streak = arena_streaks.get(str(wid), 0)
+
+            # Preference: Higher win rate, then more battles as tiebreaker
+            is_better = False
+            if strat not in best_by_strat:
+                is_better = True
+            else:
+                existing = best_by_strat[strat]
+                if rate > existing['rate']:
+                    is_better = True
+                elif rate == existing['rate'] and battles > existing['battles']:
+                    is_better = True
+
+            if is_better:
+                best_by_strat[strat] = {
+                    'warrior_id': wid,
+                    'arena': a,
+                    'rate': rate,
+                    'wins': wins,
+                    'battles': battles,
+                    'streak': streak,
+                    'path': path
+                }
+
+    if json_output:
+        # Prepare JSON-serializable version
+        json_res = {}
+        for s, d in best_by_strat.items():
+            json_res[s] = {k: v for k, v in d.items() if k != 'path'}
+        print(json.dumps(json_res, indent=2))
+        return
+
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- STRATEGIC HALL OF FAME ---{Colors.ENDC}")
+    if arena_idx is not None:
+        print(f"Filtered by Arena: {arena_idx}")
+    else:
+        print("Global champions across all arenas")
+    print("-" * 85)
+    print(f"{'Strategy':<20} | {'Warrior':<12} | {'Arena':<5} | {'Win Rate':>8} | {'Battles':>8} | {'Streak'}")
+    print("-" * 85)
+
+    if not best_by_strat:
+        print(f"  {Colors.YELLOW}No strategic data available yet. Run more battles!{Colors.ENDC}")
+    else:
+        for strat in sorted(best_by_strat.keys()):
+            data = best_by_strat[strat]
+            wid = data['warrior_id']
+            a = data['arena']
+            rate = data['rate']
+            battles = data['battles']
+            streak = data['streak']
+
+            streak_str = f"{Colors.GREEN}{streak}{Colors.ENDC}" if streak > 0 else "0"
+
+            print(f"{strat:<20} | #{wid:<11} | {a:<5} | {rate:>7.1f}% | {battles:>8} | {streak_str}")
+
+    print("-" * 85 + "\n")
+
 def run_inspection(target, arena_idx):
     """
     Provides a comprehensive profile of a warrior, combining metadata,
@@ -2576,7 +2665,7 @@ if __name__ == "__main__":
     # Section Headers
     help_text = re.sub(r'^([A-Z].*:)$', rf'{Colors.BOLD}{Colors.HEADER}\1{Colors.ENDC}', help_text, flags=re.MULTILINE)
     # Flags
-    help_text = re.sub(r'(--[a-z-]+|-[a-z](?!\w))', rf'{Colors.CYAN}\1{Colors.ENDC}', help_text)
+    help_text = re.sub(r'(--[a-z-]+|-[a-zA-Z](?!\w))', rf'{Colors.CYAN}\1{Colors.ENDC}', help_text)
     # Examples
     help_text = re.sub(r'(python evolverstage\.py .*)', rf'{Colors.YELLOW}\1{Colors.ENDC}', help_text)
     # Keywords
@@ -3096,6 +3185,19 @@ if __name__ == "__main__":
           sys.exit(0)
       except Exception as e:
           print(f"Error during meta-analysis: {e}")
+          sys.exit(1)
+
+  if "--hall-of-fame" in sys.argv or "-H" in sys.argv:
+      try:
+          arena_idx = _get_arena_idx(default=None) # Default to all arenas if not specified
+          if "--arena" not in sys.argv and "-a" not in sys.argv:
+              arena_idx = None
+
+          json_output = "--json" in sys.argv
+          run_hall_of_fame(arena_idx=arena_idx, json_output=json_output)
+          sys.exit(0)
+      except Exception as e:
+          print(f"Error during Hall of Fame display: {e}")
           sys.exit(1)
 
   if "--gauntlet" in sys.argv or "-G" in sys.argv:
