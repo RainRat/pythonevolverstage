@@ -174,5 +174,29 @@ class TestBreeding(unittest.TestCase):
                 self.assertEqual(result[0], "ADD.F $1,$1\n")
                 self.assertEqual(result[1], "MOV.I $0,$0\n")
 
+    def test_breed_warriors_invalid_mutation_fallback(self):
+        """Test that breed_warriors falls back to parent if mutation yields invalid code."""
+        parent1 = ["MOV.I $1,$1\n"] * 5
+        parent2 = ["ADD.F #2,#2\n"] * 5
+        bag = [Marble.NAB_INSTRUCTION]
+
+        evolverstage.LAST_ARENA = 1
+        with mock.patch('evolverstage.weighted_random_number', return_value=0):
+            with mock.patch('random.randint', return_value=100):
+                with mock.patch('random.choice') as mock_choice:
+                    with mock.patch('builtins.open', mock.mock_open(read_data="; only a comment\n")):
+                        # Interleave marble choice (NAB) and nabbed line (comment)
+                        mock_choice.side_effect = [Marble.NAB_INSTRUCTION, "; only a comment\n"] * 5
+
+                        # This should currently raise ValueError.
+                        # After the fix, it should return normalized parent1 instructions.
+                        try:
+                            result = evolverstage.breed_warriors(parent1, parent2, 0, 0, bag)
+                            self.assertEqual(len(result), 5)
+                            self.assertEqual(result[0], "MOV.I $1,$1\n")
+                        except ValueError:
+                            # We expect it to fail before we apply the fix
+                            raise
+
 if __name__ == '__main__':
     unittest.main()
