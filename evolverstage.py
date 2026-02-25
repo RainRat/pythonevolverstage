@@ -1432,7 +1432,8 @@ def get_evolution_status(arena_idx=None):
             "directory": f"arena{i}",
             "exists": False,
             "population": 0,
-            "avg_length": 0.0
+            "avg_length": 0.0,
+            "diversity": 0.0
         }
 
         dir_name = f"arena{i}"
@@ -1441,6 +1442,7 @@ def get_evolution_status(arena_idx=None):
             files = [f for f in os.listdir(dir_name) if f.endswith('.red')]
             count = len(files)
             arena_info["population"] = count
+            arena_info["diversity"] = get_population_diversity(i)
 
             # Add champion info and strategy if available
             if i in champions and champions[i]:
@@ -2403,10 +2405,8 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
 
     # Focused information for single arena
     if arena_idx is not None:
-        diversity = get_population_diversity(arena_idx)
-        div_color = Colors.GREEN if diversity > 50 else Colors.YELLOW if diversity > 10 else Colors.RED
-        print(f"{Colors.BOLD}Strategy Diversity:{Colors.ENDC} {div_color}{diversity:.1f}%{Colors.ENDC} unique strategies")
-        print(sep_single)
+        # Diversity is now in the main table for all views
+        pass
 
     # Latest Activity
     recent = data.get('recent_log', [])
@@ -2427,13 +2427,13 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
 
     # Two-tier Table Header
     group1_title = "      ARENA CONFIGURATION      "
-    group2_title = "          POPULATION, PERFORMANCE & STRATEGY          "
+    group2_title = "             POPULATION, PERFORMANCE & STRATEGY             "
 
     # Align the group divider with the column divider (index 30)
     header_groups = f"{Colors.BOLD}{group1_title:<30} | {group2_title}{Colors.ENDC}"
     print(header_groups)
 
-    header_cols = f"{'Arena':<5} {'Size':>7} {'Cycles':>8} {'Procs':>6} | {'Pop':>5} {'Len':>5} {'Champ':>6} {'Wins':>4} {'Strategy':<20} {'Status':<8}"
+    header_cols = f"{'Arena':<5} {'Size':>7} {'Cycles':>8} {'Procs':>6} | {'Pop':>5} {'Div%':>6} {'Len':>5} {'Champ':>6} {'Wins':>4} {'Strategy':<20} {'Status':<8}"
     print(f"{Colors.BOLD}{header_cols}{Colors.ENDC}")
     print(sep_single)
 
@@ -2447,12 +2447,18 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
         champ_str = "-"
         wins_str = "-"
         strat_str = "-"
+        div_str = "-"
 
         if arena['exists']:
             pop = str(arena['population'])
             total_warriors += arena['population']
             avg_len = f"{arena['avg_length']:.1f}"
             status = f"{Colors.GREEN}OK{Colors.ENDC}"
+
+            # Diversity formatting
+            div_val = arena.get('diversity', 0.0)
+            div_color = Colors.GREEN if div_val > 50 else Colors.YELLOW if div_val > 10 else Colors.RED
+            div_str = f"{div_color}{div_val:>5.1f}%{Colors.ENDC}"
 
             if arena.get('champion'):
                 champ_id = arena['champion']
@@ -2467,14 +2473,18 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
         else:
             pop = "-"
             avg_len = "-"
+            div_str = "-"
             status = f"{Colors.YELLOW}Unseeded{Colors.ENDC}"
 
         champ_plain = strip_ansi(champ_str)
         wins_plain = strip_ansi(wins_str)
         strat_plain = strip_ansi(strat_str)
+        div_plain = strip_ansi(div_str)
 
         row = (
-            f"{i:<5} {size:>7} {cycles:>8} {procs:>6} | {pop:>5} {avg_len:>5} "
+            f"{i:<5} {size:>7} {cycles:>8} {procs:>6} | {pop:>5} "
+            f"{div_str:>{6 + (len(div_str) - len(div_plain))}} "
+            f"{avg_len:>5} "
             f"{champ_str:>{6 + (len(champ_str) - len(champ_plain))}} "
             f"{wins_str:>{4 + (len(wins_str) - len(wins_plain))}} "
             f"{strat_str:<{20 + (len(strat_str) - len(strat_plain))}} "
