@@ -104,6 +104,18 @@ class TestAnalysis(unittest.TestCase):
         stats = analyze_warrior(self.test_dir)
         self.assertIsNone(stats)
 
+    def test_analyze_warrior_robust_to_empty_operands(self):
+        # Test that analyze_warrior doesn't crash on "MOV.I  , $1"
+        path = os.path.join(self.test_dir, "empty_op.red")
+        with open(path, "w") as f:
+            f.write("MOV.I  , $1\n")
+
+        # This used to crash with IndexError
+        stats = analyze_warrior(path)
+        self.assertIsNotNone(stats)
+        self.assertEqual(stats['opcodes']['MOV'], 1)
+        self.assertEqual(stats['modes']['$'], 1) # Only $1
+
     def test_print_analysis_single(self):
         stats = analyze_warrior(self.warrior1_path)
 

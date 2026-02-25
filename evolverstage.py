@@ -1506,6 +1506,9 @@ def get_leaderboard(arena_idx=None, limit=10):
                     winner = row['winner']
                     loser = row['loser']
 
+                    if winner == "TIE" or loser == "TIE":
+                        continue
+
                     # Increment winner
                     stats[a][winner] = stats[a].get(winner, 0) + 1
                     # Reset loser
@@ -1567,7 +1570,10 @@ def analyze_warrior(filepath):
 
                     for op in [operand_a, operand_b]:
                         if op:
-                            mode = op.strip()[0]
+                            clean_op = op.strip()
+                            if not clean_op:
+                                continue
+                            mode = clean_op[0]
                             if mode in '#$@<>{}*': # Standard Redcode modes
                                 stats['modes'][mode] = stats['modes'].get(mode, 0) + 1
                             else:
@@ -1923,6 +1929,9 @@ def get_lifetime_rankings(arena_idx=None, limit=10, min_battles=5):
 
                     winner = row['winner']
                     loser = row['loser']
+
+                    if winner == "TIE" or loser == "TIE":
+                        continue
 
                     if winner not in stats[a]:
                         stats[a][winner] = {'wins': 0, 'battles': 0}
