@@ -1889,11 +1889,11 @@ def get_population_diversity(arena_idx):
                     # Strip trailing comments
                     clean = line.split(';')[0].strip()
                     if clean:
-                        # Normalize internal whitespace
-                        normalized = " ".join(clean.split())
+                        # Normalize internal whitespace and case to ensure logical comparison
+                        normalized = " ".join(clean.split()).upper()
                         logical_lines.append(normalized)
 
-                content = "".join(logical_lines)
+                content = "\n".join(logical_lines)
                 strategy_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
                 unique_hashes.add(strategy_hash)
                 processed_count += 1
