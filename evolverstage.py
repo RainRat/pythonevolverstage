@@ -2593,6 +2593,29 @@ def _get_arena_idx(default=0):
 
     return default
 
+def _extract_pairwise_targets(idx):
+    """
+    Extracts up to two raw target selectors from command line arguments starting at idx.
+    Provides smart defaults (top1 vs top2) if one or both are missing.
+    """
+    targets = []
+    for i in range(idx + 1, len(sys.argv)):
+        if sys.argv[i].startswith('-'):
+            break
+        targets.append(sys.argv[i])
+
+    if len(targets) == 0:
+        return "top1", "top2"
+
+    t1 = targets[0]
+    if len(targets) == 1:
+        # Default: Target vs Top (or Top2 if Target is Top)
+        t2 = "top2" if t1.lower() in ["top", "top1"] else "top1"
+    else:
+        t2 = targets[1]
+
+    return t1, t2
+
 def validate_configuration():
     """
     Checks if the project is ready to run.
@@ -2977,24 +3000,7 @@ if __name__ == "__main__":
         idx = sys.argv.index("--battle") if "--battle" in sys.argv else sys.argv.index("-b")
         arena_idx = _get_arena_idx()
 
-        # Extract up to 2 warrior arguments that are not flags
-        targets = []
-        for i in range(idx + 1, len(sys.argv)):
-            if sys.argv[i].startswith('-'):
-                break
-            targets.append(sys.argv[i])
-
-        if len(targets) == 0:
-            # Default: Top vs Top2
-            w1_path = "top1"
-            w2_path = "top2"
-        elif len(targets) == 1:
-            # Default: Target vs Top (or Top2 if Target is Top)
-            w1_path = targets[0]
-            w2_path = "top2" if w1_path.lower() in ["top", "top1"] else "top1"
-        else:
-            w1_path = targets[0]
-            w2_path = targets[1]
+        w1_path, w2_path = _extract_pairwise_targets(idx)
 
         w1 = _resolve_warrior_path(w1_path, arena_idx)
         w2 = _resolve_warrior_path(w2_path, arena_idx)
@@ -3234,22 +3240,7 @@ if __name__ == "__main__":
           idx = sys.argv.index("--compare") if "--compare" in sys.argv else sys.argv.index("-y")
           arena_idx = _get_arena_idx()
 
-          # Extract up to 2 warrior arguments that are not flags
-          targets = []
-          for i in range(idx + 1, len(sys.argv)):
-              if sys.argv[i].startswith('-'):
-                  break
-              targets.append(sys.argv[i])
-
-          if len(targets) == 0:
-              t1 = "top1"
-              t2 = "top2"
-          elif len(targets) == 1:
-              t1 = targets[0]
-              t2 = "top2" if t1.lower() in ["top", "top1"] else "top1"
-          else:
-              t1 = targets[0]
-              t2 = targets[1]
+          t1, t2 = _extract_pairwise_targets(idx)
 
           json_output = "--json" in sys.argv
 
@@ -3264,22 +3255,7 @@ if __name__ == "__main__":
           idx = sys.argv.index("--diff") if "--diff" in sys.argv else sys.argv.index("-f")
           arena_idx = _get_arena_idx()
 
-          # Extract up to 2 warrior arguments that are not flags
-          targets = []
-          for i in range(idx + 1, len(sys.argv)):
-              if sys.argv[i].startswith('-'):
-                  break
-              targets.append(sys.argv[i])
-
-          if len(targets) == 0:
-              t1 = "top1"
-              t2 = "top2"
-          elif len(targets) == 1:
-              t1 = targets[0]
-              t2 = "top2" if t1.lower() in ["top", "top1"] else "top1"
-          else:
-              t1 = targets[0]
-              t2 = targets[1]
+          t1, t2 = _extract_pairwise_targets(idx)
 
           run_diff(t1, t2, arena_idx)
           sys.exit(0)
