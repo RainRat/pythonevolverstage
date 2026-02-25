@@ -127,9 +127,10 @@ class TestRunTournament(unittest.TestCase):
         # In the enhanced version, we have a Strategy column between Warrior and Score
         # Strategy will be 'Unknown' because files don't exist in the mock filesystem
         strat = "Unknown"
-        mock_print.assert_any_call(f"{1:>2}.  {display_name1:<25} {strat:<20} {evolverstage.Colors.GREEN}{200:>7}{evolverstage.Colors.ENDC}  {bar1}")
-        mock_print.assert_any_call(f"{2:>2}.  {display_name2:<25} {strat:<20} {evolverstage.Colors.ENDC}{100:>7}{evolverstage.Colors.ENDC}  {bar2}")
-        mock_print.assert_any_call(f"{3:>2}.  {display_name3:<25} {strat:<20} {evolverstage.Colors.ENDC}{0:>7}{evolverstage.Colors.ENDC}  {bar3}")
+        strat_color = evolverstage.get_strategy_color(strat)
+        mock_print.assert_any_call(f"{1:>2}.  {display_name1:<25} {strat_color}{strat:<20}{evolverstage.Colors.ENDC} {evolverstage.Colors.GREEN}{200:>7}{evolverstage.Colors.ENDC}  {bar1}")
+        mock_print.assert_any_call(f"{2:>2}.  {display_name2:<25} {strat_color}{strat:<20}{evolverstage.Colors.ENDC} {evolverstage.Colors.ENDC}{100:>7}{evolverstage.Colors.ENDC}  {bar2}")
+        mock_print.assert_any_call(f"{3:>2}.  {display_name3:<25} {strat_color}{strat:<20}{evolverstage.Colors.ENDC} {evolverstage.Colors.ENDC}{0:>7}{evolverstage.Colors.ENDC}  {bar3}")
 
 if __name__ == '__main__':
     unittest.main()
