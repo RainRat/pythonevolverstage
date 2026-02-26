@@ -60,6 +60,7 @@ To use this tool, you need:
     *   Extract the download and find the `nmars.exe` (Windows) or `nmars` (Linux/macOS) file.
     *   **Important**: Copy that file into this project's main folder.
     *   **Linux/macOS users**: Open your terminal in the folder and run `chmod +x nmars` to give the simulator permission to run.
+3.  **No extra libraries**: This project only uses the standard Python library and requires no additional packages (like `pip install`).
 
 ---
 
@@ -98,6 +99,7 @@ As the evolver runs, it creates and manages several files and folders:
 
 *   **arenaN/**: Each arena has its own folder (like `arena0`, `arena1`). This is where the actual warrior programs (.red files) are stored.
 *   **archive/**: The tool occasionally saves the most successful warriors here to ensure their strategies are not lost as the population evolves.
+*   **examples/**: A collection of successful warriors from previous evolution runs that you can use as references or opponents.
 *   **battle_log.csv**: This file contains a detailed history of every match. It records which warriors won, who they bred with, and the final scores.
 
 ---
@@ -129,56 +131,66 @@ For example, `NOTHING_LIST = 10, 18, 27` means the "Do Nothing" mutation becomes
 The script includes several tools for analyzing and testing your warriors.
 
 ### Status and Progress
-*   **Status**: `python evolverstage.py --status --watch`
+*   **Status** (`--status`, `-s`): `python evolverstage.py --status --watch`
     *   Shows a real-time view of all arenas and population health.
-*   **Leaderboard**: `python evolverstage.py --leaderboard`
+*   **Leaderboard** (`--leaderboard`, `-l`): `python evolverstage.py --leaderboard`
     *   Lists the top-performing warriors based on their recent win streaks.
-*   **Report**: `python evolverstage.py --report`
+*   **Rankings** (`--rankings`, `-K`): `python evolverstage.py --rankings`
+    *   Shows the top-performing warriors based on their lifetime win rate.
+*   **Report** (`--report`, `-g`): `python evolverstage.py --report`
     *   Generates a comprehensive health and performance report for an arena.
-*   **Trends**: `python evolverstage.py --trends`
+*   **Trends** (`--trends`, `-r`): `python evolverstage.py --trends`
     *   Compares the whole population's code to the top-performing warriors.
 
 ### Analyze and View
-*   **Inspect**: `python evolverstage.py --inspect top`
+*   **Inspect** (`--inspect`, `-x`): `python evolverstage.py --inspect top`
     *   Provides a detailed profile of a warrior's performance, strategy, and code.
-*   **Lineage**: `python evolverstage.py --lineage top`
+*   **Lineage** (`--lineage`, `-j`): `python evolverstage.py --lineage top`
     *   Traces the parentage of a warrior to see its family tree.
-*   **Meta**: `python evolverstage.py --meta`
+*   **Meta** (`--meta`, `-u`): `python evolverstage.py --meta`
     *   Analyzes the distribution of different tactical strategies in an arena.
-*   **Hall of Fame**: `python evolverstage.py --hall-of-fame`
+*   **Hall of Fame** (`--hall-of-fame`, `-H`): `python evolverstage.py --hall-of-fame`
     *   Displays the all-time best warrior for each tactical category.
-*   **Analyze**: `python evolverstage.py --analyze top`
+*   **Analyze** (`--analyze`, `-i`): `python evolverstage.py --analyze top`
     *   Shows statistics on the instructions used by a warrior.
-*   **Compare**: `python evolverstage.py --compare top@0 top@1`
+*   **Compare** (`--compare`, `-y`): `python evolverstage.py --compare top@0 top@1`
     *   Provides a side-by-side statistical comparison between two warriors.
-*   **Diff**: `python evolverstage.py --diff top1 top2`
+*   **Diff** (`--diff`, `-f`): `python evolverstage.py --diff top1 top2`
     *   Provides a line-by-line code comparison between two warriors.
-*   **View**: `python evolverstage.py --view top`
+*   **View** (`--view`, `-v`): `python evolverstage.py --view top`
     *   Displays the Redcode source code of a warrior.
 
 ### Battles and Tournaments
-*   **Tournament**: `python evolverstage.py --tournament`
+*   **Tournament** (`--tournament`, `-t`): `python evolverstage.py --tournament`
     *   Runs an everyone-vs-everyone tournament. Defaults to the top 10 warriors.
-*   **Gauntlet**: `python evolverstage.py --gauntlet top`
+*   **Gauntlet** (`--gauntlet`, `-G`): `python evolverstage.py --gauntlet top`
     *   Tests a warrior against the champions of every single arena.
-*   **Benchmark**: `python evolverstage.py --benchmark top folder/`
+*   **Benchmark** (`--benchmark`, `-m`): `python evolverstage.py --benchmark top folder/`
     *   Tests a warrior against every opponent in a specific folder.
-*   **Single Battle**: `python evolverstage.py --battle warrior1.red warrior2.red`
+*   **Single Battle** (`--battle`, `-b`): `python evolverstage.py --battle warrior1.red warrior2.red`
 
 ### Utilities and Optimization
-*   **Optimize**: `python evolverstage.py --optimize top`
+*   **Optimize** (`--optimize`): `python evolverstage.py --optimize top`
     *   Automatically improves a warrior by testing small mutations against itself.
-*   **Normalize**: `python evolverstage.py --normalize top`
+*   **Normalize** (`--normalize`, `-n`): `python evolverstage.py --normalize top`
     *   Cleans and standardizes a warrior's Redcode format.
-*   **Export**: `python evolverstage.py --export top --output champion.red`
-*   **Harvest**: `python evolverstage.py --harvest winners/`
+*   **Export** (`--export`, `-e`): `python evolverstage.py --export top --output champion.red`
+*   **Harvest** (`--harvest`, `-p`): `python evolverstage.py --harvest winners/`
     *   Collects the best warriors from the leaderboard into a folder.
-*   **Seed**: `python evolverstage.py --seed my_warriors/`
+*   **Seed** (`--seed`): `python evolverstage.py --seed my_warriors/`
     *   Populates arenas with specific warriors.
-*   **Collect**: `python evolverstage.py --collect folder/ -o library.txt`
+*   **Collect** (`--collect`, `-k`): `python evolverstage.py --collect folder/ -o library.txt`
     *   Creates an instruction library from a group of warriors.
 
-**Note**: Add `--arena N` to any command to use the rules of a specific arena (default is Arena 0).
+### General Commands
+*   **Check Setup** (`--check`, `-c`): `python evolverstage.py --check`
+    *   Verifies your configuration and simulator setup.
+*   **Dump Config** (`--dump-config`, `-d`): `python evolverstage.py --dump-config`
+    *   Shows the active configuration from `settings.ini`.
+*   **Version** (`--version`): `python evolverstage.py --version`
+    *   Displays the current version of the tool.
+
+**Note**: Add `--arena N` (or `-a N`) to any command to use the rules of a specific arena (default is Arena 0).
 
 ---
 
