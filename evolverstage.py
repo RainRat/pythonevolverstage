@@ -51,6 +51,9 @@ Analysis & Utilities:
   --lineage, -j        Trace the genealogy (parentage) of a warrior from the battle log.
                        Usage: --lineage [warrior|selector] [--depth <N>] [--arena <N>]
                        Defaults to the current champion ('top') if no target is provided.
+  --history, -L        Display the recent match history for a specific warrior.
+                       Usage: --history [warrior|selector] [--top <N>] [--arena <N>] [--json]
+                       Defaults to the current champion ('top') if no target is provided.
   --analyze, -i        Get statistics on instructions, opcodes, and addressing modes.
                        Usage: --analyze [file|folder|selector] [--arena <N>] [--json]
                        Defaults to the current champion ('top') if no target is provided.
@@ -102,6 +105,7 @@ Examples:
   python evolverstage.py --benchmark top archive/
   python evolverstage.py --view random@2
   python evolverstage.py --lineage top --depth 5
+  python evolverstage.py --history top --top 20
   python evolverstage.py --seed best_warriors/ --arena 0
   python evolverstage.py --gauntlet top
   python evolverstage.py --optimize top
@@ -2058,6 +2062,107 @@ def run_rankings(arena_idx=None, limit=10, min_battles=5, json_output=False):
 
     print(sep + "\n")
 
+def run_history(target, arena_idx, limit=10, json_output=False):
+    """
+    Displays the recent match history for a specific warrior.
+    """
+    path = _resolve_warrior_path(target, arena_idx)
+
+    if not os.path.exists(path):
+        print(f"{Colors.RED}Error: Target '{target}' not found.{Colors.ENDC}")
+        return
+
+    # Try to extract warrior ID and arena from path
+    filename = os.path.basename(path)
+    warrior_id = None
+    if filename.endswith('.red'):
+        warrior_id = filename[:-4]
+
+    target_arena = arena_idx
+    match = re.search(r'arena(\d+)', os.path.dirname(path))
+    if match:
+        target_arena = int(match.group(1))
+
+    if not warrior_id or not warrior_id.isdigit():
+        print(f"{Colors.RED}Error: Could not identify warrior ID for '{target}'. History is only available for warriors in arena folders (e.g. arena0/123.red).{Colors.ENDC}")
+        return
+
+    if not BATTLE_LOG_FILE or not os.path.exists(BATTLE_LOG_FILE):
+        print(f"{Colors.YELLOW}No battle log found ({BATTLE_LOG_FILE}).{Colors.ENDC}")
+        return
+
+    matches = []
+    try:
+        with open(BATTLE_LOG_FILE, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    a = int(row['arena'])
+                    if a != target_arena:
+                        continue
+
+                    winner = row['winner']
+                    loser = row['loser']
+
+                    if winner == warrior_id or loser == warrior_id:
+                        matches.append(row)
+                except (ValueError, KeyError):
+                    continue
+    except Exception as e:
+        print(f"{Colors.RED}Error reading battle log: {e}{Colors.ENDC}")
+        return
+
+    recent_matches = matches[-limit:]
+    recent_matches.reverse()
+
+    if json_output:
+        print(json.dumps(recent_matches, indent=2))
+        return
+
+    if not recent_matches:
+        print(f"{Colors.YELLOW}No recent matches found for warrior #{warrior_id} in Arena {target_arena}.{Colors.ENDC}")
+        return
+
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Match History: Warrior #{warrior_id} (Arena {target_arena}) ---{Colors.ENDC}")
+    sep = get_separator('=')
+    print(sep)
+    header = f"{'Era':<5} | {'Opponent':<10} | {'Result':<8} | {'Score':<10}"
+    print(header)
+    print(get_separator('-'))
+
+    for m in recent_matches:
+        era = m['era']
+        winner = m['winner']
+        loser = m['loser']
+        s1 = m['score1']
+        s2 = m['score2']
+
+        is_draw = False
+        try:
+            if int(s1) == int(s2):
+                is_draw = True
+        except ValueError:
+            pass
+
+        if winner == warrior_id:
+            result_label = "WIN" if not is_draw else "DRAW/W"
+            result = f"{Colors.GREEN}{result_label}{Colors.ENDC}" if not is_draw else f"{Colors.YELLOW}{result_label}{Colors.ENDC}"
+            opponent = loser
+            score_str = f"{s1}-{s2}"
+        else:
+            result_label = "LOSS" if not is_draw else "DRAW/L"
+            result = f"{Colors.RED}{result_label}{Colors.ENDC}" if not is_draw else f"{Colors.YELLOW}{result_label}{Colors.ENDC}"
+            opponent = winner
+            score_str = f"{s1}-{s2}"
+
+        # Calculate padding for result because it contains ANSI
+        res_plain = strip_ansi(result)
+        padding = 8 - len(res_plain)
+        res_display = result + (" " * padding)
+
+        print(f"{era:<5} | {opponent:<10} | {res_display} | {score_str:<10}")
+    print(sep)
+
 def run_report(arena_idx):
     """
     Generates and displays a comprehensive health and performance report for an arena.
@@ -3268,6 +3373,29 @@ if __name__ == "__main__":
           sys.exit(0)
       except Exception as e:
           print(f"Error during inspection: {e}")
+          sys.exit(1)
+
+  if "--history" in sys.argv or "-L" in sys.argv:
+      try:
+          idx = sys.argv.index("--history") if "--history" in sys.argv else sys.argv.index("-L")
+          arena_idx = _get_arena_idx()
+
+          target = "top"
+          if len(sys.argv) > idx + 1 and not sys.argv[idx+1].startswith('-'):
+              target = sys.argv[idx+1]
+
+          limit = 10
+          if "--top" in sys.argv:
+              t_idx = sys.argv.index("--top")
+              if len(sys.argv) > t_idx + 1:
+                  limit = int(sys.argv[t_idx + 1])
+
+          json_output = "--json" in sys.argv
+
+          run_history(target, arena_idx, limit=limit, json_output=json_output)
+          sys.exit(0)
+      except Exception as e:
+          print(f"Error during history analysis: {e}")
           sys.exit(1)
 
   if "--lineage" in sys.argv or "-j" in sys.argv:
