@@ -310,9 +310,10 @@ def run_custom_battle(file1, file2, arena_idx):
             bar2 = f"[{c2}{'=' * b2_fill}{' ' * (bar_width - b2_fill)}{Colors.ENDC}]"
 
             # Standardized Polished Output Format
-            print("-" * 75)
+            sep = get_separator("-", max_width=75)
+            print(sep)
             print(f"{Colors.BOLD}BATTLE RESULT (Arena {arena_idx}){Colors.ENDC}")
-            print("-" * 75)
+            print(sep)
 
             # Identify strategies for both contestants to provide tactical context
             s1_strat = identify_strategy(analyze_warrior(file1))
@@ -321,10 +322,16 @@ def run_custom_battle(file1, file2, arena_idx):
             streak1 = f"(Streak: {streaks[w1_id]})" if streaks[w1_id] > 0 else ""
             streak2 = f"(Streak: {streaks[w2_id]})" if streaks[w2_id] > 0 else ""
 
+            # Use strategy colors for labels
+            s1_color = get_strategy_color(s1_strat)
+            s2_color = get_strategy_color(s2_strat)
+            s1_strat_colored = f"{s1_color}{s1_strat}{Colors.ENDC}"
+            s2_strat_colored = f"{s2_color}{s2_strat}{Colors.ENDC}"
+
             # Use formatted strings with fixed-width columns
-            print(f"  Warrior 1: {w1_name:<25} {c1}{s1:>5}{Colors.ENDC} {bar1} {Colors.CYAN}{streak1:<13} {s1_strat}{Colors.ENDC}")
-            print(f"  Warrior 2: {w2_name:<25} {c2}{s2:>5}{Colors.ENDC} {bar2} {Colors.CYAN}{streak2:<13} {s2_strat}{Colors.ENDC}")
-            print("-" * 75)
+            print(f"  Warrior 1: {w1_name:<25} {c1}{s1:>5}{Colors.ENDC} {bar1} {Colors.CYAN}{streak1:<13} {s1_strat_colored}")
+            print(f"  Warrior 2: {w2_name:<25} {c2}{s2:>5}{Colors.ENDC} {bar2} {Colors.CYAN}{streak2:<13} {s2_strat_colored}")
+            print(sep)
 
             if s1 == s2:
                 print(f"  {Colors.BOLD}{Colors.YELLOW}RESULT: TIE{Colors.ENDC}")
@@ -332,12 +339,13 @@ def run_custom_battle(file1, file2, arena_idx):
                 winner_name = w1_name if res_winner_id == 1 else w2_name
                 diff = abs(s1 - s2)
                 print(f"  {Colors.BOLD}WINNER: {Colors.GREEN}{winner_name}{Colors.ENDC} (+{diff})")
-            print("-" * 75)
+            print(sep)
         else:
             # Fallback to raw output if parsing fails
-            print("-" * 40)
+            sep40 = get_separator("-", max_width=40)
+            print(sep40)
             print(output.strip())
-            print("-" * 40)
+            print(sep40)
     else:
         print(f"{Colors.RED}No output received from nMars.{Colors.ENDC}")
 
@@ -440,11 +448,12 @@ def run_tournament(targets, arena_idx):
     print_status_line(line, end='\n')
 
     # Standardized Polished Results Format
-    print("-" * 75)
+    sep = get_separator("-", max_width=75)
+    print(sep)
     print(f"{Colors.BOLD}TOURNAMENT RESULTS (Arena {arena_idx}){Colors.ENDC}")
-    print("-" * 75)
+    print(sep)
     print(f"{'Rank':<4} {'Warrior':<25} {'Strategy':<20} {'Score':>7}  {'Performance'}")
-    print("-" * 75)
+    print(sep)
 
     sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
     max_possible = (len(abs_files) - 1) * rounds
@@ -455,14 +464,16 @@ def run_tournament(targets, arena_idx):
         display_name = os.path.basename(name)
         path = _resolve_warrior_path(name, arena_idx)
         strat = identify_strategy(analyze_warrior(path))
+        strat_color = get_strategy_color(strat)
+        strat_str = f"{strat_color}{strat}{Colors.ENDC}"
 
         # Visual bar
         bar_width = 20
         fill = int(bar_width * score / max_possible) if max_possible > 0 else 0
         bar = f"[{color}{'=' * fill}{' ' * (bar_width - fill)}{Colors.ENDC}]"
 
-        print(f"{rank:>2}.  {display_name:<25} {strat:<20} {color}{score:>7}{Colors.ENDC}  {bar}")
-    print("-" * 75)
+        print(f"{rank:>2}.  {display_name:<25} {strat_str:<{20 + (len(strat_str) - len(strat))}} {color}{score:>7}{Colors.ENDC}  {bar}")
+    print(sep)
 
 def run_benchmark(warrior_file, directory, arena_idx):
     """
@@ -576,11 +587,14 @@ def run_gauntlet(target, arena_idx):
     target_strat = identify_strategy(analyze_warrior(path))
     target_name = os.path.basename(path)
 
-    print(f"\n{Colors.BOLD}{Colors.HEADER}--- THE GAUNTLET: {target_name} ({target_strat}) ---{Colors.ENDC}")
+    target_strat_colored = f"{get_strategy_color(target_strat)}{target_strat}{Colors.ENDC}"
+
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- THE GAUNTLET: {target_name} ({target_strat_colored}) ---{Colors.ENDC}")
     print(f"Testing against all arena champions using their home rules.")
-    print("-" * 85)
+    sep = get_separator("-", max_width=85)
+    print(sep)
     print(f"{Colors.BOLD}{'Arena':<6} {'Champion':<15} {'Strategy':<20} {'Result':<10} {'Score':<10} {'Rules'}{Colors.ENDC}")
-    print("-" * 85)
+    print(sep)
 
     wins = 0
     ties = 0
@@ -597,6 +611,8 @@ def run_gauntlet(target, arena_idx):
         total += 1
         champ_name = os.path.basename(champ_path)
         champ_strat = identify_strategy(analyze_warrior(champ_path))
+        champ_strat_color = get_strategy_color(champ_strat)
+        champ_strat_str = f"{champ_strat_color}{champ_strat}{Colors.ENDC}"
 
         # Home rules
         rules = f"S:{CORESIZE_LIST[i]} C:{CYCLES_LIST[i]}"
@@ -625,12 +641,12 @@ def run_gauntlet(target, arena_idx):
                     res_label = f"{Colors.YELLOW}TIE{Colors.ENDC}"
                     ties += 1
 
-        print(f"{i:<6} {champ_name:<15} {champ_strat:<20} {res_label:<20} {score_str:<10} {rules}")
+        print(f"{i:<6} {champ_name:<15} {champ_strat_str:<{20 + (len(champ_strat_str) - len(champ_strat))}} {res_label:<20} {score_str:<10} {rules}")
 
-    print("-" * 85)
+    print(sep)
     win_rate = (wins / total * 100) if total > 0 else 0
     print(f"{Colors.BOLD}OVERALL PERFORMANCE:{Colors.ENDC} {wins} Wins, {ties} Ties, {total - wins - ties} Losses ({win_rate:.1f}% win rate)")
-    print("-" * 85)
+    print(sep)
 
 def run_optimization(target, arena_idx):
     """
@@ -701,9 +717,10 @@ def run_optimization(target, arena_idx):
         # Results
         sorted_scores = sorted(scores.items(), key=lambda x: x[1], reverse=True)
 
-        print("-" * 60)
+        sep60 = get_separator("-", max_width=60)
+        print(sep60)
         print(f"{'Rank':<5} {'Warrior':<15} {'Score':>8} {'Status'}")
-        print("-" * 60)
+        print(sep60)
 
         best_f, best_s = sorted_scores[0]
         orig_s = scores[filenames[0]]
@@ -715,7 +732,7 @@ def run_optimization(target, arena_idx):
             elif score > orig_s: status = f" {Colors.GREEN}Improved (+{score - orig_s}){Colors.ENDC}"
 
             print(f"{rank:>2}.    {display_name:<15} {score:>8} {status}")
-        print("-" * 60)
+        print(sep60)
 
         if best_f != filenames[0] and best_s > orig_s:
             improvement = ((best_s - orig_s) / orig_s * 100) if orig_s > 0 else 0
@@ -1860,7 +1877,7 @@ def run_meta_analysis(target, arena_idx, json_output=False):
     if meta_dist:
         header += f" | {'Meta %':>10} | {'Delta':>8}"
     print(header)
-    print("  " + "-" * (len(header) - 2))
+    print("  " + get_separator("-", max_width=len(header) - 2))
 
     target_total = sum(target_dist.values())
     meta_total = sum(meta_dist.values()) if meta_dist else 0
@@ -2091,7 +2108,8 @@ def run_report(arena_idx):
         for i, (wid, streak) in enumerate(streaks[arena_idx], 1):
             path = _resolve_warrior_path(str(wid), arena_idx)
             strat = identify_strategy(analyze_warrior(path))
-            print(f"  {i}. Warrior {wid:3} ({Colors.CYAN}{strat}{Colors.ENDC}): {Colors.GREEN}{streak} consecutive wins{Colors.ENDC}")
+            strat_color = get_strategy_color(strat)
+            print(f"  {i}. Warrior {wid:3} ({strat_color}{strat}{Colors.ENDC}): {Colors.GREEN}{streak} consecutive wins{Colors.ENDC}")
     else:
         print("  No streak data available.")
 
@@ -2099,12 +2117,15 @@ def run_report(arena_idx):
     print(f"\n{Colors.BOLD}Lifetime Rankings (Win Rate):{Colors.ENDC}")
     rankings = get_lifetime_rankings(arena_idx=arena_idx, limit=5)
     if arena_idx in rankings:
+        sep = get_separator("-", max_width=73)
         print(f"  {'Rank':<4} | {'Warrior':<7} | {'Strategy':<20} | {'Win Rate':>8} | {'Wins':>5} | {'Battles':>8}")
-        print("  " + "-" * 73)
+        print("  " + sep)
         for i, (wid, rate, wins, battles) in enumerate(rankings[arena_idx], 1):
             path = _resolve_warrior_path(str(wid), arena_idx)
             strat = identify_strategy(analyze_warrior(path))
-            print(f"  {i:<4} | {wid:7} | {strat:<20} | {rate:>7.1f}% | {wins:5} | {battles:8}")
+            strat_color = get_strategy_color(strat)
+            strat_str = f"{strat_color}{strat}{Colors.ENDC}"
+            print(f"  {i:<4} | {wid:7} | {strat_str:<{20 + (len(strat_str) - len(strat))}} | {rate:>7.1f}% | {wins:5} | {battles:8}")
     else:
         print("  No lifetime ranking data available (requires min. 5 battles per warrior).")
 
@@ -2178,9 +2199,10 @@ def run_hall_of_fame(arena_idx=None, json_output=False):
         print(f"Filtered by Arena: {arena_idx}")
     else:
         print("Global champions across all arenas")
-    print("-" * 85)
+    sep = get_separator("-", max_width=85)
+    print(sep)
     print(f"{'Strategy':<20} | {'Warrior':<12} | {'Arena':<5} | {'Win Rate':>8} | {'Battles':>8} | {'Streak'}")
-    print("-" * 85)
+    print(sep)
 
     if not best_by_strat:
         print(f"  {Colors.YELLOW}No strategic data available yet. Run more battles!{Colors.ENDC}")
@@ -2193,11 +2215,14 @@ def run_hall_of_fame(arena_idx=None, json_output=False):
             battles = data['battles']
             streak = data['streak']
 
+            strat_color = get_strategy_color(strat)
+            strat_str = f"{strat_color}{strat}{Colors.ENDC}"
+
             streak_str = f"{Colors.GREEN}{streak}{Colors.ENDC}" if streak > 0 else "0"
 
-            print(f"{strat:<20} | #{wid:<11} | {a:<5} | {rate:>7.1f}% | {battles:>8} | {streak_str}")
+            print(f"{strat_str:<{20 + (len(strat_str) - len(strat))}} | #{wid:<11} | {a:<5} | {rate:>7.1f}% | {battles:>8} | {streak_str}")
 
-    print("-" * 85 + "\n")
+    print(sep + "\n")
 
 def run_inspection(target, arena_idx):
     """
@@ -2251,7 +2276,8 @@ def run_inspection(target, arena_idx):
     print(f"\n{Colors.BOLD}General Information:{Colors.ENDC}")
     print(f"  Path:      {path}")
     print(f"  Arena:     {arena_idx} (Size: {CORESIZE_LIST[arena_idx]})")
-    print(f"  Strategy:  {Colors.CYAN}{strategy}{Colors.ENDC}")
+    strat_color = get_strategy_color(strategy)
+    print(f"  Strategy:  {strat_color}{strategy}{Colors.ENDC}")
 
     print(f"\n{Colors.BOLD}Performance Statistics:{Colors.ENDC}")
     streak_color = Colors.GREEN if streak > 10 else Colors.ENDC
@@ -2270,7 +2296,8 @@ def run_inspection(target, arena_idx):
         print(f"  Primary Opcodes:   {op_str}")
 
     print(f"\n{Colors.BOLD}Source Code Preview:{Colors.ENDC}")
-    print("-" * 30)
+    sep30 = get_separator("-", max_width=30)
+    print(sep30)
     try:
         with open(path, 'r') as f:
             lines = f.readlines()
@@ -2286,7 +2313,7 @@ def run_inspection(target, arena_idx):
                 print(f"  ...")
     except Exception as e:
         print(f"  {Colors.RED}Error reading file: {e}{Colors.ENDC}")
-    print("-" * 30 + "\n")
+    print(sep30 + "\n")
 
 def get_lineage(warrior_id, arena_idx, max_depth=3, _current_depth=0, _log_cache=None, _start_idx=0):
     """
@@ -2391,13 +2418,14 @@ def print_comparison(stats1, stats2, title="Comparison"):
     print(f"\n{Colors.BOLD}{Colors.HEADER}--- {title} ---{Colors.ENDC}")
     print(f"Target A: {label1}")
     print(f"Target B: {label2}")
-    print("-" * 60)
+    sep60 = get_separator("-", max_width=60)
+    print(sep60)
 
     def print_section(trait_title, data1, data2, total1, total2):
         print(f"\n{Colors.BOLD}Trait: {trait_title}{Colors.ENDC}")
         header = f"  {'Value':<10} | {'A %':>8} | {'B %':>8} | {'Delta':>8}"
         print(header)
-        print("  " + "-" * (len(header) - 2))
+        print("  " + get_separator("-", max_width=len(header) - 2))
 
         # Get all unique keys
         all_keys = sorted(set(data1.keys()) | set(data2.keys()))
@@ -2496,8 +2524,8 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
     cols, _ = shutil.get_terminal_size()
 
     # Use terminal width for separators
-    sep_double = "=" * min(cols, 100)
-    sep_single = "-" * min(cols, 100)
+    sep_double = get_separator("=", max_width=100)
+    sep_single = get_separator("-", max_width=100)
 
     title = "Evolver Status Dashboard"
     if arena_idx is not None:
@@ -2563,27 +2591,35 @@ def print_status(data=None, recent_bps=None, arena_idx=None):
             div_val = arena.get('diversity', 0.0)
             div_color = Colors.GREEN if div_val > 50 else Colors.YELLOW if div_val > 10 else Colors.RED
             div_str = f"{div_color}{div_val:>5.1f}%{Colors.ENDC}"
+            div_plain = f"{div_val:>5.1f}%"
 
             if arena.get('champion'):
                 champ_id = arena['champion']
-                champ_str = f"#{champ_id}"
-                wins_str = str(arena['champion_wins'])
-                strat_str = arena.get('champion_strategy', '-')
+                champ_plain = f"#{champ_id}"
+                wins_plain = str(arena['champion_wins'])
+                strat_plain = arena.get('champion_strategy', '-')
+
+                champ_str = champ_plain
+                wins_str = wins_plain
+                strat_str = strat_plain
 
                 if arena['champion_wins'] > 0:
-                    champ_str = f"{Colors.CYAN}{champ_str}{Colors.ENDC}"
-                    wins_str = f"{Colors.BOLD}{Colors.GREEN}{wins_str}{Colors.ENDC}"
-                    strat_str = f"{Colors.CYAN}{strat_str}{Colors.ENDC}"
+                    champ_str = f"{Colors.CYAN}{champ_plain}{Colors.ENDC}"
+                    wins_str = f"{Colors.BOLD}{Colors.GREEN}{wins_plain}{Colors.ENDC}"
+                    strat_color = get_strategy_color(strat_plain)
+                    strat_str = f"{strat_color}{strat_plain}{Colors.ENDC}"
+            else:
+                champ_str = champ_plain = "-"
+                wins_str = wins_plain = "-"
+                strat_str = strat_plain = "-"
         else:
             pop = "-"
             avg_len = "-"
-            div_str = "-"
+            div_str = div_plain = "-"
+            champ_str = champ_plain = "-"
+            wins_str = wins_plain = "-"
+            strat_str = strat_plain = "-"
             status = f"{Colors.YELLOW}Unseeded{Colors.ENDC}"
-
-        champ_plain = strip_ansi(champ_str)
-        wins_plain = strip_ansi(wins_str)
-        strat_plain = strip_ansi(strat_str)
-        div_plain = strip_ansi(div_str)
 
         row = (
             f"{i:<5} {size:>7} {cycles:>8} {procs:>6} | {pop:>5} "
@@ -2923,9 +2959,10 @@ if __name__ == "__main__":
             # If no arena specified and multiple arenas have data, show a summary table
             if arena_idx is None and len(results) > 1:
                 print(f"\n{Colors.BOLD}{Colors.HEADER}--- GLOBAL CHAMPIONS (Rank 1 from all arenas) ---{Colors.ENDC}")
-                print("-" * 85)
+                sep = get_separator("-", max_width=85)
+                print(sep)
                 print(f"{'Arena':<6} {'Warrior':<12} {'Strategy':<20} {'Streak':>8}   {'Performance'}")
-                print("-" * 85)
+                print(sep)
 
                 # Find max streak for scaling the bars
                 all_streaks = [top[0][1] for top in results.values() if top]
@@ -2936,30 +2973,31 @@ if __name__ == "__main__":
                         warrior_id, streak = results[a][0]
                         path = _resolve_warrior_path(str(warrior_id), a)
                         strat = identify_strategy(analyze_warrior(path))
-                        strat_str = f"{Colors.CYAN}{strat}{Colors.ENDC}"
-                        strat_plain = strip_ansi(strat_str)
+                        strat_color = get_strategy_color(strat)
+                        strat_str = f"{strat_color}{strat}{Colors.ENDC}"
 
                         # Visual bar
                         bar_width = 20
                         fill = int(bar_width * streak / max_streak) if max_streak > 0 else 0
                         color = Colors.GREEN
                         bar = f"[{color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
-                        print(f"{a:<6} {warrior_id:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {streak:>8}   {bar}")
-                print("-" * 85)
+                        print(f"{a:<6} {warrior_id:<12} {strat_str:<{20 + (len(strat_str) - len(strat))}} {streak:>8}   {bar}")
+                print(sep)
             else:
                 # Show detailed leaderboard for one or more arenas
                 for a, top in results.items():
                     print(f"\n{Colors.BOLD}{Colors.HEADER}--- LEADERBOARD: Arena {a} ---{Colors.ENDC}")
-                    print("-" * 85)
+                    sep = get_separator("-", max_width=85)
+                    print(sep)
                     print(f"{'Rank':<4} {'Warrior':<12} {'Strategy':<20} {'Streak':>8}   {'Performance'}")
-                    print("-" * 85)
+                    print(sep)
 
                     max_streak = top[0][1] if top else 1
                     for i, (warrior_id, streak) in enumerate(top, 1):
                         path = _resolve_warrior_path(str(warrior_id), a)
                         strat = identify_strategy(analyze_warrior(path))
-                        strat_str = f"{Colors.CYAN}{strat}{Colors.ENDC}"
-                        strat_plain = strip_ansi(strat_str)
+                        strat_color = get_strategy_color(strat)
+                        strat_str = f"{strat_color}{strat}{Colors.ENDC}"
 
                         color = Colors.GREEN if i == 1 else Colors.ENDC
                         # Visual bar
@@ -2967,10 +3005,9 @@ if __name__ == "__main__":
                         fill = int(bar_width * streak / max_streak) if max_streak > 0 else 0
                         bar = f"[{color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
                         streak_str = f"{color}{streak:>8}{Colors.ENDC}"
-                        streak_plain = strip_ansi(streak_str)
 
-                        print(f"{i:>2}.  {warrior_id:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {streak_str:>{8 + (len(streak_str) - len(streak_plain))}}   {bar}")
-                    print("-" * 85)
+                        print(f"{i:>2}.  {warrior_id:<12} {strat_str:<{20 + (len(strat_str) - len(strat))}} {streak_str:>{8 + (len(streak_str) - 8)}}   {bar}")
+                    print(sep)
     sys.exit(0)
 
   if "--rankings" in sys.argv or "-K" in sys.argv:
