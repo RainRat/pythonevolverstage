@@ -1489,7 +1489,7 @@ def get_evolution_status(arena_idx=None):
                     try:
                         with open(os.path.join(dir_name, f), 'r') as fh:
                             total_lines += sum(1 for line in fh if line.strip())
-                    except:
+                    except (OSError, UnicodeDecodeError):
                         pass
                 arena_info["avg_length"] = total_lines / len(sample_files)
 
