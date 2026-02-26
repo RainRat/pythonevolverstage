@@ -18,6 +18,8 @@ General Commands:
                        Add --json for machine-readable output.
   --leaderboard, -l    Show the top-performing warriors based on recent win streaks.
                        Usage: --leaderboard [--arena <N>] [--top <N>] [--json]
+  --rankings, -K       Show the top-performing warriors based on lifetime win rate.
+                       Usage: --rankings [--arena <N>] [--top <N>] [--min-battles <N>] [--json]
   --trends, -r         Analyze evolution trends by comparing the population to the top performers.
                        Usage: --trends [--arena <N>]
   --report, -g         Generate a comprehensive health and performance report for an arena.
@@ -84,7 +86,8 @@ Analysis & Utilities:
 
 Dynamic Selectors:
   Instead of a filename, you can use these keywords in most commands:
-  top, topN            Select the #1 (or #N) warrior from the leaderboard.
+  top, topN            Select the #1 (or #N) warrior from the streak leaderboard.
+  rank, rankN          Select the #1 (or #N) warrior from the lifetime rankings.
   random               Select a random warrior from the current population.
   selector@N           Target a specific arena (e.g., top@0, random@2).
 
@@ -102,6 +105,7 @@ Examples:
   python evolverstage.py --seed best_warriors/ --arena 0
   python evolverstage.py --gauntlet top
   python evolverstage.py --optimize top
+  python evolverstage.py --rankings --min-battles 20
   python evolverstage.py --hall-of-fame
 '''
 
@@ -160,6 +164,25 @@ def format_time_remaining(seconds):
 def strip_ansi(text):
     """Removes ANSI escape codes from a string."""
     return re.sub(r'\033\[[0-9;]*m', '', str(text))
+
+def get_strategy_color(strategy):
+    """Returns the ANSI color code for a given strategy."""
+    s = str(strategy).lower()
+    if "paper" in s: return Colors.GREEN
+    if "stone" in s: return Colors.RED
+    if "imp" in s: return Colors.YELLOW
+    if "vampire" in s: return Colors.HEADER
+    if "mover" in s: return Colors.BLUE
+    if "experimental" in s: return Colors.CYAN
+    return Colors.ENDC
+
+def get_separator(char="-", max_width=100):
+    """Returns a separator string of the current terminal width."""
+    try:
+        cols, _ = shutil.get_terminal_size()
+        return char * min(cols, max_width)
+    except (OSError, ValueError):
+        return char * 80
 
 def draw_progress_bar(percent, width=30):
     """Returns a string representing a progress bar."""
@@ -1963,6 +1986,78 @@ def get_lifetime_rankings(arena_idx=None, limit=10, min_battles=5):
         sys.stderr.write(f"Error generating lifetime rankings: {e}\n")
         return {}
 
+def run_rankings(arena_idx=None, limit=10, min_battles=5, json_output=False):
+    """
+    Displays the top performing warriors by lifetime win rate.
+    """
+    results = get_lifetime_rankings(arena_idx=arena_idx, limit=limit, min_battles=min_battles)
+
+    if json_output:
+        print(json.dumps(results, indent=2))
+        return
+
+    if not results:
+        print(f"{Colors.YELLOW}No ranking data available (min. {min_battles} battles required).{Colors.ENDC}")
+        return
+
+    sep = get_separator("-", max_width=95)
+
+    if arena_idx is None:
+        # Combined Global Rankings
+        all_ranked = []
+        for a, ranked in results.items():
+            for item in ranked:
+                all_ranked.append((a,) + item)
+        # Sort by win rate, then total wins
+        all_ranked.sort(key=lambda x: (x[2], x[3]), reverse=True)
+        top_ranked = all_ranked[:limit]
+
+        print(f"\n{Colors.BOLD}{Colors.HEADER}--- GLOBAL LIFETIME RANKINGS (Top {limit}, min. {min_battles} battles) ---{Colors.ENDC}")
+        print(sep)
+        print(f"{'Rank':<4} {'Arena':<6} {'Warrior':<12} {'Strategy':<20} {'Win Rate':>9} {'Wins/Battles':>15}  {'Performance'}")
+        print(sep)
+
+        max_rate = top_ranked[0][2] if top_ranked else 100
+        for i, (a, wid, rate, wins, battles) in enumerate(top_ranked, 1):
+            path = _resolve_warrior_path(str(wid), a)
+            strat = identify_strategy(analyze_warrior(path))
+            color = get_strategy_color(strat)
+            strat_str = f"{color}{strat}{Colors.ENDC}"
+            strat_plain = strip_ansi(strat_str)
+
+            # Visual bar
+            bar_width = 20
+            fill = int(bar_width * rate / max_rate) if max_rate > 0 else 0
+            bar_color = Colors.GREEN if i == 1 else Colors.ENDC
+            bar = f"[{bar_color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
+
+            print(f"{i:>2}.  {a:<6} {wid:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {rate:>8.1f}% {wins:>6}/{battles:<8}  {bar}")
+    else:
+        # Per Arena Rankings
+        for a, top in results.items():
+            print(f"\n{Colors.BOLD}{Colors.HEADER}--- LIFETIME RANKINGS: Arena {a} (Top {limit}, min. {min_battles} battles) ---{Colors.ENDC}")
+            print(sep)
+            print(f"{'Rank':<4} {'Warrior':<12} {'Strategy':<20} {'Win Rate':>9} {'Wins/Battles':>15}  {'Performance'}")
+            print(sep)
+
+            max_rate = top[0][1] if top else 100
+            for i, (wid, rate, wins, battles) in enumerate(top, 1):
+                path = _resolve_warrior_path(str(wid), a)
+                strat = identify_strategy(analyze_warrior(path))
+                color = get_strategy_color(strat)
+                strat_str = f"{color}{strat}{Colors.ENDC}"
+                strat_plain = strip_ansi(strat_str)
+
+                # Visual bar
+                bar_width = 20
+                fill = int(bar_width * rate / max_rate) if max_rate > 0 else 0
+                bar_color = Colors.GREEN if i == 1 else Colors.ENDC
+                bar = f"[{bar_color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
+
+                print(f"{i:>2}.  {wid:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {rate:>8.1f}% {wins:>6}/{battles:<8}  {bar}")
+
+    print(sep + "\n")
+
 def run_report(arena_idx):
     """
     Generates and displays a comprehensive health and performance report for an arena.
@@ -2541,7 +2636,7 @@ def _resolve_warrior_path(selector, arena_idx):
                 return os.path.join(arena_dir, chosen)
         return selector
 
-    # Top/Champion selector
+    # Top/Champion selector (streak-based)
     if sel.startswith("top"):
         try:
             # Extract N from topN, default to 1
@@ -2553,6 +2648,24 @@ def _resolve_warrior_path(selector, arena_idx):
             results = get_leaderboard(arena_idx=arena_idx, limit=n)
             if arena_idx in results and len(results[arena_idx]) >= n:
                 warrior_id, wins = results[arena_idx][n-1]
+                path = os.path.join(f"arena{arena_idx}", f"{warrior_id}.red")
+                if os.path.exists(path):
+                    return path
+        except (ValueError, IndexError):
+            pass
+
+    # Rank selector (lifetime win-rate-based)
+    if sel.startswith("rank"):
+        try:
+            # Extract N from rankN, default to 1
+            n = 1
+            if len(sel) > 4:
+                n = int(sel[4:])
+
+            # Use get_lifetime_rankings to find the ID
+            results = get_lifetime_rankings(arena_idx=arena_idx, limit=n, min_battles=1)
+            if arena_idx in results and len(results[arena_idx]) >= n:
+                warrior_id, rate, wins, battles = results[arena_idx][n-1]
                 path = os.path.join(f"arena{arena_idx}", f"{warrior_id}.red")
                 if os.path.exists(path):
                     return path
@@ -2835,6 +2948,33 @@ if __name__ == "__main__":
 
                         print(f"{i:>2}.  {warrior_id:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {streak_str:>{8 + (len(streak_str) - len(streak_plain))}}   {bar}")
                     print("-" * 85)
+    sys.exit(0)
+
+  if "--rankings" in sys.argv or "-K" in sys.argv:
+    arena_idx = _get_arena_idx(default=None)
+
+    # Determine limit (default 10)
+    limit = 10
+    if "--top" in sys.argv:
+        try:
+            t_idx = sys.argv.index("--top")
+            if len(sys.argv) > t_idx + 1:
+                limit = int(sys.argv[t_idx+1])
+        except ValueError:
+            pass
+
+    # Determine min_battles (default 5)
+    min_battles = 5
+    if "--min-battles" in sys.argv:
+        try:
+            m_idx = sys.argv.index("--min-battles")
+            if len(sys.argv) > m_idx + 1:
+                min_battles = int(sys.argv[m_idx+1])
+        except ValueError:
+            pass
+
+    json_output = "--json" in sys.argv
+    run_rankings(arena_idx=arena_idx, limit=limit, min_battles=min_battles, json_output=json_output)
     sys.exit(0)
 
   if "--trends" in sys.argv or "-r" in sys.argv:
