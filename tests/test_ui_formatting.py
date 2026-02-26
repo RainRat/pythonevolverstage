@@ -2,6 +2,8 @@ import sys
 import os
 import unittest
 import math
+import shutil
+from unittest import mock
 
 # Add the root directory to sys.path so we can import evolverstage
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -133,3 +135,83 @@ class TestStripAnsi(unittest.TestCase):
         """Test non-string inputs are converted to string and stripped."""
         self.assertEqual(evolverstage.strip_ansi(123), "123")
         self.assertEqual(evolverstage.strip_ansi(None), "None")
+
+class TestGetStrategyColor(unittest.TestCase):
+    def test_paper_color(self):
+        self.assertEqual(evolverstage.get_strategy_color("Paper (Replicator)"), evolverstage.Colors.GREEN)
+
+    def test_stone_color(self):
+        self.assertEqual(evolverstage.get_strategy_color("Stone (Bomb-thrower)"), evolverstage.Colors.RED)
+
+    def test_imp_color(self):
+        self.assertEqual(evolverstage.get_strategy_color("Imp (Pulse)"), evolverstage.Colors.YELLOW)
+
+    def test_vampire_color(self):
+        self.assertEqual(evolverstage.get_strategy_color("Vampire / Pittrap"), evolverstage.Colors.HEADER)
+
+    def test_mover_color(self):
+        self.assertEqual(evolverstage.get_strategy_color("Mover / Runner"), evolverstage.Colors.BLUE)
+
+    def test_experimental_color(self):
+        self.assertEqual(evolverstage.get_strategy_color("Experimental"), evolverstage.Colors.CYAN)
+
+    def test_default_color(self):
+        self.assertEqual(evolverstage.get_strategy_color("Unknown"), evolverstage.Colors.ENDC)
+        self.assertEqual(evolverstage.get_strategy_color("Wait / Shield"), evolverstage.Colors.ENDC)
+
+    def test_case_insensitivity(self):
+        self.assertEqual(evolverstage.get_strategy_color("PAPER"), evolverstage.Colors.GREEN)
+
+class TestGetSeparator(unittest.TestCase):
+    @mock.patch('shutil.get_terminal_size')
+    def test_separator_standard(self, mock_size):
+        mock_size.return_value = os.terminal_size((80, 24))
+        # Default char '-', default max_width 100. 80 < 100.
+        self.assertEqual(evolverstage.get_separator(), "-" * 80)
+
+    @mock.patch('shutil.get_terminal_size')
+    def test_separator_capped(self, mock_size):
+        mock_size.return_value = os.terminal_size((120, 24))
+        # 120 > 100. Should be 100.
+        self.assertEqual(evolverstage.get_separator(), "-" * 100)
+
+    @mock.patch('shutil.get_terminal_size')
+    def test_separator_custom(self, mock_size):
+        mock_size.return_value = os.terminal_size((80, 24))
+        self.assertEqual(evolverstage.get_separator(char="=", max_width=50), "=" * 50)
+
+    @mock.patch('shutil.get_terminal_size')
+    def test_separator_fallback_oserror(self, mock_size):
+        mock_size.side_effect = OSError("No terminal")
+        self.assertEqual(evolverstage.get_separator(), "-" * 80)
+
+class TestPrintStatusLine(unittest.TestCase):
+    @mock.patch('shutil.get_terminal_size')
+    @mock.patch('builtins.print')
+    def test_print_status_line_standard(self, mock_print, mock_size):
+        mock_size.return_value = os.terminal_size((80, 24))
+        # Visible length of "Test" is 4. Padding = 80 - 4 - 1 = 75.
+        evolverstage.print_status_line("Test")
+        expected_text = "\rTest" + " " * 75
+        mock_print.assert_called_once_with(expected_text, end='\r', flush=True)
+
+    @mock.patch('shutil.get_terminal_size')
+    @mock.patch('builtins.print')
+    def test_print_status_line_with_ansi(self, mock_print, mock_size):
+        mock_size.return_value = os.terminal_size((80, 24))
+        text = f"{evolverstage.Colors.GREEN}Test{evolverstage.Colors.ENDC}"
+        # Visible length is 4.
+        evolverstage.print_status_line(text)
+        expected_text = f"\r{text}" + " " * 75
+        mock_print.assert_called_once_with(expected_text, end='\r', flush=True)
+
+    @mock.patch('shutil.get_terminal_size')
+    @mock.patch('builtins.print')
+    def test_print_status_line_fallback(self, mock_print, mock_size):
+        mock_size.side_effect = OSError("No terminal")
+        evolverstage.print_status_line("Test")
+        # Should fallback to standard print with newline
+        mock_print.assert_called_once_with("Test", end='\n', flush=True)
+
+if __name__ == '__main__':
+    unittest.main()
