@@ -535,7 +535,7 @@ public:
     Core(int size, const char* trace_filename = nullptr)
         : memory(size), core_size(size) {
         if (trace_filename && *trace_filename) {
-            trace.open(trace_filename);
+            trace.open(trace_filename, std::ios::app);
             trace_enabled = trace.is_open();
         } else {
             trace_enabled = false;
@@ -783,7 +783,11 @@ public:
         Instruction& dst = memory[b_addr_final];
         Instruction dst_snapshot;
         if (instr.b_mode == IMMEDIATE) {
-            dst_snapshot = instr;
+            // When B is IMMEDIATE, the destination instruction IS the current instruction.
+            // However, we MUST use the current memory state (dst) rather than our
+            // local copy (instr) because the A-operand evaluation may have already
+            // modified the current cell (e.g. via A_POSTINC or A_PREDEC on itself).
+            dst_snapshot = dst;
         } else {
             // Take a snapshot *before* B-post-increment is applied
             dst_snapshot = dst;

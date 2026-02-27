@@ -18,7 +18,7 @@ def plot_benchmark_progress(log_file='log.csv', output_image='progress.png'):
         print("A sample 'log.csv' was provided, but you may need to use your full log.")
         return
 
-        print(f"Reading log file: {log_file}...")
+    print(f"Reading log file: {log_file}...")
     
     # --- Data Processing ---
     

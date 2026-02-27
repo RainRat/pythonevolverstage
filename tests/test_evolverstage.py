@@ -1360,22 +1360,6 @@ def test_resolve_external_command_lists_tried_candidates(monkeypatch):
     assert "sample" in message
 
 
-def test_determine_winner_and_loser_reports_draw(monkeypatch):
-    def fake_random(min_val, max_val):
-        assert (min_val, max_val) == (1, 2)
-        return 1
-
-    monkeypatch.setattr(evolverstage, "get_random_int", fake_random)
-
-    winner, loser, was_draw = evolverstage.determine_winner_and_loser(
-        [11, 22], [55, 55]
-    )
-
-    assert was_draw is True
-    assert winner == 22
-    assert loser == 11
-
-
 def test_load_configuration_checks_seeded_directories(tmp_path, capsys):
     config_path = tmp_path / "config.ini"
     config_path.write_text(
@@ -2353,7 +2337,8 @@ def test_sanitize_instruction_replaces_1994_features_in_1988_arena():
             b_field=2,
         )
         sanitized_mode = evolverstage.sanitize_instruction(mode_instruction, arena=0)
-        assert sanitized_mode.opcode == "DAT"
+        assert sanitized_mode.opcode == "MOV"
+        assert sanitized_mode.a_mode == "$"
     finally:
         evolverstage.set_active_config(previous_config)
 

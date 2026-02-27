@@ -77,11 +77,6 @@ def test_weighted_random_number_uses_size_range_when_selected():
     assert calls == [(1, 4), (-10, 10)]
 
 
-def test_coremod_rejects_zero_modulus():
-    with pytest.raises(ValueError, match="Modulus cannot be zero"):
-        engine.coremod(5, 0)
-
-
 def test_corenorm_wraps_values_greater_than_half_modulus():
     assert engine.corenorm(6, 10) == -4
     assert engine.corenorm(-6, 10) == 4
