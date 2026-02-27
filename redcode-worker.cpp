@@ -251,6 +251,33 @@ int parse_numeric_field(const std::string& value, const std::string& context) {
     return parsed_value;
 }
 
+Modifier get_88_modifier(Opcode opcode, AddressMode a_mode, AddressMode b_mode) {
+    switch (opcode) {
+        case DAT:
+        case NOP:
+            return F;
+        case MOV:
+        case CMP:
+        case SNE:
+            if (a_mode == IMMEDIATE) return AB;
+            if (b_mode == IMMEDIATE) return B;
+            return I;
+        case ADD:
+        case SUB:
+        case MUL:
+        case DIV:
+        case MOD:
+            if (a_mode == IMMEDIATE) return AB;
+            if (b_mode == IMMEDIATE) return B;
+            return F;
+        case SLT:
+            if (a_mode == IMMEDIATE) return AB;
+            return B;
+        default:
+            return B;
+    }
+}
+
 Instruction parse_line(const std::string& line, bool use_1988_rules) {
     Instruction instr;
     std::string original_line = trim(line);
@@ -287,24 +314,6 @@ Instruction parse_line(const std::string& line, bool use_1988_rules) {
     if (use_1988_rules && !opcode_allowed_in_1988(instr.opcode)) {
         throw std::runtime_error(
             "Opcode '" + opcode_str + "' is not supported in 1988 arenas in line: " + original_line
-        );
-    }
-
-    if (dot_pos == std::string::npos) {
-        throw std::runtime_error("Missing modifier for opcode '" + opcode_token + "' in line: " + original_line);
-    }
-
-    std::string modifier_lookup = to_upper_copy(modifier_token);
-    std::string modifier_display = modifier_token;
-
-    auto mod_it = MODIFIER_MAP.find(modifier_lookup);
-    if (mod_it == MODIFIER_MAP.end()) {
-        throw std::runtime_error("Unknown modifier '" + modifier_display + "' in line: " + original_line);
-    }
-    instr.modifier = mod_it->second;
-    if (use_1988_rules && !modifier_allowed_in_1988(instr.modifier)) {
-        throw std::runtime_error(
-            "Modifier '" + modifier_lookup + "' is not supported in 1988 arenas in line: " + original_line
         );
     }
 
@@ -350,12 +359,17 @@ Instruction parse_line(const std::string& line, bool use_1988_rules) {
         }
 
         mode_target = get_mode(operand[0]);
-        if (use_1988_rules && !addressing_mode_allowed_in_1988(mode_target)) {
-            std::string mode_str(1, operand[0]);
-            throw std::runtime_error(
-                "Addressing mode '" + mode_str + "' is not supported in 1988 arenas for " +
-                operand_name + "-field operand in line: " + original_line
-            );
+        if (use_1988_rules) {
+             if (!addressing_mode_allowed_in_1988(mode_target)) {
+                 mode_target = DIRECT;
+             }
+        } else {
+            if (!addressing_mode_allowed_in_1988(mode_target)) {
+                constexpr const char* EXTENDED_MODES = "*{}";
+                if (std::strchr(EXTENDED_MODES, operand[0]) == nullptr) {
+                     // Should not happen given VALID_MODES check but stay safe
+                }
+            }
         }
         if (operand.length() < 2) {
             throw std::runtime_error("Missing value for " + std::string(operand_name) +
@@ -367,6 +381,21 @@ Instruction parse_line(const std::string& line, bool use_1988_rules) {
 
     parse_operand(a_str, "A", instr.a_mode, instr.a_field);
     parse_operand(b_str, "B", instr.b_mode, instr.b_field);
+
+    if (use_1988_rules) {
+        instr.modifier = get_88_modifier(instr.opcode, instr.a_mode, instr.b_mode);
+    } else {
+        if (dot_pos == std::string::npos) {
+            throw std::runtime_error("Missing modifier for opcode '" + opcode_token + "' in line: " + original_line);
+        } else {
+            std::string modifier_lookup = to_upper_copy(modifier_token);
+            auto mod_it = MODIFIER_MAP.find(modifier_lookup);
+            if (mod_it == MODIFIER_MAP.end()) {
+                throw std::runtime_error("Unknown modifier '" + modifier_token + "' in line: " + original_line);
+            }
+            instr.modifier = mod_it->second;
+        }
+    }
 
     return instr;
 }

@@ -12,6 +12,7 @@ from engine import (
     execute_battle_with_sources,
     _require_config,
 )
+from config import set_active_config
 from evolverstage import load_configuration
 
 # Load the pre-calculated battle data
@@ -20,6 +21,7 @@ with open(PROJECT_ROOT / "precalculated_battles.json", "r") as f:
 
 # Basic configuration for the engine
 config = load_configuration("settings.ini")
+set_active_config(config)
 set_engine_config(config)
 
 @pytest.mark.parametrize("battle", BATTLE_DATA)
@@ -45,6 +47,8 @@ def test_precalculated_battle(battle):
     config.processes_list = [params["processes"]]
     config.warlen_list = [params["warlen"]]
     config.wardistance_list = [params["wardistance"]]
+    config.readlimit_list = [params["coresize"]]
+    config.writelimit_list = [params["coresize"]]
 
     original_engine = config.battle_engine
     config.battle_engine = "internal"

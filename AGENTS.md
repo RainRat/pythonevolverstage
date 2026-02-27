@@ -61,3 +61,10 @@ Debugging the C++ worker:
 -Set the `REDCODE_TRACE_FILE` environment variable to a filename. For example: `export REDCODE_TRACE_FILE=trace.log`.
 -When the worker runs, it will append a log of every instruction executed to that file.
 -This option is off by default because it has a significant performance cost.
+
+## 1988 Standard Compliance
+- 1988 arenas now implement a "quarantine" behavior for instruction modifiers and addressing modes.
+- Any instruction entering a 1988 arena (via parsing or library) will have its modifier ignored and recalculated based on ICWS'88 rules (mapping to ICWS'94 behavior).
+- Incompatible addressing modes (*, {, }) in 1988 arenas are automatically converted to direct addressing ($).
+- When instructions are formatted for export from a 1988 arena (e.g. to the archive or worker), the calculated modifier is explicitly added to ensure consistent behavior across all engines.
+- The C++ Redcode Worker has been aligned with pMars reference implementation for postincrement timing and 1988 rules.

@@ -12,6 +12,7 @@ from engine import (
     execute_battle_with_sources,
     _require_config,
 )
+from config import set_active_config
 from evolverstage import load_configuration
 from stress_test import generate_random_warrior
 
@@ -19,6 +20,7 @@ from stress_test import generate_random_warrior
 def generate_battle_data(num_battles: int, output_file: str):
     """Generates pre-calculated battle data and saves it to a file."""
     config = load_configuration("settings.ini")
+    set_active_config(config)
     set_engine_config(config)
 
     battle_data = []

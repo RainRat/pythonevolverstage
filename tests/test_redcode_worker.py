@@ -598,3 +598,32 @@ def test_warrior_exceeding_dynamic_length_is_rejected():
     ).decode()
     assert result.startswith("ERROR:"), result
     assert "exceeds the configured maximum" in result
+
+
+def test_mismatch_seed_1790663121():
+    lib = load_worker()
+    warrior1 = "MOV.X *-3,}-3\nJMP.BA *3,#15\n"
+    warrior2 = "DJN.A }-4,@3\nMOV.I }-4,>-29\n"
+
+    core_size = 80
+    max_cycles = 800
+    max_processes = 80
+    read_limit = 80
+    write_limit = 80
+    min_distance = 5
+    max_warrior_length = 5
+    rounds = 1
+    seed = 1790663121
+    use_1988 = 0
+
+    result = lib.run_battle(
+        warrior1.encode(), 1,
+        warrior2.encode(), 2,
+        core_size, max_cycles, max_processes,
+        read_limit, write_limit,
+        min_distance, max_warrior_length, rounds, seed,
+        use_1988,
+    ).decode()
+
+    print(f"RESULT: {result}")
+    assert get_scores(result) == [3, 0]

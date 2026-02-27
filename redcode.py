@@ -280,6 +280,8 @@ def rebuild_instruction_tables(active_config) -> InstructionTables:
 
 
 def coremod(num: int, modulus: int) -> int:
+    if modulus == 0:
+        raise ValueError("Modulus cannot be zero")
     return num % modulus
 
 
@@ -368,6 +370,29 @@ def _get_opcode_pool_for_arena(arena: int) -> list[str]:
     return _get_override("GENERATION_OPCODE_POOL", GENERATION_OPCODE_POOL)
 
 
+def get_88_modifier(opcode: str, a_mode: str, b_mode: str) -> str:
+    """Determine the ICWS'94 modifier that matches ICWS'88 behavior for an instruction."""
+    if opcode in ("DAT", "NOP"):
+        return "F"
+    if opcode in ("MOV", "CMP", "SEQ", "SNE"):
+        if a_mode == "#":
+            return "AB"
+        if b_mode == "#":
+            return "B"
+        return "I"
+    if opcode in ("ADD", "SUB", "MUL", "DIV", "MOD"):
+        if a_mode == "#":
+            return "AB"
+        if b_mode == "#":
+            return "B"
+        return "F"
+    if opcode in ("SLT", "LDP", "STP"):
+        if a_mode == "#":
+            return "AB"
+        return "B"
+    return "B"
+
+
 def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstruction:
     config = get_active_config()
     sanitized = instr.copy()
@@ -378,29 +403,45 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
         raise ValueError(f"Opcode '{original_opcode}' is not supported")
     if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
         raise ValueError(f"Unknown opcode '{original_opcode}'")
+
     spec = get_arena_spec(arena)
     allowed_opcodes = SPEC_ALLOWED_OPCODES.get(spec)
     if allowed_opcodes and canonical_opcode not in allowed_opcodes:
+        # If the opcode is not allowed in this spec (e.g. MUL in 1988),
+        # replace it with a default instruction.
         return default_instruction()
-    if not sanitized.modifier:
-        raise ValueError("Missing modifier for instruction")
-    sanitized.modifier = sanitized.modifier.upper()
-    allowed_modifiers = SPEC_ALLOWED_MODIFIERS.get(spec)
-    if allowed_modifiers and sanitized.modifier not in allowed_modifiers:
-        return default_instruction()
-    if sanitized.a_mode not in ADDRESSING_MODES:
-        raise ValueError(
-            f"Invalid addressing mode '{sanitized.a_mode}' for A-field operand"
+
+    # Quarantine logic for 1988 arenas: strip modifier and incompatible modes.
+    if spec == SPEC_1988:
+        if sanitized.a_mode not in SPEC_ALLOWED_ADDRESSING_MODES[SPEC_1988]:
+            sanitized.a_mode = DEFAULT_MODE
+        if sanitized.b_mode not in SPEC_ALLOWED_ADDRESSING_MODES[SPEC_1988]:
+            sanitized.b_mode = DEFAULT_MODE
+        sanitized.modifier = get_88_modifier(
+            sanitized.opcode, sanitized.a_mode, sanitized.b_mode
         )
-    if sanitized.b_mode not in ADDRESSING_MODES:
-        raise ValueError(
-            f"Invalid addressing mode '{sanitized.b_mode}' for B-field operand"
-        )
-    allowed_modes = SPEC_ALLOWED_ADDRESSING_MODES.get(spec)
-    if allowed_modes and sanitized.a_mode not in allowed_modes:
-        return default_instruction()
-    if allowed_modes and sanitized.b_mode not in allowed_modes:
-        return default_instruction()
+    else:
+        if not sanitized.modifier:
+            raise ValueError("Missing modifier for instruction")
+        sanitized.modifier = sanitized.modifier.upper()
+        allowed_modifiers = SPEC_ALLOWED_MODIFIERS.get(spec)
+        if allowed_modifiers and sanitized.modifier not in allowed_modifiers:
+            return default_instruction()
+
+        if sanitized.a_mode not in ADDRESSING_MODES:
+            raise ValueError(
+                f"Invalid addressing mode '{sanitized.a_mode}' for A-field operand"
+            )
+        if sanitized.b_mode not in ADDRESSING_MODES:
+            raise ValueError(
+                f"Invalid addressing mode '{sanitized.b_mode}' for B-field operand"
+            )
+        allowed_modes = SPEC_ALLOWED_ADDRESSING_MODES.get(spec)
+        if allowed_modes and sanitized.a_mode not in allowed_modes:
+            return default_instruction()
+        if allowed_modes and sanitized.b_mode not in allowed_modes:
+            return default_instruction()
+
     sanitized.a_field = corenorm(
         coremod(int(sanitized.a_field), config.sanitize_list[arena]),
         config.coresize_list[arena],
