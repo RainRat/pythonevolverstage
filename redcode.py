@@ -417,6 +417,20 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
             sanitized.a_mode = DEFAULT_MODE
         if sanitized.b_mode not in SPEC_ALLOWED_ADDRESSING_MODES[SPEC_1988]:
             sanitized.b_mode = DEFAULT_MODE
+
+        # ICWS'88 specific constraints
+        if sanitized.opcode == "DAT":
+            if sanitized.a_mode not in {"#", "<"}:
+                sanitized.a_mode = "#"
+            if sanitized.b_mode not in {"#", "<"}:
+                sanitized.b_mode = "#"
+        elif sanitized.opcode in {"MOV", "ADD", "SUB", "CMP"}:
+            if sanitized.b_mode == "#":
+                sanitized.b_mode = "$"
+        elif sanitized.opcode in {"JMP", "JMZ", "JMN", "DJN", "SPL"}:
+            if sanitized.a_mode == "#":
+                sanitized.a_mode = "$"
+
         sanitized.modifier = get_88_modifier(
             sanitized.opcode, sanitized.a_mode, sanitized.b_mode
         )

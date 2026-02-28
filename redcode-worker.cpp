@@ -383,6 +383,23 @@ Instruction parse_line(const std::string& line, bool use_1988_rules) {
     parse_operand(b_str, "B", instr.b_mode, instr.b_field);
 
     if (use_1988_rules) {
+        // ICWS'88 specific constraints
+        if (instr.opcode == DAT) {
+            if (instr.a_mode != IMMEDIATE && instr.a_mode != B_PREDEC) {
+                instr.a_mode = IMMEDIATE;
+            }
+            if (instr.b_mode != IMMEDIATE && instr.b_mode != B_PREDEC) {
+                instr.b_mode = IMMEDIATE;
+            }
+        } else if (instr.opcode == MOV || instr.opcode == ADD || instr.opcode == SUB || instr.opcode == CMP) {
+            if (instr.b_mode == IMMEDIATE) {
+                instr.b_mode = DIRECT;
+            }
+        } else if (instr.opcode == JMP || instr.opcode == JMZ || instr.opcode == JMN || instr.opcode == DJN || instr.opcode == SPL) {
+            if (instr.a_mode == IMMEDIATE) {
+                instr.a_mode = DIRECT;
+            }
+        }
         instr.modifier = get_88_modifier(instr.opcode, instr.a_mode, instr.b_mode);
     } else {
         if (dot_pos == std::string::npos) {
