@@ -23,7 +23,6 @@ def restore_engine_rng():
     "operand, operand_name, pattern",
     [
         ("", "A", "Missing A-field operand"),
-        ("1", "B", re.escape("Missing addressing mode for B-field operand '1'")),
         ("$ ", "A", "Missing value for A-field operand"),
         (
             "$abc",
@@ -32,6 +31,7 @@ def restore_engine_rng():
         ),
     ],
 )
+
 def test_parse_operand_rejects_invalid_inputs(operand, operand_name, pattern):
     with pytest.raises(ValueError, match=pattern):
         engine._parse_operand(operand, operand_name)

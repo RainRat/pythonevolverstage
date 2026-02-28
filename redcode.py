@@ -157,8 +157,7 @@ _REDCODE_INSTRUCTION_RE = re.compile(
     ^\s*
     (?:(?P<label>[A-Za-z_.$][\w.$]*)(?::)?\s+)?
     (?P<opcode>[A-Za-z]+)
-    \s*\.\s*
-    (?P<modifier>[A-Za-z]+)
+    (?:\s*\.\s*(?P<modifier>[A-Za-z]+))?
     \s*
     (?P<a_operand>[^,]+?)
     \s*,\s*
@@ -297,11 +296,12 @@ def _parse_operand(operand: str, operand_name: str) -> Tuple[str, int]:
     if not operand:
         raise ValueError(f"Missing {operand_name}-field operand")
     mode = operand[0]
-    if mode not in ADDRESSING_MODES:
-        raise ValueError(
-            f"Missing addressing mode for {operand_name}-field operand '{operand}'"
-        )
-    value_part = operand[1:]
+    if mode in ADDRESSING_MODES:
+        value_part = operand[1:]
+    else:
+        mode = "$"
+        value_part = operand
+
     if not value_part.strip():
         raise ValueError(f"Missing value for {operand_name}-field operand")
     try:
@@ -322,14 +322,10 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
 
     match = _REDCODE_INSTRUCTION_RE.match(code_part)
     if not match:
-        before_comma = code_part.split(",", 1)[0]
-        if "." not in before_comma:
-            raise ValueError("Instruction is missing a modifier")
         raise ValueError(f"Invalid instruction format: '{code_part}'")
 
     label = match.group("label")
     opcode = match.group("opcode").upper()
-    modifier = match.group("modifier").upper()
     canonical_opcode = OPCODE_ALIASES.get(opcode, opcode)
     if canonical_opcode in UNSUPPORTED_OPCODES:
         return default_instruction()
@@ -340,6 +336,12 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     b_operand = match.group("b_operand")
     a_mode, a_field = _parse_operand(a_operand, "A")
     b_mode, b_field = _parse_operand(b_operand, "B")
+
+    modifier = match.group("modifier")
+    if modifier:
+        modifier = modifier.upper()
+    else:
+        modifier = get_88_modifier(canonical_opcode, a_mode, b_mode)
 
     return RedcodeInstruction(
         opcode=canonical_opcode,
@@ -468,7 +470,13 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
     return sanitized
 
 
-def format_redcode_instruction(instr: RedcodeInstruction) -> str:
+def format_redcode_instruction(instr: RedcodeInstruction, spec: str = SPEC_1994) -> str:
+    if spec == SPEC_1988:
+        return (
+            f"{instr.opcode} "
+            f"{instr.a_mode}{instr.a_field},"
+            f"{instr.b_mode}{instr.b_field}\n"
+        )
     return (
         f"{instr.opcode}.{instr.modifier} "
         f"{instr.a_mode}{instr.a_field},"
@@ -477,7 +485,8 @@ def format_redcode_instruction(instr: RedcodeInstruction) -> str:
 
 
 def instruction_to_line(instr: RedcodeInstruction, arena: int) -> str:
-    return format_redcode_instruction(sanitize_instruction(instr, arena))
+    spec = get_arena_spec(arena)
+    return format_redcode_instruction(sanitize_instruction(instr, arena), spec=spec)
 
 
 def parse_instruction_or_default(line: str) -> RedcodeInstruction:

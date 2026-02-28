@@ -1145,13 +1145,11 @@ private:
         if (normalized <= 0) {
             return random_state();
         }
-        if (normalized < min_distance) {
-            throw std::runtime_error(
-                "Fixed warrior position cannot be smaller than the configured minimum distance"
-            );
-        }
 
-        int64_t adjusted = normalized - min_distance;
+        int64_t adjusted = normalized;
+        if (normalized >= min_distance) {
+             adjusted = normalized - min_distance;
+        }
         return normalize_state(adjusted);
     }
 

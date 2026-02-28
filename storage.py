@@ -366,9 +366,21 @@ def handle_archiving(
 
     if config.archive_list[era] != 0 and _rng_int(1, config.archive_list[era]) == 1:
         winlines = storage.get_warrior_lines(arena, winner)
+        
+        # Interpolate modifiers going out to archive (ensures archived warriors are valid 1994)
+        from redcode import SPEC_1994, parse_redcode_instruction, format_redcode_instruction
+        archived_lines = []
+        for line in winlines:
+            instr = parse_redcode_instruction(line)
+            if instr:
+                # format_redcode_instruction with SPEC_1994 (default) adds modifiers
+                archived_lines.append(format_redcode_instruction(instr, spec=SPEC_1994))
+            else:
+                archived_lines.append(line)
+        
         archive_filename = archive_storage.archive_warrior(
             warrior_id=winner,
-            lines=winlines,
+            lines=archived_lines,
             config=config,
             get_random_int=_rng_int,
         )
