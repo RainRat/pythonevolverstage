@@ -1,6 +1,6 @@
-tuning_arena_index: 4
-clock_time_hours: 0.25
-n_trials: 10
+tuning_arena_index: 0
+clock_time_hours: 1.0
+n_trials: 8
 per_era_int_spaces:
   BATTLEROUNDS_LIST: [1, 200]
   BENCHMARK_BATTLE_FREQUENCY_LIST: [0, 50]

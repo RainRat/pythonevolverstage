@@ -728,7 +728,10 @@ def load_configuration(path: str) -> EvolverConfig:
     )
 
     archive_list = _read_config("ARCHIVE_LIST", data_type="int_list") or []
+    # Cap archive and unarchive chances to a minimum 1-in-10 probability
+    archive_list = [max(10, x) if x != 0 else 0 for x in archive_list]
     unarchive_list = _read_config("UNARCHIVE_LIST", data_type="int_list") or []
+    unarchive_list = [max(10, x) if x != 0 else 0 for x in unarchive_list]
     if "ARCHIVE_LIST" not in parser["DEFAULT"] and battlerounds_list:
         archive_list = [0] * len(battlerounds_list)
     if "UNARCHIVE_LIST" not in parser["DEFAULT"] and battlerounds_list:

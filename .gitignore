@@ -22,4 +22,6 @@ __pycache__/
 # Optimizer and tool outputs
 optuna_trials/
 progress.png
-precalculated_battles.json
+precalculated_battles.jsonoptimizer.log
+optimizer_session.log
+optuna_trials/

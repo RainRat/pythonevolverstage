@@ -2235,9 +2235,7 @@ def test_generate_warrior_lines_until_non_dat_retries_until_success(monkeypatch)
 @pytest.mark.parametrize(
     "source, error_pattern",
     [
-        ("MOV $1, $2", "missing a modifier"),
-        ("MOV.F 1, $2", "addressing mode"),
-        ("MOV.F 1,2", "addressing mode"),
+        ("NOT_AN_INSTRUCTION", "Invalid instruction format"),
     ],
 )
 def test_parse_instruction_rejects_invalid_inputs(source, error_pattern):

@@ -169,6 +169,7 @@ def _build_trial_configuration(
     config["DEFAULT"]["BENCHMARK_FINAL_TOURNAMENT"] = "True"
     config["DEFAULT"]["FINAL_TOURNAMENT_CSV"] = "final_tournament.csv"
     config["DEFAULT"]["IN_MEMORY_ARENAS"] = "False"
+    config["DEFAULT"]["ARCHIVE_PATH"] = "archive"
 
     config_path = run_dir / "settings.ini"
     with config_path.open("w", encoding="utf-8") as handle:
@@ -176,11 +177,29 @@ def _build_trial_configuration(
     return config_path
 
 
-def _prepare_arena_directory(run_dir: Path) -> None:
+def _prepare_trial_directory(run_dir: Path) -> None:
     arena_dir = run_dir / "arena0"
     if arena_dir.exists():
         shutil.rmtree(arena_dir)
     arena_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Symlink benchmarks to run_dir
+    benchmark_src = REPO_ROOT / "benchmarks"
+    benchmark_dst = run_dir / "benchmarks"
+    if benchmark_dst.exists():
+        benchmark_dst.unlink()
+    if benchmark_src.exists():
+        benchmark_dst.symlink_to(benchmark_src, target_is_directory=True)
+
+    # Copy global archive to local trial archive to seed it
+    archive_src = REPO_ROOT / "archive"
+    archive_dst = run_dir / "archive"
+    if archive_dst.exists():
+        shutil.rmtree(archive_dst)
+    if archive_src.exists() and archive_src.is_dir():
+        shutil.copytree(archive_src, archive_dst)
+    else:
+        archive_dst.mkdir(parents=True, exist_ok=True)
 
 
 def _run_trial(trial: optuna.trial.Trial, optimizer_config: OptimizerConfig) -> float:
@@ -191,7 +210,7 @@ def _run_trial(trial: optuna.trial.Trial, optimizer_config: OptimizerConfig) -> 
     run_dir = trial_dir / "run"
     run_dir.mkdir(parents=True)
 
-    _prepare_arena_directory(run_dir)
+    _prepare_trial_directory(run_dir)
     config_path = _build_trial_configuration(trial, run_dir, optimizer_config)
 
     cmd = [sys.executable, "evolverstage.py", "--config", str(config_path), "--seed", str(trial.number)]
