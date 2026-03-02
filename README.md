@@ -112,6 +112,17 @@ Results of battles saved so you can analyse your progress. Current fields are 'e
         - If you export the tournament standings (`FINAL_TOURNAMENT_CSV` in `settings.ini`), the rankings for every arena are written to disk alongside those console insights.
         - Whenever the main loop finishes—or you interrupt it with Ctrl+C—the evolver prints an evolution statistics digest listing battles per era, the total battle count, and the approximate speed in battles per hour. This makes it easy to compare throughput between different hardware setups or parameter combinations.
 
+## Best Practices for Evolution
+
+Based on large-scale optimization runs, the following strategies are recommended for high-performance evolution:
+
+*   **Stability through Intensity**: If you find your population is not converging, try increasing `BATTLEROUNDS_LIST` in your later eras (e.g., to 100 or 200). More rounds per battle reduce the "luck" factor and ensure only the truly dominant warriors survive.
+*   **Preventing Stagnation**: Use a mix of `CHAMPION_BATTLE_FREQUENCY` and `UNARCHIVE_LIST` to keep your population dynamic. Aggressive unarchiving in the middle phase of your run (Era 2) can reintroduce forgotten "killer" instructions that might have been lost during radical mutation.
+*   **Strategic Mutation**: 
+    *   **Era 1**: Focus on `RANDOM_LIST` and `MINI_MUT_LIST` to explore the search space.
+    *   **Era 3**: Focus on `MICRO_MUT_LIST` and `NAB_LIST` to fine-tune your best warriors and borrow successful logic from other arenas.
+*   **Shared Archives**: When running multiple evolver instances, always use a shared `ARCHIVE_PATH`. This allows independent populations to "cross-pollinate," combining the best breakthroughs from different hardware or parameter sets.
+
 ## Building an instruction library
 
 The evolver can borrow instructions from an external library so that promising

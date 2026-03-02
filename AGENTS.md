@@ -68,3 +68,12 @@ Debugging the C++ worker:
 - Incompatible addressing modes (*, {, }) in 1988 arenas are automatically converted to direct addressing ($).
 - When instructions are formatted for export from a 1988 arena (e.g. to the archive or worker), the calculated modifier is explicitly added to ensure consistent behavior across all engines.
 - The C++ Redcode Worker has been aligned with pMars reference implementation for postincrement timing and 1988 rules.
+
+## Hyperparameter Optimization Findings (Nano Arena)
+An 8-hour Optuna-based optimization run on the Nano Arena (80 core) provided several insights into effective evolution strategies:
+- **Intensified Training:** Increasing `BATTLEROUNDS_LIST` (e.g., 100-200 rounds) in later eras significantly improves the reliability of the winner selection, leading to more robust warriors.
+- **Diversified Matchmaking:** A high frequency of **Random Pair Battles** in Era 1 helps discover a wide range of strategies, while **Champion Challenges** should peak in Era 2 to refine the most successful lineages.
+- **Aggressive Unarchiving:** Mid-evolution (Era 2) benefits from frequent unarchiving (e.g., 1-in-7000 chance per battle) to reintroduce successful historical traits and prevent the population from stagnating in local optima.
+- **Dynamic Mutation:** **Mini Mutations** (replacing parts of instructions) are highly effective for exploration in Era 1, while **Micro Mutations** (incrementing/decrementing offsets) and **Nab Strategies** (borrowing from other arenas) excel during the final optimization phase.
+- **Crossover Decay:** Crossover rates should be highest during the early exploration phase and gradually decrease as the population converges toward optimized designs.
+
