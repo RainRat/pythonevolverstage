@@ -11,6 +11,56 @@ from enum import Enum
 from typing import Deque, Mapping, Optional, Tuple
 
 
+import re
+import shutil
+
+
+class Colors:
+    """ANSI color codes for CLI output."""
+
+    HEADER = "\033[95m"
+    BLUE = "\033[94m"
+    CYAN = "\033[96m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    ENDC = "\033[0m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+
+
+def strip_ansi(text: str) -> str:
+    """Removes ANSI escape codes from a string."""
+    return re.sub(r"\033\[[0-9;]*m", "", str(text))
+
+
+def get_strategy_color(strategy: str) -> str:
+    """Returns the ANSI color code for a given strategy."""
+    s = str(strategy).lower()
+    if "paper" in s:
+        return Colors.GREEN
+    if "stone" in s:
+        return Colors.RED
+    if "imp" in s:
+        return Colors.YELLOW
+    if "vampire" in s:
+        return Colors.HEADER
+    if "mover" in s:
+        return Colors.BLUE
+    if "experimental" in s:
+        return Colors.CYAN
+    return Colors.ENDC
+
+
+def get_separator(char: str = "-", max_width: int = 100) -> str:
+    """Returns a separator string of the current terminal width."""
+    try:
+        cols, _ = shutil.get_terminal_size()
+        return char * min(cols, max_width)
+    except (OSError, ValueError):
+        return char * 80
+
+
 class VerbosityLevel(Enum):
     TERSE = "terse"
     DEFAULT = "default"

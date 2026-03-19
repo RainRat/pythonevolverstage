@@ -1,13 +1,16 @@
 import argparse
 import csv
+import hashlib
+import json
 import os
 import random
+import re
 import shutil
 import statistics
 import sys
 import time
 import warnings
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Sequence, Tuple, Union, TextIO
 
@@ -25,6 +28,7 @@ from config import (
 from ui import (
     BattleStatisticsTracker,
     ChampionDisplay,
+    Colors,
     ConsoleInterface,
     PseudoGraphicalConsole,
     SimpleConsole,
@@ -36,7 +40,10 @@ from ui import (
     console_update_champions,
     console_update_status,
     get_console,
+    get_separator,
+    get_strategy_color,
     set_console_verbosity,
+    strip_ansi,
 )
 
 
@@ -268,14 +275,13 @@ class BenchmarkLogger(BaseCSVLogger):
 
     def log_score(
         self,
-        *,
         era: int,
         generation: int,
         arena: int,
         champion: int,
         benchmark: str,
         score: int,
-        benchmark_path: Optional[str],
+        benchmark_path: str,
     ) -> None:
         self.log_row(
             {
@@ -285,9 +291,776 @@ class BenchmarkLogger(BaseCSVLogger):
                 "champion": champion,
                 "benchmark": benchmark,
                 "score": score,
-                "benchmark_path": benchmark_path or "",
+                "benchmark_path": benchmark_path,
             }
         )
+
+
+def _get_arena_idx(default=0):
+    """
+    Extracts the arena index from the --arena flag or infers it from the current path.
+    """
+    if "--arena" in sys.argv:
+        try:
+            return int(sys.argv[sys.argv.index("--arena") + 1])
+        except (ValueError, IndexError):
+            pass
+
+    # Infer from script path or current directory
+    path = os.getcwd()
+    match = re.search(r"arena(\d+)", path)
+    if match:
+        return int(match.group(1))
+
+    return default
+
+
+def _resolve_warrior_path(selector, arena_idx):
+    """
+    Converts a warrior selector (e.g. 'top', 'random', '123') to a filesystem path.
+    Supports topN, rankN, and selector@arena overrides.
+    """
+    config = get_active_config()
+    sel = str(selector).lower()
+
+    # Check for arena override suffix (e.g. top@2)
+    if "@" in sel:
+        try:
+            sel, arena_override = sel.split("@")
+            arena_idx = int(arena_override)
+        except (ValueError, IndexError):
+            pass
+
+    # Random selector
+    if sel == "random":
+        arena_dir = os.path.join(config.base_path, f"arena{arena_idx}")
+        if os.path.exists(arena_dir):
+            files = [f for f in os.listdir(arena_dir) if f.endswith(".red")]
+            if files:
+                chosen = random.choice(files)
+                return os.path.join(arena_dir, chosen)
+        return selector
+
+    # Top/Champion selector (streak-based)
+    if sel.startswith("top"):
+        try:
+            # Extract N from topN, default to 1
+            n = 1
+            if len(sel) > 3:
+                n = int(sel[3:])
+
+            # Use get_leaderboard to find the ID
+            results = get_leaderboard(arena_idx=arena_idx, limit=n)
+            if arena_idx in results and len(results[arena_idx]) >= n:
+                warrior_id, streak = results[arena_idx][n - 1]
+                path = os.path.join(config.base_path, f"arena{arena_idx}", f"{warrior_id}.red")
+                if os.path.exists(path):
+                    return path
+        except (ValueError, IndexError):
+            pass
+
+    # Rank selector (lifetime win-rate-based)
+    if sel.startswith("rank"):
+        try:
+            # Extract N from rankN, default to 1
+            n = 1
+            if len(sel) > 4:
+                n = int(sel[4:])
+
+            # Use get_lifetime_rankings to find the ID
+            results = get_lifetime_rankings(arena_idx=arena_idx, limit=n, min_battles=1)
+            if arena_idx in results and len(results[arena_idx]) >= n:
+                warrior_id, rate, wins, battles = results[arena_idx][n - 1]
+                path = os.path.join(config.base_path, f"arena{arena_idx}", f"{warrior_id}.red")
+                if os.path.exists(path):
+                    return path
+        except (ValueError, IndexError):
+            pass
+
+    # If it's a number, try to resolve it as a warrior ID in the arena directory
+    if selector.isdigit():
+        path = os.path.join(config.base_path, f"arena{arena_idx}", f"{selector}.red")
+        if os.path.exists(path):
+            return path
+
+    # Fallback to direct path
+    return selector
+
+
+def get_recent_log_entries(n=5, arena_idx=None):
+    """
+    Retrieves and parses the last n entries from the battle log file.
+    Optionally filters by arena index.
+    """
+    config = get_active_config()
+    battle_log_file = config.battle_log_file
+    if not battle_log_file or not os.path.exists(battle_log_file):
+        return []
+    try:
+        with open(battle_log_file, "r") as f:
+            # If filtering by arena, scan a deeper buffer to ensure we find matches
+            scan_depth = n * 20 if arena_idx is not None else n
+            lines = deque(f, maxlen=scan_depth)
+            results = []
+            for line in lines:
+                line = line.strip()
+                if not line or "winner,loser" in line:
+                    continue
+                # Manually parse the CSV line
+                # era,arena,winner,loser,score1,score2,bred_with
+                parts = line.split(",")
+                if len(parts) >= 6:
+                    try:
+                        this_arena = int(parts[1])
+                        if arena_idx is not None and this_arena != arena_idx:
+                            continue
+                    except ValueError:
+                        continue
+
+                    results.append(
+                        {
+                            "era": parts[0],
+                            "arena": parts[1],
+                            "winner": parts[2],
+                            "loser": parts[3],
+                            "score1": parts[4],
+                            "score2": parts[5],
+                        }
+                    )
+            return results[-n:] if n > 0 else results
+    except Exception:
+        return []
+
+
+def get_evolution_status(arena_idx=None):
+    """
+    Gathers the current status of the evolution system into a dictionary.
+    Optionally filters the arena and log list by arena index.
+    """
+    config = get_active_config()
+    champions = get_leaderboard(limit=1)
+
+    # Count total battles from log
+    total_battles = 0
+    battle_log_file = config.battle_log_file
+    if battle_log_file and os.path.exists(battle_log_file):
+        try:
+            with open(battle_log_file, "r") as f:
+                total_battles = max(0, sum(1 for _ in f) - 1)  # Subtract header
+        except Exception:
+            pass
+
+    latest_entries = get_recent_log_entries(n=1)
+    status = {
+        "latest_log": latest_entries[0] if latest_entries else None,
+        "recent_log": get_recent_log_entries(5, arena_idx=arena_idx),
+        "total_battles": total_battles,
+        "arenas": [],
+        "archive": None,
+    }
+
+    arenas_to_scan = (
+        [arena_idx] if arena_idx is not None else range(config.last_arena + 1)
+    )
+    for i in arenas_to_scan:
+        arena_info = {
+            "id": i,
+            "config": {
+                "size": config.coresize_list[i],
+                "cycles": config.cycles_list[i],
+                "processes": config.processes_list[i],
+            },
+            "directory": f"arena{i}",
+            "exists": False,
+            "population": 0,
+            "avg_length": 0.0,
+            "diversity": 0.0,
+        }
+
+        dir_name = os.path.join(config.base_path, f"arena{i}")
+        if os.path.exists(dir_name):
+            arena_info["exists"] = True
+            files = [f for f in os.listdir(dir_name) if f.endswith(".red")]
+            count = len(files)
+            arena_info["population"] = count
+            arena_info["diversity"] = get_population_diversity(i)
+
+            # Add champion info and strategy if available
+            if i in champions and champions[i]:
+                champ_id = champions[i][0][0]
+                arena_info["champion"] = champ_id
+                arena_info["champion_wins"] = champions[i][0][1]
+
+                # Identify champion strategy
+                champ_path = os.path.join(dir_name, f"{champ_id}.red")
+                champ_stats = analyze_warrior(champ_path)
+                arena_info["champion_strategy"] = identify_strategy(champ_stats)
+            else:
+                arena_info["champion"] = None
+                arena_info["champion_wins"] = 0
+                arena_info["champion_strategy"] = "-"
+
+            if count > 0:
+                total_lines = 0
+                sample_files = files[:50]
+                for f in sample_files:
+                    try:
+                        with open(os.path.join(dir_name, f), "r") as fh:
+                            total_lines += sum(1 for line in fh if line.strip())
+                    except Exception:
+                        pass
+                arena_info["avg_length"] = total_lines / len(sample_files)
+
+        status["arenas"].append(arena_info)
+
+    archive_path = config.archive_path
+    if os.path.exists(archive_path):
+        afiles = [f for f in os.listdir(archive_path) if f.endswith(".red")]
+        status["archive"] = {"exists": True, "count": len(afiles)}
+    else:
+        status["archive"] = {"exists": False, "count": 0}
+
+    return status
+
+
+def get_leaderboard(arena_idx=None, limit=10):
+    """
+    Parses the battle log to find the top performing warriors.
+    Tracks consecutive wins for each warrior ID, resetting when they lose.
+    """
+    config = get_active_config()
+    battle_log_file = config.battle_log_file
+    if not battle_log_file or not os.path.exists(battle_log_file):
+        return {}
+
+    # arena -> warrior_id -> wins_since_last_loss
+    stats = {}
+
+    try:
+        with open(battle_log_file, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    a = int(row["arena"])
+                    if arena_idx is not None and a != arena_idx:
+                        continue
+
+                    if a not in stats:
+                        stats[a] = {}
+
+                    winner = row["winner"]
+                    loser = row["loser"]
+
+                    if winner == "TIE" or loser == "TIE":
+                        continue
+
+                    # Increment winner
+                    stats[a][winner] = stats[a].get(winner, 0) + 1
+                    # Reset loser
+                    stats[a][loser] = 0
+                except (ValueError, KeyError):
+                    continue
+
+        # Sort and filter
+        results = {}
+        for a in sorted(stats.keys()):
+            # filter out those with 0 wins (they just lost or never won)
+            ranked = [(w, c) for w, c in stats[a].items() if c > 0]
+            ranked.sort(key=lambda x: x[1], reverse=True)
+            if ranked:
+                results[a] = ranked[:limit]
+
+        return results
+    except Exception as e:
+        sys.stderr.write(f"Error generating leaderboard: {e}\n")
+        return {}
+
+
+def get_population_diversity(arena_idx):
+    """
+    Calculates the percentage of unique warrior strategies in an arena.
+    """
+    config = get_active_config()
+    arena_dir = os.path.join(config.base_path, f"arena{arena_idx}")
+    if not os.path.exists(arena_dir):
+        return 0.0
+
+    files = [f for f in os.listdir(arena_dir) if f.endswith(".red")]
+    if not files:
+        return 0.0
+
+    unique_hashes = set()
+    processed_count = 0
+    for f in files:
+        try:
+            with open(os.path.join(arena_dir, f), "r") as fh:
+                # Strip comments and normalize whitespace to focus on the logic
+                logical_lines = []
+                for line in fh:
+                    # Strip trailing comments
+                    clean = line.split(";")[0].strip()
+                    if clean:
+                        # Normalize internal whitespace and case to ensure logical comparison
+                        normalized = " ".join(clean.split()).upper()
+                        logical_lines.append(normalized)
+
+                content = "\n".join(logical_lines)
+                strategy_hash = hashlib.md5(content.encode("utf-8")).hexdigest()
+                unique_hashes.add(strategy_hash)
+                processed_count += 1
+        except Exception:
+            continue
+
+    if processed_count == 0:
+        return 0.0
+
+    return (len(unique_hashes) / processed_count) * 100
+
+
+def get_lifetime_rankings(arena_idx=None, limit=10, min_battles=5):
+    """
+    Parses the battle log to find the top performing warriors by win rate.
+    """
+    config = get_active_config()
+    battle_log_file = config.battle_log_file
+    if not battle_log_file or not os.path.exists(battle_log_file):
+        return {}
+
+    # arena -> warrior_id -> {wins, battles}
+    stats = {}
+
+    try:
+        with open(battle_log_file, "r", newline="") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                try:
+                    a = int(row["arena"])
+                    if arena_idx is not None and a != arena_idx:
+                        continue
+
+                    if a not in stats:
+                        stats[a] = {}
+
+                    winner = row["winner"]
+                    loser = row["loser"]
+
+                    if winner == "TIE" or loser == "TIE":
+                        continue
+
+                    if winner not in stats[a]:
+                        stats[a][winner] = {"wins": 0, "battles": 0}
+                    if loser not in stats[a]:
+                        stats[a][loser] = {"wins": 0, "battles": 0}
+
+                    stats[a][winner]["wins"] += 1
+                    stats[a][winner]["battles"] += 1
+                    stats[a][loser]["battles"] += 1
+                except (ValueError, KeyError):
+                    continue
+
+        # Calculate win rates and sort
+        results = {}
+        for a in sorted(stats.keys()):
+            ranked = []
+            for warrior_id, data in stats[a].items():
+                if data["battles"] >= min_battles:
+                    win_rate = (data["wins"] / data["battles"]) * 100
+                    ranked.append(
+                        (warrior_id, win_rate, data["wins"], data["battles"])
+                    )
+
+            # Sort by win rate, then total wins as tiebreaker
+            ranked.sort(key=lambda x: (x[1], x[2]), reverse=True)
+            if ranked:
+                results[a] = ranked[:limit]
+
+        return results
+    except Exception as e:
+        sys.stderr.write(f"Error generating lifetime rankings: {e}\n")
+        return {}
+
+
+def run_rankings(arena_idx=None, limit=10, min_battles=5, json_output=False):
+    """
+    Displays the top performing warriors by lifetime win rate.
+    """
+    results = get_lifetime_rankings(
+        arena_idx=arena_idx, limit=limit, min_battles=min_battles
+    )
+
+    if json_output:
+        print(json.dumps(results, indent=2))
+        return
+
+    if not results:
+        print(
+            f"{Colors.YELLOW}No ranking data available (min. {min_battles} battles required).{Colors.ENDC}"
+        )
+        return
+
+    sep = get_separator("-", max_width=95)
+
+    if arena_idx is None:
+        # Combined Global Rankings
+        all_ranked = []
+        for a, ranked in results.items():
+            for item in ranked:
+                all_ranked.append((a,) + item)
+        # Sort by win rate, then total wins
+        all_ranked.sort(key=lambda x: (x[2], x[3]), reverse=True)
+        top_ranked = all_ranked[:limit]
+
+        print(
+            f"\n{Colors.BOLD}{Colors.HEADER}--- GLOBAL LIFETIME RANKINGS (Top {limit}, min. {min_battles} battles) ---{Colors.ENDC}"
+        )
+        print(sep)
+        print(
+            f"{'Rank':<4} {'Arena':<6} {'Warrior':<12} {'Strategy':<20} {'Win Rate':>9} {'Wins/Battles':>15}  {'Performance'}"
+        )
+        print(sep)
+
+        max_rate = top_ranked[0][2] if top_ranked else 100
+        for i, (a, wid, rate, wins, battles) in enumerate(top_ranked, 1):
+            path = _resolve_warrior_path(str(wid), a)
+            strat = identify_strategy(analyze_warrior(path))
+            color = get_strategy_color(strat)
+            strat_str = f"{color}{strat}{Colors.ENDC}"
+            strat_plain = strip_ansi(strat_str)
+
+            # Visual bar
+            bar_width = 20
+            fill = int(bar_width * rate / max_rate) if max_rate > 0 else 0
+            bar_color = Colors.GREEN if i == 1 else Colors.ENDC
+            bar = f"[{bar_color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
+
+            print(
+                f"{i:>2}.  {a:<6} {wid:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {rate:>8.1f}% {wins:>6}/{battles:<8}  {bar}"
+            )
+    else:
+        # Per Arena Rankings
+        for a, top in results.items():
+            print(
+                f"\n{Colors.BOLD}{Colors.HEADER}--- LIFETIME RANKINGS: Arena {a} (Top {limit}, min. {min_battles} battles) ---{Colors.ENDC}"
+            )
+            print(sep)
+            print(
+                f"{'Rank':<4} {'Warrior':<12} {'Strategy':<20} {'Win Rate':>9} {'Wins/Battles':>15}  {'Performance'}"
+            )
+            print(sep)
+
+            max_rate = top[0][1] if top else 100
+            for i, (wid, rate, wins, battles) in enumerate(top, 1):
+                path = _resolve_warrior_path(str(wid), a)
+                strat = identify_strategy(analyze_warrior(path))
+                color = get_strategy_color(strat)
+                strat_str = f"{color}{strat}{Colors.ENDC}"
+                strat_plain = strip_ansi(strat_str)
+
+                # Visual bar
+                bar_width = 20
+                fill = int(bar_width * rate / max_rate) if max_rate > 0 else 0
+                bar_color = Colors.GREEN if i == 1 else Colors.ENDC
+                bar = f"[{bar_color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
+
+                print(
+                    f"{i:>2}.  {wid:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {rate:>8.1f}% {wins:>6}/{battles:<8}  {bar}"
+                )
+
+    print(sep + "\n")
+
+
+def run_leaderboard(arena_idx=None, limit=10, json_output=False):
+    """
+    Displays the top performing warriors based on recent win streaks.
+    """
+    results = get_leaderboard(arena_idx=arena_idx, limit=limit)
+
+    if json_output:
+        print(json.dumps(results, indent=2))
+        return
+
+    if not results:
+        print(f"{Colors.YELLOW}No leaderboard data available.{Colors.ENDC}")
+        return
+
+    sep = get_separator("-", max_width=95)
+
+    # If no arena specified and multiple arenas have data, show a summary table
+    if arena_idx is None and len(results) > 1:
+        print(
+            f"\n{Colors.BOLD}{Colors.HEADER}--- GLOBAL CHAMPIONS (Rank 1 from all arenas) ---{Colors.ENDC}"
+        )
+        print(sep)
+        print(
+            f"{'Arena':<6} {'Warrior':<12} {'Strategy':<20} {'Streak':>8}   {'Performance'}"
+        )
+        print(sep)
+
+        # Find max streak for scaling the bars
+        all_streaks = [top[0][1] for top in results.values() if top]
+        max_streak = max(all_streaks) if all_streaks else 1
+
+        for a in sorted(results.keys()):
+            if results[a]:
+                warrior_id, streak = results[a][0]
+                path = _resolve_warrior_path(str(warrior_id), a)
+                strat = identify_strategy(analyze_warrior(path))
+                color = get_strategy_color(strat)
+                strat_str = f"{color}{strat}{Colors.ENDC}"
+                strat_plain = strip_ansi(strat_str)
+
+                # Visual bar
+                bar_width = 20
+                fill = int(bar_width * streak / max_streak) if max_streak > 0 else 0
+                bar_color = Colors.GREEN
+                bar = f"[{bar_color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
+                print(
+                    f"{a:<6} {warrior_id:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {streak:>8}   {bar}"
+                )
+        print(sep)
+    else:
+        # Show detailed leaderboard for one or more arenas
+        for a, top in results.items():
+            print(
+                f"\n{Colors.BOLD}{Colors.HEADER}--- LEADERBOARD: Arena {a} ---{Colors.ENDC}"
+            )
+            print(sep)
+            print(
+                f"{'Rank':<4} {'Warrior':<12} {'Strategy':<20} {'Streak':>8}   {'Performance'}"
+            )
+            print(sep)
+
+            max_streak = top[0][1] if top else 1
+            for i, (wid, streak) in enumerate(top, 1):
+                path = _resolve_warrior_path(str(wid), a)
+                strat = identify_strategy(analyze_warrior(path))
+                color = get_strategy_color(strat)
+                strat_str = f"{color}{strat}{Colors.ENDC}"
+                strat_plain = strip_ansi(strat_str)
+
+                # Visual bar
+                bar_width = 20
+                fill = int(bar_width * streak / max_streak) if max_streak > 0 else 0
+                bar_color = Colors.GREEN if i == 1 else Colors.ENDC
+                bar = f"[{bar_color}{'=' * fill}{Colors.ENDC}{' ' * (bar_width - fill)}]"
+
+                print(
+                    f"{i:>2}.  {wid:<12} {strat_str:<{20 + (len(strat_str) - len(strat_plain))}} {streak:>8}   {bar}"
+                )
+            print(sep)
+    print("")
+
+
+def run_report(arena_idx):
+    """
+    Generates and displays a comprehensive health and performance report for an arena.
+    """
+    config = get_active_config()
+    print(
+        f"\n{Colors.BOLD}{Colors.HEADER}--- Arena {arena_idx} Health & Performance Report ---{Colors.ENDC}"
+    )
+
+    # 1. Arena Config
+    print(f"\n{Colors.BOLD}Arena Configuration:{Colors.ENDC}")
+    print(f"  Coresize:  {config.coresize_list[arena_idx]}")
+    print(f"  Cycles:    {config.cycles_list[arena_idx]}")
+    print(f"  Processes: {config.processes_list[arena_idx]}")
+    print(f"  Length:    {config.warlen_list[arena_idx]}")
+
+    # 2. Population & Diversity
+    diversity = get_population_diversity(arena_idx)
+    status_data = get_evolution_status(arena_idx=arena_idx)
+    arena_data = next(
+        (a for a in status_data["arenas"] if a["id"] == arena_idx), None
+    )
+
+    print(f"\n{Colors.BOLD}Population & Diversity:{Colors.ENDC}")
+    if arena_data:
+        print(f"  Total Population: {arena_data['population']} warriors")
+        print(f"  Avg Code Length:  {arena_data['avg_length']:.1f} instructions")
+
+    div_color = (
+        Colors.GREEN
+        if diversity > 50
+        else Colors.YELLOW
+        if diversity > 10
+        else Colors.RED
+    )
+    print(
+        f"  Diversity Index:  {div_color}{diversity:.1f}%{Colors.ENDC} unique strategies"
+    )
+
+    # 3. Current Champion (Streak)
+    print(f"\n{Colors.BOLD}Current Top Performers (Recent Streak):{Colors.ENDC}")
+    streaks = get_leaderboard(arena_idx=arena_idx, limit=5)
+    if arena_idx in streaks:
+        for i, (wid, streak) in enumerate(streaks[arena_idx], 1):
+            path = _resolve_warrior_path(str(wid), arena_idx)
+            strat = identify_strategy(analyze_warrior(path))
+            print(
+                f"  {i}. Warrior {wid:3} ({Colors.CYAN}{strat}{Colors.ENDC}): {Colors.GREEN}{streak} consecutive wins{Colors.ENDC}"
+            )
+    else:
+        print("  No streak data available.")
+
+    # 4. Lifetime Rankings
+    print(f"\n{Colors.BOLD}Lifetime Rankings (Win Rate):{Colors.ENDC}")
+    rankings = get_lifetime_rankings(arena_idx=arena_idx, limit=5)
+    if arena_idx in rankings:
+        print(
+            f"  {'Rank':<4} | {'Warrior':<7} | {'Strategy':<20} | {'Win Rate':>8} | {'Wins':>5} | {'Battles':>8}"
+        )
+        print("  " + "-" * 73)
+        for i, (wid, rate, wins, battles) in enumerate(rankings[arena_idx], 1):
+            path = _resolve_warrior_path(str(wid), arena_idx)
+            strat = identify_strategy(analyze_warrior(path))
+            print(
+                f"  {i:<4} | {wid:7} | {strat:<20} | {rate:>7.1f}% | {wins:5} | {battles:8}"
+            )
+    else:
+        print(
+            "  No lifetime ranking data available (requires min. 5 battles per warrior)."
+        )
+
+    print(f"\n{Colors.BOLD}System Summary:{Colors.ENDC}")
+    print(f"  Total Battles: {status_data['total_battles']:,}")
+    print(f"  Archive Size:  {status_data['archive']['count']} warriors")
+    print("")
+
+
+def run_hall_of_fame(arena_idx=None, json_output=False):
+    """
+    Identifies and displays the all-time best warrior for each tactical category.
+    """
+    # 1. Get high-limit lifetime rankings (scan top 100 per arena)
+    rankings = get_lifetime_rankings(arena_idx=arena_idx, limit=100, min_battles=1)
+
+    # 2. Get current streaks for context
+    streaks = get_leaderboard(arena_idx=arena_idx, limit=100)
+
+    # best_by_strat = { strategy_name: {wid, arena, rate, wins, battles, streak, path} }
+    best_by_strat = {}
+
+    for a, top in rankings.items():
+        # Map streaks for this arena
+        arena_streaks = {}
+        if a in streaks:
+            for wid, streak in streaks[a]:
+                arena_streaks[str(wid)] = streak
+
+        for wid, rate, wins, battles in top:
+            path = _resolve_warrior_path(str(wid), a)
+            if not os.path.exists(path):
+                continue
+
+            stats = analyze_warrior(path)
+            strat = identify_strategy(stats)
+
+            streak = arena_streaks.get(str(wid), 0)
+
+            # Preference: Higher win rate, then more battles as tiebreaker
+            is_better = False
+            if strat not in best_by_strat:
+                is_better = True
+            else:
+                existing = best_by_strat[strat]
+                if rate > existing["rate"]:
+                    is_better = True
+                elif rate == existing["rate"] and battles > existing["battles"]:
+                    is_better = True
+
+            if is_better:
+                best_by_strat[strat] = {
+                    "warrior_id": wid,
+                    "arena": a,
+                    "rate": rate,
+                    "wins": wins,
+                    "battles": battles,
+                    "streak": streak,
+                    "path": path,
+                }
+
+    if json_output:
+        print(json.dumps(best_by_strat, indent=2))
+        return
+
+    print(
+        f"\n{Colors.BOLD}{Colors.HEADER}--- HALL OF FAME: Tactical Category Champions ---{Colors.ENDC}"
+    )
+    sep = get_separator("-", max_width=95)
+    print(sep)
+    print(
+        f"{'Category':<20} | {'Arena':<6} | {'Warrior':<12} | {'Win Rate':>9} | {'Wins/Battles':>15} | {'Streak'}"
+    )
+    print(sep)
+
+    for strat in sorted(best_by_strat.keys()):
+        data = best_by_strat[strat]
+        color = get_strategy_color(strat)
+        strat_str = f"{color}{strat}{Colors.ENDC}"
+        strat_plain = strip_ansi(strat_str)
+
+        print(
+            f"{strat_str:<{20 + (len(strat_str) - len(strat_plain))}} | {data['arena']:<6} | {data['warrior_id']:<12} | {data['rate']:>8.1f}% | {data['wins']:>6}/{data['battles']:<8} | {data['streak']:>5}"
+        )
+    print(sep + "\n")
+
+
+def run_comparison(target1, target2, arena_idx, json_output=False):
+    """
+    Compares two warriors or selectors side-by-side.
+    """
+    path1 = _resolve_warrior_path(target1, arena_idx)
+    path2 = _resolve_warrior_path(target2, arena_idx)
+
+    stats1 = analyze_warrior(path1)
+    stats2 = analyze_warrior(path2)
+
+    if not stats1 or not stats2:
+        print(f"{Colors.RED}Error: One or both warriors could not be analyzed.{Colors.ENDC}")
+        return
+
+    strat1 = identify_strategy(stats1)
+    strat2 = identify_strategy(stats2)
+
+    if json_output:
+        print(json.dumps({"warrior1": stats1, "warrior2": stats2}, indent=2))
+        return
+
+    sep = get_separator("-", max_width=80)
+    print(f"\n{Colors.BOLD}{Colors.HEADER}--- Warrior Comparison: {target1} vs {target2} ---{Colors.ENDC}")
+    print(sep)
+    print(f"{'Feature':<20} | {'Warrior 1':<28} | {'Warrior 2':<28}")
+    print(sep)
+    print(f"{'File':<20} | {os.path.basename(path1):<28} | {os.path.basename(path2):<28}")
+    print(f"{'Strategy':<20} | {strat1:<28} | {strat2:<28}")
+    print(f"{'Instructions':<20} | {stats1['instructions']:<28} | {stats2['instructions']:<28}")
+    print(f"{'Unique Instr.':<20} | {len(stats1['unique_instructions']):<28} | {len(stats2['unique_instructions']):<28}")
+
+    print(f"\n{Colors.BOLD}Opcode Distribution:{Colors.ENDC}")
+    all_opcodes = sorted(set(stats1['opcodes'].keys()) | set(stats2['opcodes'].keys()))
+    for op in all_opcodes:
+        c1 = stats1['opcodes'].get(op, 0)
+        c2 = stats2['opcodes'].get(op, 0)
+        print(f"  {op:<18} | {c1:<28} | {c2:<28}")
+    print(sep + "\n")
+
+
+def _extract_pairwise_targets(argv_index):
+    """
+    Extracts two targets for pairwise commands from sys.argv.
+    Defaults to 'top' and 'top2' if not enough arguments are provided.
+    """
+    targets = []
+    # Collect arguments after the flag that don't start with --
+    for arg in sys.argv[argv_index + 1 :]:
+        if arg.startswith("--"):
+            break
+        targets.append(arg)
+
+    t1 = targets[0] if len(targets) > 0 else "top"
+    t2 = targets[1] if len(targets) > 1 else "top2"
+    return t1, t2
 
 
 def _score_warrior_against_benchmarks(
@@ -1454,19 +2227,98 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
         default=VerbosityLevel.DEFAULT.value,
         help="Console verbosity: terse, default, verbose, or pseudo-graphical",
     )
+
+    # Analytic and Utility Commands
+    parser.add_argument(
+        "--leaderboard", "-l", action="store_true", help="Show win streak leaderboard"
+    )
+    parser.add_argument(
+        "--rankings", "-K", action="store_true", help="Show lifetime win rate rankings"
+    )
+    parser.add_argument(
+        "--report", "-g", action="store_true", help="Generate arena health report"
+    )
+    parser.add_argument(
+        "--hall-of-fame", "-H", action="store_true", help="Show all-time best warriors"
+    )
+    parser.add_argument(
+        "--compare", "-y", nargs="*", help="Compare two warriors side-by-side"
+    )
+    parser.add_argument(
+        "--diff", "-f", nargs="*", help="Line-by-line diff of two warriors"
+    )
+    parser.add_argument(
+        "--analyze", "-i", nargs="*", help="Analyze warrior composition"
+    )
+    parser.add_argument(
+        "--inspect", "-x", nargs="*", help="Comprehensive warrior profile"
+    )
+
+    # Support flags for commands
+    parser.add_argument("--arena", type=int, help="Target specific arena")
+    parser.add_argument("--top", type=int, default=10, help="Limit results to top N")
+    parser.add_argument("--min-battles", type=int, default=5, help="Min battles for rankings")
+    parser.add_argument("--json", action="store_true", help="Output in JSON format")
+
     args = parser.parse_args(argv)
 
     verbosity = VerbosityLevel(args.verbosity)
-
     verbosity = set_console_verbosity(verbosity)
 
     active_config = load_configuration(args.config)
-
     set_active_config(active_config)
 
+    # Initialize storage
     archive_storage = DiskArchiveStorage(archive_path=active_config.archive_path)
     set_archive_storage(archive_storage)
     archive_storage.initialize()
+
+    storage = create_arena_storage(active_config)
+    set_arena_storage(storage)
+    storage.load_existing()
+
+    # Handle Analytic Commands
+    arena_idx = args.arena if args.arena is not None else _get_arena_idx(default=None)
+
+    if args.leaderboard:
+        run_leaderboard(arena_idx=arena_idx, limit=args.top, json_output=args.json)
+        return 0
+
+    if args.rankings:
+        run_rankings(arena_idx=arena_idx, limit=args.top, min_battles=args.min_battles, json_output=args.json)
+        return 0
+
+    if args.report:
+        if arena_idx is None:
+            arena_idx = 0
+        run_report(arena_idx)
+        return 0
+
+    if args.hall_of_fame:
+        run_hall_of_fame(arena_idx=arena_idx, json_output=args.json)
+        return 0
+
+    if args.compare is not None:
+        t1 = args.compare[0] if len(args.compare) > 0 else "top"
+        t2 = args.compare[1] if len(args.compare) > 1 else "top2"
+        run_comparison(t1, t2, arena_idx or 0, json_output=args.json)
+        return 0
+
+    if args.analyze is not None:
+        target = args.analyze[0] if len(args.analyze) > 0 else "top"
+        path = _resolve_warrior_path(target, arena_idx or 0)
+        stats = analyze_warrior(path)
+        if args.json:
+            print(json.dumps(stats, indent=2))
+        else:
+            if stats:
+                print(f"\nAnalysis for {target} ({path}):")
+                print(f"  Instructions: {stats['instructions']}")
+                print(f"  Strategy:     {identify_strategy(stats)}")
+                print("  Opcodes:", stats['opcodes'])
+            else:
+                print(f"Error: Could not analyze {target}")
+        return 0
 
     _print_run_configuration_summary(active_config)
 

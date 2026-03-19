@@ -450,6 +450,14 @@ ParsedWarrior parse_warrior(const std::string& code, bool use_1988_rules) {
 
         std::string first_token_upper = to_upper_copy(first_token);
 
+        // Check if first token is an opcode (with or without modifier)
+        bool first_is_opcode = false;
+        size_t dot_pos = first_token_upper.find('.');
+        std::string opcode_root = (dot_pos == std::string::npos) ? first_token_upper : first_token_upper.substr(0, dot_pos);
+        if (OPCODE_MAP.find(opcode_root) != OPCODE_MAP.end()) {
+            first_is_opcode = true;
+        }
+
         if (!seen_non_comment_line) {
             if (first_token_upper == "ORG") {
                 std::string label_token;
@@ -487,7 +495,7 @@ ParsedWarrior parse_warrior(const std::string& code, bool use_1988_rules) {
         }
 
         std::string instruction_text = trimmed;
-        if (first_token.find('.') == std::string::npos) {
+        if (!first_is_opcode && first_token.find('.') == std::string::npos) {
             std::string label = first_token;
             if (!label.empty() && label.back() == ':') {
                 label.pop_back();
@@ -511,6 +519,7 @@ ParsedWarrior parse_warrior(const std::string& code, bool use_1988_rules) {
             } else {
                 instruction_text.clear();
             }
+            
             if (instruction_text.empty()) {
                 throw std::runtime_error(
                     "Label '" + label + "' is not followed by an instruction in line: " + trimmed

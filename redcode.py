@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import os
 import random
 import re
+import sys
 from dataclasses import dataclass
 from typing import Callable, Optional, Sequence, Tuple, TypeVar
 
@@ -156,15 +158,20 @@ _REDCODE_INSTRUCTION_RE = re.compile(
     r"""
     ^\s*
     (?:(?P<label>[A-Za-z_.$][\w.$]*)(?::)?\s+)?
-    (?P<opcode>[A-Za-z]+)
-    (?:\s*\.\s*(?P<modifier>[A-Za-z]+))?
-    \s*
-    (?P<a_operand>[^,]+?)
-    \s*,\s*
-    (?P<b_operand>[^,]+?)
-    \s*$
+    (?P<opcode>[A-Za-z]{3})
+    (?:
+        (?:\s*\.\s*(?P<modifier>[A-Za-z]{1,2}))(?:\s+(?P<a_operand>[^,;]+?))?
+        |
+        (?:\s+(?P<a_operand2>[^,;]+?))
+        |
+        (?:\s*(?P<a_operand3>[#$@<>{}\*][^,;]*))
+        |
+        (?=\s*(?:;|$))
+    )?
+    (?:\s*,\s*(?P<b_operand>[^,;]+?))?
+    \s*(?:;.*)?$
     """,
-    re.VERBOSE,
+    re.VERBOSE | re.IGNORECASE,
 )
 
 _PMARS_SCORE_RE = re.compile(
@@ -274,6 +281,8 @@ def rebuild_instruction_tables(active_config) -> InstructionTables:
         generation_opcode_pool=generation_opcode_pool,
         generation_opcode_pool_1988=generation_opcode_pool_1988,
     )
+    # Use sys.stderr.write for visibility
+    sys.stderr.write(f"DEBUG: rebuild_instruction_tables pool={generation_opcode_pool} pool88={generation_opcode_pool_1988}\n")
     set_instruction_tables(tables)
     return tables
 
@@ -332,10 +341,18 @@ def parse_redcode_instruction(line: str) -> Optional[RedcodeInstruction]:
     if canonical_opcode not in CANONICAL_SUPPORTED_OPCODES:
         raise ValueError(f"Unknown opcode '{opcode}'")
 
-    a_operand = match.group("a_operand")
+    a_operand = match.group("a_operand") or match.group("a_operand2") or match.group("a_operand3")
     b_operand = match.group("b_operand")
-    a_mode, a_field = _parse_operand(a_operand, "A")
-    b_mode, b_field = _parse_operand(b_operand, "B")
+    
+    if a_operand is None:
+        a_mode, a_field = DEFAULT_MODE, 0
+    else:
+        a_mode, a_field = _parse_operand(a_operand, "A")
+        
+    if b_operand is None:
+        b_mode, b_field = DEFAULT_MODE, 0
+    else:
+        b_mode, b_field = _parse_operand(b_operand, "B")
 
     modifier = match.group("modifier")
     if modifier:
@@ -470,18 +487,84 @@ def sanitize_instruction(instr: RedcodeInstruction, arena: int) -> RedcodeInstru
     return sanitized
 
 
+def analyze_warrior(filepath: str) -> Optional[dict]:
+    """
+    Parses a warrior file and extracts statistical information.
+    """
+    if not os.path.exists(filepath):
+        return None
+
+    stats = {
+        'instructions': 0,
+        'opcodes': {},
+        'modifiers': {},
+        'modes': {},
+        'unique_instructions': set(),
+        'file': filepath
+    }
+
+    try:
+        with open(filepath, 'r') as f:
+            for line in f:
+                instr = parse_redcode_instruction(line)
+                if not instr:
+                    continue
+
+                stats['instructions'] += 1
+                stats['unique_instructions'].add(line.upper().strip())
+
+                stats['opcodes'][instr.opcode] = stats['opcodes'].get(instr.opcode, 0) + 1
+                stats['modifiers'][instr.modifier] = stats['modifiers'].get(instr.modifier, 0) + 1
+                stats['modes'][instr.a_mode] = stats['modes'].get(instr.a_mode, 0) + 1
+                stats['modes'][instr.b_mode] = stats['modes'].get(instr.b_mode, 0) + 1
+        return stats
+    except Exception:
+        return None
+
+
+def identify_strategy(stats: Optional[dict]) -> str:
+    """
+    Identifies a warrior's strategy type based on its opcode distribution.
+    """
+    if not stats or stats.get('instructions', 0) == 0:
+        return "Unknown"
+
+    opcodes = stats['opcodes']
+    total = stats['instructions']
+
+    mov_pct = (opcodes.get('MOV', 0) / total) * 100
+    spl_pct = (opcodes.get('SPL', 0) / total) * 100
+    djn_pct = (opcodes.get('DJN', 0) / total) * 100
+    add_pct = (opcodes.get('ADD', 0) / total) * 100
+    jmp_pct = (opcodes.get('JMP', 0) / total) * 100
+    dat_pct = (opcodes.get('DAT', 0) / total) * 100
+
+    if spl_pct > 20 and mov_pct > 30:
+        return "Paper (Replicator)"
+    elif djn_pct > 10 and mov_pct > 30:
+        return "Stone (Bomb-thrower)"
+    elif add_pct > 20 and mov_pct > 40:
+        return "Imp (Pulse)"
+    elif jmp_pct > 15 and (mov_pct > 20 or add_pct > 20):
+        return "Vampire / Pittrap"
+    elif mov_pct > 70:
+        return "Mover / Runner"
+    elif dat_pct > 50:
+        return "Wait / Shield"
+
+    return "Experimental"
+
+
 def format_redcode_instruction(instr: RedcodeInstruction, spec: str = SPEC_1994) -> str:
+    op = str(instr.opcode or "DAT").upper()
+    a_part = f"{instr.a_mode}{instr.a_field}"
+    b_part = f"{instr.b_mode}{instr.b_field}"
+    
     if spec == SPEC_1988:
-        return (
-            f"{instr.opcode} "
-            f"{instr.a_mode}{instr.a_field},"
-            f"{instr.b_mode}{instr.b_field}\n"
-        )
-    return (
-        f"{instr.opcode}.{instr.modifier} "
-        f"{instr.a_mode}{instr.a_field},"
-        f"{instr.b_mode}{instr.b_field}\n"
-    )
+        return f"{op} {a_part}, {b_part}\n"
+    else:
+        modifier = str(instr.modifier or "F").upper()
+        return f"{op}.{modifier} {a_part}, {b_part}\n"
 
 
 def instruction_to_line(instr: RedcodeInstruction, arena: int) -> str:
@@ -545,15 +628,35 @@ def weighted_random_number(size: int, length: int) -> int:
 
 def generate_random_instruction(arena: int) -> RedcodeInstruction:
     config = get_active_config()
+    spec = get_arena_spec(arena)
     num1 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
     num2 = weighted_random_number(config.coresize_list[arena], config.warlen_list[arena])
     opcode = choose_random_opcode(arena)
+    sys.stderr.write(f"DEBUG: choose_random_opcode({arena}) returned {opcode!r}\n")
+    a_mode = choose_random_mode(arena)
+    b_mode = choose_random_mode(arena)
+
+    if spec == SPEC_1988:
+        # Validate opcode for 1988
+        allowed = SPEC_ALLOWED_OPCODES[SPEC_1988]
+        if opcode not in allowed:
+            opcode = "MOV"
+        # Validate modes for 1988
+        allowed_modes = SPEC_ALLOWED_ADDRESSING_MODES[SPEC_1988]
+        if a_mode not in allowed_modes:
+            a_mode = "$"
+        if b_mode not in allowed_modes:
+            b_mode = "$"
+        modifier = get_88_modifier(opcode, a_mode, b_mode)
+    else:
+        modifier = choose_random_modifier(arena)
+
     return RedcodeInstruction(
         opcode=opcode,
-        modifier=choose_random_modifier(arena),
-        a_mode=choose_random_mode(arena),
+        modifier=modifier,
+        a_mode=a_mode,
         a_field=num1,
-        b_mode=choose_random_mode(arena),
+        b_mode=b_mode,
         b_field=num2,
     )
 

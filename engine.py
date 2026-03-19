@@ -87,6 +87,8 @@ from redcode import (
     rebuild_instruction_tables,
     sanitize_instruction,
     weighted_random_number,
+    analyze_warrior,
+    identify_strategy,
 )
 from storage import (
     ArchivingEvent,
@@ -305,6 +307,7 @@ class MinorMutation(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
+        instruction = instruction.copy()
         r = _rng_int(1, 6)
         if r == 1:
             instruction.opcode = choose_random_opcode(arena)
@@ -333,6 +336,7 @@ class MicroMutation(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
+        instruction = instruction.copy()
         target_field = "a_field" if _rng_int(1, 2) == 1 else "b_field"
         current_value = int(getattr(instruction, target_field))
         if _rng_int(1, 2) == 1:
@@ -369,6 +373,7 @@ class MagicNumberMutation(BaseMutationStrategy):
         config: "EvolverConfig",
         magic_number: int,
     ) -> RedcodeInstruction:
+        instruction = instruction.copy()
         if _rng_int(1, 2) == 1:
             instruction.a_field = magic_number
         else:
@@ -571,6 +576,8 @@ __all__ = [
     "choose_random_mode",
     "generate_random_instruction",
     "generate_warrior_lines_until_non_dat",
+    "analyze_warrior",
+    "identify_strategy",
     "CPP_WORKER_LIB",
     "CPP_WORKER_MIN_DISTANCE",
     "CPP_WORKER_MIN_CORE_SIZE",
