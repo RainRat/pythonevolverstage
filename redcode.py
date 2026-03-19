@@ -77,7 +77,7 @@ SPEC_ALLOWED_ADDRESSING_MODES = {
         "{",
         "}",
     },
-    SPEC_1988: {"#", "$", "@", "<", ">"},
+    SPEC_1988: {"#", "$", "@", "<"},
 }
 
 DEFAULT_1988_GENERATION_POOL = [

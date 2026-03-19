@@ -1278,18 +1278,14 @@ def _update_final_tournament_status(
     percent_complete = (
         battles_completed / total_battles * 100 if total_battles else 100.0
     )
-    time_progress, default_detail = _get_progress_status(
-        tournament_start, active_config.clock_time, final_era_index
+    elapsed = time.time() - tournament_start
+    
+    progress_line = (
+        f"Final Tournament: {battles_completed}/{total_battles} battles "
+        f"({percent_complete:.2f}% complete) | Elapsed: {_format_duration(elapsed)}"
     )
-    progress_segments = []
-    if active_config.clock_time:
-        progress_segments.append(time_progress)
-    progress_segments.append(
-        f"Final Tournament Progress: {battles_completed}/{total_battles} "
-        f"battles ({percent_complete:.2f}% complete)"
-    )
-    progress_line = " | ".join(progress_segments)
-    console_update_status(progress_line, detail_line or default_detail)
+    
+    console_update_status(progress_line, detail_line or f"Era {final_era_index + 1} Tournament")
 
 
 def _run_benchmark_tournament(
