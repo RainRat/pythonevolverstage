@@ -522,37 +522,56 @@ def analyze_warrior(filepath: str) -> Optional[dict]:
         return None
 
 
-def identify_strategy(stats: Optional[dict]) -> str:
-    """
-    Identifies a warrior's strategy type based on its opcode distribution.
-    """
+def identify_strategy(stats: Optional[dict], arena: Optional[int] = None) -> str:
     if not stats or stats.get('instructions', 0) == 0:
         return "Unknown"
 
-    opcodes = stats['opcodes']
-    total = stats['instructions']
+    if arena is not None:
+        try:
+            from battle_runner import run_strategy_analysis, CPP_WORKER_LIB
+            if CPP_WORKER_LIB is not None:
+                config = get_active_config()
+                filepath = stats.get('file')
+                if filepath and os.path.exists(filepath):
+                    with open(filepath, 'r') as f:
+                        warrior_code = f.read()
 
-    mov_pct = (opcodes.get('MOV', 0) / total) * 100
-    spl_pct = (opcodes.get('SPL', 0) / total) * 100
-    djn_pct = (opcodes.get('DJN', 0) / total) * 100
-    add_pct = (opcodes.get('ADD', 0) / total) * 100
-    jmp_pct = (opcodes.get('JMP', 0) / total) * 100
-    dat_pct = (opcodes.get('DAT', 0) / total) * 100
+                    result = run_strategy_analysis(
+                        warrior_code,
+                        arena,
+                        config.coresize_list[arena],
+                        config.cycles_list[arena],
+                        config.processes_list[arena],
+                        config.readlimit_list[arena],
+                        config.writelimit_list[arena],
+                        config.warlen_list[arena],
+                    )
 
-    if spl_pct > 20 and mov_pct > 30:
-        return "Paper (Replicator)"
-    elif djn_pct > 10 and mov_pct > 30:
-        return "Stone (Bomb-thrower)"
-    elif add_pct > 20 and mov_pct > 40:
-        return "Imp (Pulse)"
-    elif jmp_pct > 15 and (mov_pct > 20 or add_pct > 20):
-        return "Vampire / Pittrap"
-    elif mov_pct > 70:
-        return "Mover / Runner"
-    elif dat_pct > 50:
-        return "Wait / Shield"
+                    if not result.startswith("ERROR:"):
+                        parts = result.split()
+                        data = {}
+                        for part in parts:
+                            key, value = part.split(":")
+                            data[key] = value
 
-    return "Experimental"
+                        max_procs = int(data.get("MAX_PROCS", "1"))
+                        null_died = data.get("NULL_DIED", "0") == "1"
+                        outside = data.get("OUTSIDE", "0") == "1"
+                        null_gained = data.get("NULL_GAINED", "0") == "1"
+
+                        if null_gained:
+                            return "Vampire / Pittrap"
+                        if null_died:
+                            return "Stone (Bomb-thrower)"
+                        if max_procs > 3 and outside:
+                            return "Paper (Replicator)"
+                        if outside and max_procs <= 3:
+                            return "Imp (Pulse)"
+                        return "Experimental"
+        except Exception:
+            pass
+
+    return "Unknown"
 
 
 def format_redcode_instruction(instr: RedcodeInstruction, spec: str = SPEC_1994) -> str:

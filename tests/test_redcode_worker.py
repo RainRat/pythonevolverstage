@@ -627,3 +627,66 @@ def test_mismatch_seed_1790663121():
 
     print(f"RESULT: {result}")
     assert get_scores(result) == [3, 0]
+
+
+def test_analyze_strategy_imp():
+    lib = load_worker()
+    imp = "MOV.I $0, $1\n"
+    result = lib.analyze_strategy(
+        imp.encode(),
+        8000, 10000, 8000, 8000, 8000, 100,
+        0,
+    ).decode()
+    assert not result.startswith("ERROR:"), result
+    assert "MAX_PROCS:1" in result
+    assert "OUTSIDE:1" in result
+    assert "NULL_DIED:0" in result
+    assert "NULL_GAINED:0" in result
+
+
+def test_analyze_strategy_paper():
+    lib = load_worker()
+    paper = "SPL.B $1, $0\nMOV.I $0, $1\n"
+    result = lib.analyze_strategy(
+        paper.encode(),
+        8000, 10000, 8000, 8000, 8000, 100,
+        0,
+    ).decode()
+    assert not result.startswith("ERROR:"), result
+    assert "OUTSIDE:1" in result
+    assert "NULL_GAINED:0" in result
+
+
+def test_analyze_strategy_stone():
+    lib = load_worker()
+    stone = "MOV.I $1, $4000\nJMP.B $-1, $0\nDAT.F #0, #0\n"
+    result = lib.analyze_strategy(
+        stone.encode(),
+        8000, 10000, 8000, 8000, 8000, 100,
+        0,
+    ).decode()
+    assert not result.startswith("ERROR:"), result
+    assert "NULL_DIED:1" in result
+
+
+def test_analyze_strategy_vampire():
+    lib = load_worker()
+    vampire = "MOV.I $2, $4000\nJMP.B $-1, $0\nSPL.B $0, $0\n"
+    result = lib.analyze_strategy(
+        vampire.encode(),
+        8000, 10000, 8000, 8000, 8000, 100,
+        0,
+    ).decode()
+    assert not result.startswith("ERROR:"), result
+    assert "NULL_GAINED:1" in result
+
+
+def test_analyze_strategy_invalid_warrior():
+    lib = load_worker()
+    invalid = "MOV.I #abc, $0\n"
+    result = lib.analyze_strategy(
+        invalid.encode(),
+        8000, 10000, 8000, 8000, 8000, 100,
+        0,
+    ).decode()
+    assert result.startswith("ERROR:"), result

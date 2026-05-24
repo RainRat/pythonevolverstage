@@ -1402,4 +1402,115 @@ extern "C" {
         return response.c_str();
     }
 
+    const char* analyze_strategy(
+        const char* warrior_code,
+        int core_size, int max_cycles, int max_processes,
+        int read_limit, int write_limit,
+        int max_warrior_length,
+        int use_1988_rules
+    ) {
+        thread_local std::string response;
+        try {
+            if (!warrior_code) {
+                throw std::runtime_error("Null warrior source provided");
+            }
+
+            bool use_1988 = use_1988_rules != 0;
+
+            auto w1_parsed = parse_warrior(warrior_code, use_1988);
+
+            if (w1_parsed.instructions.empty()) {
+                throw std::runtime_error("Warrior contains no executable instructions");
+            }
+            if (static_cast<int>(w1_parsed.instructions.size()) > max_warrior_length) {
+                throw std::runtime_error(
+                    "Warrior length exceeds the configured maximum of " +
+                    std::to_string(max_warrior_length)
+                );
+            }
+
+            std::string null_code = use_1988 ? "JMP $0\n" : "JMP.B $0, $0\n";
+            auto w2_parsed = parse_warrior(null_code, use_1988);
+
+            int w1_start = 0;
+            int w2_start = core_size / 2;
+            int w1_len = static_cast<int>(w1_parsed.instructions.size());
+
+            Core core(core_size);
+
+            for (size_t i = 0; i < w1_parsed.instructions.size(); ++i) {
+                core.memory[normalize(w1_start + static_cast<int>(i), core_size)] = w1_parsed.instructions[i];
+            }
+            core.memory[w2_start] = w2_parsed.instructions[0];
+
+            int w1_entry = normalize(w1_start + w1_parsed.entry_point, core_size);
+
+            core.process_queues[0].clear();
+            core.process_queues[1].clear();
+            core.process_queues[0].push_back({w1_entry, 0});
+            core.process_queues[1].push_back({w2_start, 1});
+
+            int w1_max_procs = 1;
+            bool null_died = false;
+            bool executed_outside = false;
+            bool null_gained = false;
+
+            int cycles_to_run = max_cycles < 2000 ? max_cycles : 2000;
+            if (cycles_to_run <= 0) {
+                cycles_to_run = 2000;
+            }
+
+            for (int cycle = 0; cycle < cycles_to_run; ++cycle) {
+                if (core.process_queues[0].empty() || core.process_queues[1].empty()) {
+                    if (core.process_queues[1].empty()) {
+                        null_died = true;
+                    }
+                    break;
+                }
+
+                if (!core.process_queues[0].empty()) {
+                    WarriorProcess p = core.process_queues[0].front();
+                    core.process_queues[0].pop_front();
+                    core.execute(p, read_limit, write_limit, max_processes);
+                }
+
+                if (!core.process_queues[1].empty()) {
+                    WarriorProcess p = core.process_queues[1].front();
+                    core.process_queues[1].pop_front();
+                    core.execute(p, read_limit, write_limit, max_processes);
+                }
+
+                int w1_procs = static_cast<int>(core.process_queues[0].size());
+                int w2_procs = static_cast<int>(core.process_queues[1].size());
+
+                if (w1_procs > w1_max_procs) {
+                    w1_max_procs = w1_procs;
+                }
+                if (w2_procs > 1) {
+                    null_gained = true;
+                }
+
+                for (const auto& p : core.process_queues[0]) {
+                    int rel = normalize(p.pc - w1_start, core_size);
+                    if (rel >= w1_len) {
+                        executed_outside = true;
+                        break;
+                    }
+                }
+            }
+
+            std::stringstream result;
+            result << "MAX_PROCS:" << w1_max_procs
+                   << " NULL_DIED:" << (null_died ? "1" : "0")
+                   << " OUTSIDE:" << (executed_outside ? "1" : "0")
+                   << " NULL_GAINED:" << (null_gained ? "1" : "0");
+            response = result.str();
+        } catch (const std::exception& e) {
+            response = std::string("ERROR: ") + e.what();
+        } catch (...) {
+            response = "ERROR: Unknown exception encountered while analyzing strategy";
+        }
+        return response.c_str();
+    }
+
 }

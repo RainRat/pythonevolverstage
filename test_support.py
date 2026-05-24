@@ -78,4 +78,15 @@ def load_worker():
         ctypes.c_int,
     ]
     lib.run_battle.restype = ctypes.c_char_p
+    lib.analyze_strategy.argtypes = [
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_int,
+    ]
+    lib.analyze_strategy.restype = ctypes.c_char_p
     return lib

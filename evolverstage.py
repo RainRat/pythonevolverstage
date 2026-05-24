@@ -494,7 +494,7 @@ def get_evolution_status(arena_idx=None):
                 # Identify champion strategy
                 champ_path = os.path.join(dir_name, f"{champ_id}.red")
                 champ_stats = analyze_warrior(champ_path)
-                arena_info["champion_strategy"] = identify_strategy(champ_stats)
+                arena_info["champion_strategy"] = identify_strategy(champ_stats, i)
             else:
                 arena_info["champion"] = None
                 arena_info["champion_wins"] = 0
@@ -722,7 +722,7 @@ def run_rankings(arena_idx=None, limit=10, min_battles=5, json_output=False):
         max_rate = top_ranked[0][2] if top_ranked else 100
         for i, (a, wid, rate, wins, battles) in enumerate(top_ranked, 1):
             path = _resolve_warrior_path(str(wid), a)
-            strat = identify_strategy(analyze_warrior(path))
+            strat = identify_strategy(analyze_warrior(path), a)
             color = get_strategy_color(strat)
             strat_str = f"{color}{strat}{Colors.ENDC}"
             strat_plain = strip_ansi(strat_str)
@@ -751,7 +751,7 @@ def run_rankings(arena_idx=None, limit=10, min_battles=5, json_output=False):
             max_rate = top[0][1] if top else 100
             for i, (wid, rate, wins, battles) in enumerate(top, 1):
                 path = _resolve_warrior_path(str(wid), a)
-                strat = identify_strategy(analyze_warrior(path))
+                strat = identify_strategy(analyze_warrior(path), a)
                 color = get_strategy_color(strat)
                 strat_str = f"{color}{strat}{Colors.ENDC}"
                 strat_plain = strip_ansi(strat_str)
@@ -804,7 +804,7 @@ def run_leaderboard(arena_idx=None, limit=10, json_output=False):
             if results[a]:
                 warrior_id, streak = results[a][0]
                 path = _resolve_warrior_path(str(warrior_id), a)
-                strat = identify_strategy(analyze_warrior(path))
+                strat = identify_strategy(analyze_warrior(path), a)
                 color = get_strategy_color(strat)
                 strat_str = f"{color}{strat}{Colors.ENDC}"
                 strat_plain = strip_ansi(strat_str)
@@ -833,7 +833,7 @@ def run_leaderboard(arena_idx=None, limit=10, json_output=False):
             max_streak = top[0][1] if top else 1
             for i, (wid, streak) in enumerate(top, 1):
                 path = _resolve_warrior_path(str(wid), a)
-                strat = identify_strategy(analyze_warrior(path))
+                strat = identify_strategy(analyze_warrior(path), a)
                 color = get_strategy_color(strat)
                 strat_str = f"{color}{strat}{Colors.ENDC}"
                 strat_plain = strip_ansi(strat_str)
@@ -896,7 +896,7 @@ def run_report(arena_idx):
     if arena_idx in streaks:
         for i, (wid, streak) in enumerate(streaks[arena_idx], 1):
             path = _resolve_warrior_path(str(wid), arena_idx)
-            strat = identify_strategy(analyze_warrior(path))
+            strat = identify_strategy(analyze_warrior(path), a)
             print(
                 f"  {i}. Warrior {wid:3} ({Colors.CYAN}{strat}{Colors.ENDC}): {Colors.GREEN}{streak} consecutive wins{Colors.ENDC}"
             )
@@ -913,7 +913,7 @@ def run_report(arena_idx):
         print("  " + "-" * 73)
         for i, (wid, rate, wins, battles) in enumerate(rankings[arena_idx], 1):
             path = _resolve_warrior_path(str(wid), arena_idx)
-            strat = identify_strategy(analyze_warrior(path))
+            strat = identify_strategy(analyze_warrior(path), a)
             print(
                 f"  {i:<4} | {wid:7} | {strat:<20} | {rate:>7.1f}% | {wins:5} | {battles:8}"
             )
@@ -954,7 +954,7 @@ def run_hall_of_fame(arena_idx=None, json_output=False):
                 continue
 
             stats = analyze_warrior(path)
-            strat = identify_strategy(stats)
+            strat = identify_strategy(stats, a)
 
             streak = arena_streaks.get(str(wid), 0)
 
@@ -1020,8 +1020,8 @@ def run_comparison(target1, target2, arena_idx, json_output=False):
         print(f"{Colors.RED}Error: One or both warriors could not be analyzed.{Colors.ENDC}")
         return
 
-    strat1 = identify_strategy(stats1)
-    strat2 = identify_strategy(stats2)
+    strat1 = identify_strategy(stats1, arena_idx)
+    strat2 = identify_strategy(stats2, arena_idx)
 
     if json_output:
         print(json.dumps({"warrior1": stats1, "warrior2": stats2}, indent=2))
@@ -2310,7 +2310,7 @@ def _main_impl(argv: Optional[List[str]] = None) -> int:
             if stats:
                 print(f"\nAnalysis for {target} ({path}):")
                 print(f"  Instructions: {stats['instructions']}")
-                print(f"  Strategy:     {identify_strategy(stats)}")
+                print(f"  Strategy:     {identify_strategy(stats, arena_idx or 0)}")
                 print("  Opcodes:", stats['opcodes'])
             else:
                 print(f"Error: Could not analyze {target}")

@@ -223,6 +223,17 @@ def _load_cpp_worker_library() -> None:
                 ctypes.c_int,
             ]
             CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
+            CPP_WORKER_LIB.analyze_strategy.argtypes = [
+                ctypes.c_char_p,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+                ctypes.c_int,
+            ]
+            CPP_WORKER_LIB.analyze_strategy.restype = ctypes.c_char_p
             console_log(
                 "Successfully loaded C++ Redcode worker from "
                 f"{_format_path(loaded_path)}.",
@@ -538,6 +549,33 @@ def run_internal_battle(
         raise RuntimeError(f"An error occurred while running the internal battle: {exc}")
 
 
+def run_strategy_analysis(
+    warrior_code: str,
+    arena: int,
+    coresize: int,
+    cycles: int,
+    processes: int,
+    readlimit: int,
+    writelimit: int,
+    warlen: int,
+) -> str:
+    worker_lib = _get_internal_worker_library()
+    use_1988_rules = 1 if get_arena_spec(arena) == SPEC_1988 else 0
+    result_ptr = worker_lib.analyze_strategy(
+        warrior_code.encode("utf-8"),
+        coresize,
+        cycles,
+        processes,
+        readlimit,
+        writelimit,
+        warlen,
+        use_1988_rules,
+    )
+    if isinstance(result_ptr, bytes):
+        return result_ptr.decode("utf-8")
+    return result_ptr
+
+
 def _parse_battle_output(
     raw_output: str, engine_name: str, verbose: bool, expected_warriors: Sequence[int]
 ) -> tuple[list[int], list[int]]:
@@ -782,6 +820,7 @@ __all__ = [
     "_run_external_command",
     "_run_external_battle",
     "run_internal_battle",
+    "run_strategy_analysis",
     "execute_battle",
     "execute_battle_with_sources",
     "configure_battle_rng",
