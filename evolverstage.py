@@ -2067,11 +2067,13 @@ def run_evolution_loop(
                     )
                     console_update_status(progress_line, pending_battle_line)
 
+            decision_only = False
             if use_benchmark_battle and benchmark_result is not None:
                 warriors = benchmark_result.warriors
                 scores = benchmark_result.scores
             else:
                 battle_seed = _generate_internal_battle_seed()
+                decision_only = active_config.battle_engine == "internal"
                 warriors, scores = execute_battle(
                     arena_index,
                     cont1,
@@ -2079,6 +2081,7 @@ def run_evolution_loop(
                     era,
                     verbose=verbosity == VerbosityLevel.VERBOSE,
                     seed=battle_seed,
+                    decision_only=decision_only,
                 )
                 benchmark_result = None
             if 0 <= era < len(battles_per_era):
@@ -2100,7 +2103,7 @@ def run_evolution_loop(
                 _sync_champion_display()
             get_console().record_battle(winner, loser, was_draw)
 
-            if len(warriors) >= 2 and len(scores) >= 2:
+            if not decision_only and len(warriors) >= 2 and len(scores) >= 2:
                 matchup = (
                     f"{warriors[0]} ({scores[0]}) vs {warriors[1]} ({scores[1]})"
                 )
@@ -2137,7 +2140,7 @@ def run_evolution_loop(
                 active_config,
                 bag,
                 data_logger,
-                scores,
+                None if decision_only else scores,
                 warriors,
             )
 

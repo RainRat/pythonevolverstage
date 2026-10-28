@@ -323,3 +323,51 @@ def test_random_programs_match_pmars(tmp_path, pmars_binary, internal_worker, ca
     opponent = _random_warrior(rng)
     seed = rng.randint(0, 2**31 - 1)
     _compare_engines(internal_worker, pmars_binary, tmp_path, warrior, opponent, seed)
+
+
+def test_dat_operand_side_effects_match_pmars(tmp_path, pmars_binary, internal_worker):
+    # The DAT at line 4 can change core memory before its process dies.
+    warrior = "\n".join((
+        "SPL.B $2, $0",
+        "SUB.AB <2, }2",
+        "JMP.I }-2, $1",
+        "DAT.X *1, >2",
+        "JMN.AB >2, $1",
+        "JMP.B $0, $0",
+    )) + "\n"
+    opponent = "MOV.I $0, $1\n"
+    first = _write_warrior(tmp_path / "first.red", warrior)
+    second = _write_warrior(tmp_path / "second.red", opponent)
+    cmd = [str(pmars_binary), "-b", "-r", "1", "-s", "80", "-c", "800",
+           "-p", "8", "-l", "12", "-d", "12", "-F", "47",
+           str(first), str(second)]
+    reference = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    actual = internal_worker.run_battle(
+        warrior.encode(), 1, opponent.encode(), 2,
+        80, 800, 8, 80, 80, 12, 12, 1, 47, 0,
+    ).decode()
+    assert not actual.startswith("ERROR:"), actual
+    assert _parse_internal_scores(actual) == _parse_pmars_scores(reference.stdout) == [1, 1]
+
+
+@pytest.mark.parametrize("use_1988, warrior, opponent", [
+    (0, "MOV.I $0, $1\n", "DAT.F #0, #0\n"),
+    (1, "MOV $0, $1\n", "DAT #0, #0\n"),
+])
+def test_decisive_multiround_scores_match_pmars(
+    tmp_path, pmars_binary, internal_worker, use_1988, warrior, opponent,
+):
+    first = _write_warrior(tmp_path / "first.red", warrior)
+    second = _write_warrior(tmp_path / "second.red", opponent)
+    cmd = [str(pmars_binary), "-b", "-r", "3", "-s", "80", "-c", "800",
+           "-p", "8", "-l", "12", "-d", "12", "-F", "47"]
+    if use_1988:
+        cmd.append("-8")
+    reference = subprocess.run(cmd + [str(first), str(second)],
+                               capture_output=True, text=True, check=True)
+    actual = internal_worker.run_battle(
+        warrior.encode(), 1, opponent.encode(), 2,
+        80, 800, 8, 80, 80, 12, 12, 3, 47, use_1988,
+    ).decode()
+    assert not actual.startswith("ERROR:"), actual
+    assert _parse_internal_scores(actual) == _parse_pmars_scores(reference.stdout) == [9, 0]

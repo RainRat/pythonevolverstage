@@ -721,10 +721,6 @@ public:
         Instruction instr = memory[pc];
         auto& owner_queue = process_queues[process.owner];
 
-        if (instr.opcode == DAT) {
-            return; // Process terminates
-        }
-
         // --- Operand Evaluation ---
         int a_val_a, a_val_b;
         int a_addr_final;
@@ -832,6 +828,8 @@ public:
 
         // --- Instruction Execution ---
         switch (instr.opcode) {
+            case DAT:
+                return; // Operand side effects occur before the process terminates.
             case MOV:
                 {
                     switch (instr.modifier) {
@@ -1258,14 +1256,15 @@ int run_single_round(
 }
 
 extern "C" {
-    const char* run_battle(
+    static const char* run_battle_impl(
         const char* warrior1_code, int w1_id,
         const char* warrior2_code, int w2_id,
         int core_size, int max_cycles, int max_processes,
         int read_limit, int write_limit,
         int min_distance, int max_warrior_length, int rounds,
         int seed,
-        int use_1988_rules
+        int use_1988_rules,
+        bool stop_when_decided
     ) {
         // Responses are stored in thread-local storage so multiple Python threads can
         // call this function concurrently, but a recursive invocation on the same
@@ -1334,9 +1333,6 @@ extern "C" {
                     "Core size is too small for the configured warrior distance"
                 );
             }
-            int planned_rounds = rounds;
-
-            int rounds_played = 0;
             for (int r = 0; r < rounds; ++r) {
                 Core core(core_size, trace_file);
                 int w1_start = 0;
@@ -1374,19 +1370,12 @@ extern "C" {
                     w2_score += 1;
                 }
 
-                rounds_played = r + 1;
-                int rounds_remaining = planned_rounds - rounds_played;
-                int score_diff = w1_score - w2_score;
-                int max_possible_swing = 3 * rounds_remaining;
-                // When one warrior has an insurmountable lead we can stop early.
-                // This mirrors pMARS behaviour and keeps tournaments performant
-                // while still producing identical final scores.
-                if (score_diff > 0 && score_diff > max_possible_swing) {
+                int remaining = rounds - r - 1;
+                if (stop_when_decided &&
+                    std::abs(w1_score - w2_score) > 3 * remaining) {
                     break;
                 }
-                if (score_diff < 0 && -score_diff > max_possible_swing) {
-                    break;
-                }
+
             }
 
             std::stringstream result_ss;
@@ -1400,6 +1389,32 @@ extern "C" {
             response = "ERROR: Unknown exception encountered while running battle";
         }
         return response.c_str();
+    }
+
+    const char* run_battle(
+        const char* warrior1_code, int w1_id,
+        const char* warrior2_code, int w2_id,
+        int core_size, int max_cycles, int max_processes,
+        int read_limit, int write_limit,
+        int min_distance, int max_warrior_length, int rounds,
+        int seed, int use_1988_rules
+    ) {
+        return run_battle_impl(warrior1_code, w1_id, warrior2_code, w2_id,
+            core_size, max_cycles, max_processes, read_limit, write_limit,
+            min_distance, max_warrior_length, rounds, seed, use_1988_rules, false);
+    }
+
+    const char* run_battle_early(
+        const char* warrior1_code, int w1_id,
+        const char* warrior2_code, int w2_id,
+        int core_size, int max_cycles, int max_processes,
+        int read_limit, int write_limit,
+        int min_distance, int max_warrior_length, int rounds,
+        int seed, int use_1988_rules
+    ) {
+        return run_battle_impl(warrior1_code, w1_id, warrior2_code, w2_id,
+            core_size, max_cycles, max_processes, read_limit, write_limit,
+            min_distance, max_warrior_length, rounds, seed, use_1988_rules, true);
     }
 
     const char* analyze_strategy(

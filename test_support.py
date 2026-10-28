@@ -61,7 +61,7 @@ def load_worker():
     if not lib_path.exists():
         compile_worker()
     lib = ctypes.CDLL(str(lib_path))
-    lib.run_battle.argtypes = [
+    battle_argtypes = [
         ctypes.c_char_p,
         ctypes.c_int,
         ctypes.c_char_p,
@@ -77,7 +77,9 @@ def load_worker():
         ctypes.c_int,
         ctypes.c_int,
     ]
-    lib.run_battle.restype = ctypes.c_char_p
+    for battle_fn in (lib.run_battle, lib.run_battle_early):
+        battle_fn.argtypes = battle_argtypes
+        battle_fn.restype = ctypes.c_char_p
     lib.analyze_strategy.argtypes = [
         ctypes.c_char_p,
         ctypes.c_int,

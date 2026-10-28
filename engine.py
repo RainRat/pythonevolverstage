@@ -389,7 +389,7 @@ def breed_offspring(
     config: "EvolverConfig",
     bag: list[BaseMutationStrategy],
     data_logger: "DataLogger",
-    scores: list[int],
+    scores: list[int] | None,
     warriors: list[int],
 ) -> int:
     storage = get_arena_storage()
@@ -460,8 +460,8 @@ def breed_offspring(
             "arena": arena,
             "winner": winner,
             "loser": loser,
-            "score1": scores[0],
-            "score2": scores[1],
+            "score1": scores[0] if scores is not None else "",
+            "score2": scores[1] if scores is not None else "",
             "bred_with": str(partner_id),
         }
     )

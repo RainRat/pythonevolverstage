@@ -20,6 +20,7 @@ os.environ.setdefault("PYTHONEVOLVER_SKIP_MAIN", "1")
 
 from test_support import compile_worker
 
+import battle_runner
 import engine
 import evolverstage
 
@@ -792,6 +793,22 @@ def test_validate_config_rejects_unknown_engine():
     config = replace(_DEFAULT_CONFIG, battle_engine="unknown")
     with pytest.raises(ValueError, match="BATTLE_ENGINE"):
         evolverstage.validate_config(config)
+
+
+def test_decision_only_routes_early_internal_battles(monkeypatch):
+    config = replace(_DEFAULT_CONFIG, use_in_memory_arenas=True)
+    monkeypatch.setattr(battle_runner, "get_active_config", lambda: config)
+    flags = []
+
+    def fake_battle(*args, early_stop=False):
+        flags.append(early_stop)
+        return "1 0 0 0 3 scores\n2 0 0 0 0 scores"
+
+    battle_runner.execute_battle(0, 1, 2, 0, verbose=False,
+                                 decision_only=True, battle_impl=fake_battle)
+    battle_runner.execute_battle(0, 1, 2, 0, verbose=False,
+                                 battlerounds_override=1, battle_impl=fake_battle)
+    assert flags == [True, False]
 
 
 def test_validate_config_rejects_excessive_wardistance():
@@ -1883,7 +1900,7 @@ def test_final_tournament_uses_single_round(monkeypatch, tmp_path, capsys):
 
     assert battle_rounds
     assert all(rounds == 1 for rounds in battle_rounds)
-    assert "Final Tournament Progress" in captured.out
+    assert "Final Tournament:" in captured.out
 
     if previous_config is not None:
         evolverstage.set_active_config(previous_config)
@@ -1940,7 +1957,7 @@ def test_final_tournament_uses_in_memory_storage(monkeypatch, tmp_path, capsys):
 
     assert battle_rounds
     assert all(rounds == 1 for rounds in battle_rounds)
-    assert "Final Tournament Progress" in captured.out
+    assert "Final Tournament:" in captured.out
     assert not (tmp_path / "arena0").exists()
 
     evolverstage.set_active_config(previous_config)

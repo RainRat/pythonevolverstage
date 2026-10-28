@@ -294,7 +294,7 @@ def test_org_start_label_sets_entry_point():
     )
 
 
-def test_battle_stops_once_outcome_decided():
+def test_battle_scores_all_requested_rounds():
     lib = load_worker()
     dominant_warrior = "JMP.B $0, $0\n"
     fragile_warrior = "DAT.F #0, #0\n"
@@ -307,12 +307,16 @@ def test_battle_stops_once_outcome_decided():
     ).decode()
     w1_score, w2_score = get_scores(result)
     assert w2_score == 0, f"Expected fragile warrior to lose every round, got scores {w1_score}, {w2_score}"
-    expected_rounds_played = (rounds // 2) + 1
-    expected_score = expected_rounds_played * 3
-    assert w1_score == expected_score, (
-        "Battle should stop once the outcome is locked; "
-        f"expected leader score {expected_score} for {expected_rounds_played} rounds, got {w1_score}"
-    )
+    assert w1_score == rounds * 3, result
+
+
+def test_early_battle_stops_only_after_winner_is_certain():
+    lib = load_worker()
+    result = lib.run_battle_early(
+        b"JMP.B $0, $0\n", 1, b"DAT.F #0, #0\n", 2,
+        8000, 50, 8000, 8000, 8000, 100, 100, 100, 1000, 0,
+    ).decode()
+    assert get_scores(result) == [153, 0]
 
 
 def test_round_limit_is_enforced():

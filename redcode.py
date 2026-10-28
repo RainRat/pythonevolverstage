@@ -160,7 +160,7 @@ _REDCODE_INSTRUCTION_RE = re.compile(
     (?:(?P<label>[A-Za-z_.$][\w.$]*)(?::)?\s+)?
     (?P<opcode>[A-Za-z]{3})
     (?:
-        (?:\s*\.\s*(?P<modifier>[A-Za-z]{1,2}))(?:\s+(?P<a_operand>[^,;]+?))?
+        (?:\s*\.\s*(?P<modifier>[A-Za-z]{1,2}))(?:\s*(?P<a_operand>[^,;]+?))?
         |
         (?:\s+(?P<a_operand2>[^,;]+?))
         |

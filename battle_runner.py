@@ -206,7 +206,7 @@ def _load_cpp_worker_library() -> None:
                 continue
 
         if CPP_WORKER_LIB is not None and loaded_path is not None:
-            CPP_WORKER_LIB.run_battle.argtypes = [
+            battle_argtypes = [
                 ctypes.c_char_p,
                 ctypes.c_int,
                 ctypes.c_char_p,
@@ -222,7 +222,12 @@ def _load_cpp_worker_library() -> None:
                 ctypes.c_int,
                 ctypes.c_int,
             ]
-            CPP_WORKER_LIB.run_battle.restype = ctypes.c_char_p
+            battle_functions = [CPP_WORKER_LIB.run_battle]
+            if hasattr(CPP_WORKER_LIB, "run_battle_early"):
+                battle_functions.append(CPP_WORKER_LIB.run_battle_early)
+            for battle_fn in battle_functions:
+                battle_fn.argtypes = battle_argtypes
+                battle_fn.restype = ctypes.c_char_p
             CPP_WORKER_LIB.analyze_strategy.argtypes = [
                 ctypes.c_char_p,
                 ctypes.c_int,
@@ -460,9 +465,13 @@ def _invoke_internal_worker(
     warlen: int,
     battlerounds: int,
     seed: int,
+    early_stop: bool = False,
 ):
     use_1988_rules = 1 if get_arena_spec(arena) == SPEC_1988 else 0
-    return worker_lib.run_battle(
+    battle_fn = getattr(worker_lib, "run_battle_early", None) if early_stop else worker_lib.run_battle
+    if battle_fn is None:
+        raise RuntimeError("Early stopping requires a rebuilt C++ worker library.")
+    return battle_fn(
         w1_code.encode("utf-8"),
         cont1,
         w2_code.encode("utf-8"),
@@ -493,6 +502,7 @@ def run_internal_battle(
     warlen,
     battlerounds,
     seed,
+    early_stop=False,
 ):
     config = get_active_config()
     worker_lib = _get_internal_worker_library()
@@ -541,6 +551,7 @@ def run_internal_battle(
             warlen,
             battlerounds,
             seed,
+            early_stop,
         )
         if isinstance(result_ptr, bytes):
             return result_ptr.decode("utf-8")
@@ -689,6 +700,9 @@ def execute_battle(
     verbose: bool = True,
     battlerounds_override: Optional[int] = None,
     seed: Optional[int] = None,
+    *,
+    decision_only: bool = False,
+    battle_impl=None,
 ):
     config = get_active_config()
     engine_name = config.battle_engine
@@ -702,10 +716,11 @@ def execute_battle(
     )
     if engine_name == "internal":
         internal_seed = -1 if seed is None else _normalize_internal_seed(seed)
-        battle_impl = _get_evolverstage_override(
-            "run_internal_battle", run_internal_battle
-        )
-        raw_output = battle_impl(
+        if battle_impl is None:
+            battle_impl = _get_evolverstage_override(
+                "run_internal_battle", run_internal_battle
+            )
+        battle_args = (
             arena,
             cont1,
             cont2,
@@ -719,6 +734,10 @@ def execute_battle(
             battlerounds,
             internal_seed,
         )
+        if decision_only:
+            raw_output = battle_impl(*battle_args, early_stop=True)
+        else:
+            raw_output = battle_impl(*battle_args)
     else:
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         raw_output = _run_external_battle(
