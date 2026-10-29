@@ -11,6 +11,7 @@ import random
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import mean
@@ -23,7 +24,7 @@ SOURCE_BENCHMARKS = ROOT / "bench" / "arena1"
 OUTPUT = ROOT / "optuna_trials"
 PROFILE_INDEX = 4  # 94nop: 8000 core, 8000 processes, 80000 cycles
 POPULATION = 64
-MAX_TRIALS = 100  # The nine-hour search deadline is the usual stopping limit.
+MAX_TRIALS = 100  # The active-time deadline is the usual stopping limit.
 SEARCH_SECONDS = 9 * 3600
 TRIAL_EVOLUTION_HOURS = 0.1  # Six minutes; evaluation is separate.
 TRIAL_TIMEOUT_SECONDS = 15 * 60
@@ -183,16 +184,24 @@ def run_session(session: Path) -> None:
     study = optuna.create_study(direction="maximize", study_name="94nop",
                                 storage=f"sqlite:///{session / 'study.db'}")
 
-    def stop_after_repeated_failures(study: optuna.Study, _: optuna.trial.FrozenTrial) -> None:
-        if len(study.trials) >= 3 and all(t.state == optuna.trial.TrialState.FAIL for t in study.trials[-3:]):
-            study.stop()
-
-    study.optimize(lambda trial: trial_result(trial, session), n_trials=MAX_TRIALS,
-                   timeout=SEARCH_SECONDS, catch=(OSError, RuntimeError, subprocess.SubprocessError),
-                   callbacks=[stop_after_repeated_failures])
+    optimize_study(study, session)
     results = validate_best(session, study)
     (session / "results.json").write_text(json.dumps(results, indent=2) + "\n")
     print(f"Finished {len(study.trials)} trials; results: {session / 'results.json'}", flush=True)
+
+
+def optimize_study(study: optuna.Study, session: Path) -> None:
+    # CLOCK_MONOTONIC excludes laptop suspend time on Linux; Optuna's timeout does not.
+    started = time.monotonic()
+    for _ in range(MAX_TRIALS):
+        if time.monotonic() - started >= SEARCH_SECONDS:
+            break
+        study.optimize(lambda trial: trial_result(trial, session), n_trials=1,
+                       catch=(OSError, RuntimeError, subprocess.SubprocessError))
+        if len(study.trials) >= 3 and all(
+            t.state == optuna.trial.TrialState.FAIL for t in study.trials[-3:]
+        ):
+            break
 
 
 def main() -> None:
