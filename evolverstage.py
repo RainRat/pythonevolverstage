@@ -1937,7 +1937,7 @@ def run_evolution_loop(
     *,
     verbosity: VerbosityLevel,
 ) -> None:
-    start_time = time.time()
+    start_time = getattr(active_config, "wall_start_epoch", None) or time.time()
     era = -1
     data_logger = DataLogger(filename=active_config.battle_log_file)
     benchmark_logger = BenchmarkLogger(filename=active_config.benchmark_log_file)
@@ -1953,6 +1953,28 @@ def run_evolution_loop(
     champions: dict[int, int] = {
         arena_index: 1 for arena_index in range(active_config.last_arena + 1)
     }
+    state_path = (
+        os.path.join(active_config.base_path, "evolution_state.json")
+        if getattr(active_config, "wall_start_epoch", None) is not None else None
+    )
+    if state_path and os.path.exists(state_path):
+        with open(state_path, encoding="utf-8") as handle:
+            previous = json.load(handle)
+        if previous.get("wall_start_epoch") != start_time:
+            raise ValueError("Evolution checkpoint belongs to a different run start.")
+        for arena_index in champions:
+            warrior_id = int(previous["champions"][str(arena_index)])
+            if not 1 <= warrior_id <= active_config.numwarriors:
+                raise ValueError("Invalid champion in evolution checkpoint.")
+            champions[arena_index] = warrior_id
+
+    def _checkpoint() -> None:
+        storage.flush_all()
+        if state_path:
+            pending = state_path + ".pending"
+            with open(pending, "w", encoding="utf-8") as handle:
+                json.dump({"wall_start_epoch": start_time, "champions": champions}, handle)
+            os.replace(pending, state_path)
 
     def _sync_champion_display() -> None:
         champion_payload: dict[int, ChampionDisplay] = {}
@@ -2007,7 +2029,7 @@ def run_evolution_loop(
                         f"************** Advancing from era {previous_era + 1} to {era + 1} *******************",
                         minimum_level=VerbosityLevel.DEFAULT,
                     )
-                    storage.flush_all()
+                    _checkpoint()
                 bag = _build_marble_bag(era, active_config)
 
             arena_index = _select_arena_index(active_config)
@@ -2091,7 +2113,7 @@ def run_evolution_loop(
                 active_config.arena_checkpoint_interval
                 and total_battles % active_config.arena_checkpoint_interval == 0
             ):
-                storage.flush_all()
+                _checkpoint()
             winner, loser, was_draw = determine_winner_and_loser(warriors, scores)
             champion_id = champions.get(arena_index)
             if (
@@ -2186,6 +2208,7 @@ def run_evolution_loop(
         interrupted = True
 
     finally:
+        _checkpoint()
         data_logger.close()
         benchmark_logger.close()
 

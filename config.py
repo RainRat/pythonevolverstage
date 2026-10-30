@@ -77,6 +77,7 @@ class EvolverConfig:
     benchmark_final_tournament: bool
     benchmark_battle_frequency_list: list[int]
     benchmark_sets: dict[int, list[BenchmarkWarrior]] = field(default_factory=dict)
+    wall_start_epoch: Optional[float] = None
 
 
 class _ConfigNotLoaded:
@@ -243,6 +244,10 @@ def _detect_existing_seed(active_config: EvolverConfig) -> tuple[bool, list[str]
 
 def validate_config(active_config: EvolverConfig, config_path: Optional[str] = None) -> None:
     from battle_runner import CPP_WORKER_MAX_ROUNDS
+
+    wall_start_epoch = getattr(active_config, "wall_start_epoch", None)
+    if wall_start_epoch is not None and wall_start_epoch <= 0:
+        raise ValueError("WALL_START_EPOCH must be positive.")
 
     if active_config.last_arena is None:
         raise ValueError("LAST_ARENA must be specified in the configuration.")
@@ -795,6 +800,7 @@ def load_configuration(path: str) -> EvolverConfig:
         )
         or 10000,
         clock_time=_read_config("CLOCK_TIME", data_type="float"),
+        wall_start_epoch=_read_config("WALL_START_EPOCH", data_type="float"),
         battle_log_file=battle_log_file,
         benchmark_log_file=benchmark_log_file,
         benchmark_log_generation_interval=benchmark_log_generation_interval,

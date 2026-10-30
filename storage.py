@@ -116,8 +116,14 @@ class InMemoryArenaStorage(ArenaStorage):
         arena_dir = os.path.join(config.base_path, f"arena{arena}")
         warrior_path = os.path.join(arena_dir, f"{warrior_id}.red")
         os.makedirs(arena_dir, exist_ok=True)
-        with open(warrior_path, "w") as handle:
-            handle.writelines(self._arenas[arena][warrior_id])
+        pending = warrior_path + f".{uuid.uuid4().hex}.pending"
+        try:
+            with open(pending, "w") as handle:
+                handle.writelines(self._arenas[arena][warrior_id])
+            os.replace(pending, warrior_path)
+        finally:
+            if os.path.exists(pending):
+                os.unlink(pending)
 
     def load_existing(self) -> None:
         config = self._config if self._config is not None else get_active_config()
