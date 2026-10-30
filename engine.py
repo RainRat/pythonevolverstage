@@ -118,6 +118,7 @@ T = TypeVar("T")
 
 _active_config: Optional["EvolverConfig"] = None
 _LIBRARY_CACHE: list[str] | None = None
+_LIBRARY_CACHE_88: list[str] = []
 _LIBRARY_CACHE_PATH: Optional[str] = None
 
 
@@ -125,18 +126,27 @@ def _load_instruction_library_cache(library_path: Optional[str]) -> None:
     """Load the instruction library into a module-level cache."""
 
     global _LIBRARY_CACHE
+    global _LIBRARY_CACHE_88
     global _LIBRARY_CACHE_PATH
     _LIBRARY_CACHE_PATH = library_path
 
     if not library_path or not os.path.exists(library_path):
         _LIBRARY_CACHE = []
+        _LIBRARY_CACHE_88 = []
         return
 
     try:
         with open(library_path, "r") as library_handle:
             _LIBRARY_CACHE = library_handle.readlines()
+        _LIBRARY_CACHE_88 = [
+            line for line in _LIBRARY_CACHE
+            if (parsed := parse_redcode_instruction(line)) is not None
+            and OPCODE_ALIASES.get(parsed.opcode, parsed.opcode)
+            in SPEC_ALLOWED_OPCODES[SPEC_1988]
+        ]
     except OSError:
         _LIBRARY_CACHE = []
+        _LIBRARY_CACHE_88 = []
 
 
 def get_instruction_library_cache() -> list[str] | None:
@@ -359,6 +369,8 @@ class InstructionLibraryMutation(BaseMutationStrategy):
             return instruction
 
         library_cache = ensure_instruction_library_cache(config.library_path)
+        if get_arena_spec(arena) == SPEC_1988:
+            library_cache = _LIBRARY_CACHE_88
 
         if library_cache:
             return parse_instruction_or_default(_rng_choice(library_cache))

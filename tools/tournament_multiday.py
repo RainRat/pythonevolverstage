@@ -12,6 +12,7 @@ import ctypes
 import datetime as dt
 import fcntl
 import gzip
+import hashlib
 import json
 import math
 import os
@@ -30,11 +31,15 @@ TELEMETRY = Path("/mnt/c/Temp/fuzz-host-telemetry.json")
 SAMPLE_SECONDS = 30
 SEGMENT_SECONDS = 3600
 RUN_HOURS = 72
+LIBRARY_SOURCE = ROOT / "optuna_trials/overnight_94nop_20261030T033100Z/instructions.txt"
 
 
 def prepare(run: Path) -> None:
     run.mkdir(parents=True, exist_ok=True)
     target = run / "settings.ini"
+    library = LIBRARY_SOURCE.read_bytes()
+    if not library.strip():
+        raise RuntimeError(f"Instruction library is empty: {LIBRARY_SOURCE}")
     config = configparser.ConfigParser()
     config.read(ROOT / "settings.ini")
     values = config["DEFAULT"]
@@ -63,8 +68,8 @@ def prepare(run: Path) -> None:
         "RANDOM_PAIR_BATTLE_FREQUENCY_LIST": "80,40,65",
         "CROSSOVERRATE_LIST": "24,4,19",
         "NAB_LIST": "1,1,1",
-        "LIBRARY_LIST": "0,0,0",
-        "LIBRARY_PATH": "",
+        "LIBRARY_LIST": "2,1,0",
+        "LIBRARY_PATH": "instructions.txt",
     })
     from io import StringIO
     buffer = StringIO()
@@ -72,6 +77,11 @@ def prepare(run: Path) -> None:
     content = buffer.getvalue()
     if target.exists() and target.read_text() != content:
         raise RuntimeError(f"Refusing to replace existing run config: {target}")
+    snapshot = run / "instructions.txt"
+    if snapshot.exists() and snapshot.read_bytes() != library:
+        raise RuntimeError(f"Refusing to replace changed instruction library: {snapshot}")
+    snapshot.write_bytes(library)
+    (run / "instructions.sha256").write_text(hashlib.sha256(library).hexdigest() + "\n")
     target.write_text(content)
     print(f"Prepared {target}; no evolution process started")
 
@@ -154,6 +164,10 @@ def run_evolution(run: Path, telemetry: Path) -> None:
     settings = run / "settings.ini"
     if not settings.is_file():
         raise FileNotFoundError(f"Prepare first: {settings}")
+    library = run / "instructions.txt"
+    expected = (run / "instructions.sha256").read_text().strip()
+    if not library.is_file() or hashlib.sha256(library.read_bytes()).hexdigest() != expected:
+        raise RuntimeError("Prepared instruction library is missing or changed")
     lock = (run / "supervisor.lock").open("w")
     fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     config = configparser.ConfigParser()
