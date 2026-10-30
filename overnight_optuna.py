@@ -6,6 +6,7 @@ import argparse
 import configparser
 import csv
 import ctypes
+import fcntl
 import json
 import random
 import shutil
@@ -205,25 +206,49 @@ def validate_best(session: Path, study: optuna.Study) -> list[dict[str, object]]
 
 
 def run_session(session: Path) -> None:
-    train, holdout = benchmark_files()
-    snapshot_benchmarks(session, train, holdout)
-    study = optuna.create_study(direction="maximize", study_name="94nop_multiseed_library",
-                                storage=f"sqlite:///{session / 'study.db'}")
+    with (session / "lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        storage = f"sqlite:///{session / 'study.db'}"
+        if (session / "study.db").exists():
+            study = optuna.load_study(study_name="94nop_multiseed_library", storage=storage)
+            for old in study.trials:
+                if old.state == optuna.trial.TrialState.RUNNING:
+                    trial_dir = session / f"trial_{old.number:04d}"
+                    trial_dir.mkdir(exist_ok=True)
+                    (trial_dir / "interrupted.txt").write_text(
+                        "Process ended before this trial completed; partial files preserved.\n"
+                    )
+                    study.tell(old.number, state=optuna.trial.TrialState.FAIL)
+                    print(f"Marked interrupted trial {old.number} failed; partial files preserved", flush=True)
+        else:
+            train, holdout = benchmark_files()
+            snapshot_benchmarks(session, train, holdout)
+            study = optuna.create_study(direction="maximize", study_name="94nop_multiseed_library",
+                                        storage=storage)
 
-    optimize_study(study, session)
-    results = validate_best(session, study)
-    (session / "results.json").write_text(json.dumps(results, indent=2) + "\n")
-    print(f"Finished {len(study.trials)} trials; results: {session / 'results.json'}", flush=True)
+        optimize_study(study, session)
+        results = validate_best(session, study)
+        (session / "results.json").write_text(json.dumps(results, indent=2) + "\n")
+        print(f"Finished {len(study.trials)} trials; results: {session / 'results.json'}", flush=True)
 
 
 def optimize_study(study: optuna.Study, session: Path) -> None:
     # CLOCK_MONOTONIC excludes laptop suspend time on Linux; Optuna's timeout does not.
+    checkpoint = session / "active_seconds.txt"
+    if checkpoint.exists():
+        previous = float(checkpoint.read_text())
+    else:
+        previous = sum(t.duration.total_seconds() for t in study.trials
+                       if t.state == optuna.trial.TrialState.COMPLETE and t.duration)
     started = time.monotonic()
-    for _ in range(MAX_TRIALS):
-        if time.monotonic() - started >= SEARCH_SECONDS:
+    for _ in range(max(0, MAX_TRIALS - len(study.trials))):
+        if previous + time.monotonic() - started >= SEARCH_SECONDS:
             break
         study.optimize(lambda trial: trial_result(trial, session), n_trials=1,
                        catch=(OSError, RuntimeError, subprocess.SubprocessError))
+        pending = checkpoint.with_suffix(".pending")
+        pending.write_text(str(previous + time.monotonic() - started) + "\n")
+        pending.replace(checkpoint)
         if len(study.trials) >= 3 and all(
             t.state == optuna.trial.TrialState.FAIL for t in study.trials[-3:]
         ):
@@ -234,6 +259,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="Validate benchmarks without running evolution")
     parser.add_argument("--launch", action="store_true", help="Start a detached overnight session")
+    parser.add_argument("--resume", type=Path, help="Resume an interrupted session in the background")
     parser.add_argument("--session", type=Path, help=argparse.SUPPRESS)
     args = parser.parse_args()
     if args.check:
@@ -243,13 +269,20 @@ def main() -> None:
     if args.session:
         run_session(args.session)
         return
-    if not args.launch:
-        parser.error("Use --check or --launch")
-    benchmark_files()  # Fail before detaching if the inputs cannot run.
-    OUTPUT.mkdir(exist_ok=True)
-    session = OUTPUT / ("overnight_94nop_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
-    session.mkdir()  # Never reuse old Optuna output.
-    with (session / "optimizer.log").open("w") as log:
+    if not args.launch and not args.resume:
+        parser.error("Use --check, --launch, or --resume")
+    if args.resume:
+        session = args.resume.resolve()
+        if not (session / "study.db").is_file() or not (session / "instructions.txt").is_file():
+            parser.error(f"Incomplete Optuna session: {session}")
+        if (session / "results.json").exists():
+            parser.error(f"Session already finished: {session}")
+    else:
+        benchmark_files()  # Fail before detaching if the inputs cannot run.
+        OUTPUT.mkdir(exist_ok=True)
+        session = OUTPUT / ("overnight_94nop_" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+        session.mkdir()  # Never reuse old Optuna output.
+    with (session / "optimizer.log").open("a") as log:
         process = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), "--session", str(session)],
                                    cwd=ROOT, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     (session / "pid").write_text(f"{process.pid}\n")
