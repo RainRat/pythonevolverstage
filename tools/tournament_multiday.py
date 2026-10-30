@@ -16,6 +16,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import subprocess
@@ -180,6 +181,8 @@ def run_evolution(run: Path, telemetry: Path) -> None:
     last_critical = time.time() if resuming else 0.0
     segment = 0
     while time.time() < deadline:
+        if segment and deadline - time.time() < 5:
+            break  # A worker cannot meaningfully start in the final few seconds.
         if not disk_ok(run):
             raise RuntimeError("Disk budget exceeded; arenas preserved")
         duty, reason = health(telemetry)
@@ -237,6 +240,13 @@ def run_evolution(run: Path, telemetry: Path) -> None:
                 raise RuntimeError(f"Evolution exited {child.returncode}; inspect {log}")
             if not planned_stop and time.time() < deadline:
                 raise RuntimeError(f"Evolution exited before deadline; inspect {log}")
+        totals = re.findall(r"Total battles:\s+(\d+)", log.read_text())
+        if not totals:
+            raise RuntimeError(f"No battle summary in {log}")
+        with (run / "segments.csv").open("a") as summary:
+            if summary.tell() == 0:
+                summary.write("ended_utc,log,battles\n")
+            summary.write(f"{dt.datetime.now(dt.timezone.utc).isoformat()},{log.name},{totals[-1]}\n")
         rotate_logs(run)
         elapsed_days = int((time.time() - start) // 86400)
         if elapsed_days > 0:
