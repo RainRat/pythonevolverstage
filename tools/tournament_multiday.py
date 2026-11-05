@@ -174,7 +174,6 @@ def run_evolution(run: Path, telemetry: Path) -> None:
     config.read(settings)
     values = config["DEFAULT"]
     hours = float(values["CLOCK_TIME"])
-    resuming = "WALL_START_EPOCH" in values
     if "WALL_START_EPOCH" not in values:
         duty, reason = health(telemetry)
         if duty == 0:
@@ -191,8 +190,8 @@ def run_evolution(run: Path, telemetry: Path) -> None:
         return
     (run / "logs").mkdir(exist_ok=True)
     rotate_logs(run)
-    # A restarted supervisor waits through the existing ten-minute safety hold.
-    last_critical = time.time() if resuming else 0.0
+    # Hold only after this supervisor observes unsafe telemetry.
+    last_critical = -float("inf")
     segment = 0
     while time.time() < deadline:
         if segment and deadline - time.time() < 5:
