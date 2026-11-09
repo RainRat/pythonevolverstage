@@ -171,11 +171,10 @@ def _run_benchmark_battle(
 
     for bench_index, benchmark in enumerate(benchmark_warriors):
         bench_identifier = _get_benchmark_id(arena_index, bench_index)
+        # Compare both candidates at the same placement; sample a new one next encounter.
+        match_seed = _generate_internal_battle_seed()
         round_scores: dict[int, int] = {}
         for warrior_id, warrior_code in ((cont1, cont1_code), (cont2, cont2_code)):
-            match_seed = _stable_internal_battle_seed(
-                arena_index, warrior_id, bench_identifier, era
-            )
             warriors, scores = execute_battle_with_sources(
                 arena_index,
                 warrior_id,

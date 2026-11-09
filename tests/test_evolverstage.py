@@ -385,6 +385,8 @@ def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_con
     storage.set_warrior_lines(0, 1, ["MOV 0, 0\n"])
     storage.set_warrior_lines(0, 2, ["DAT 0, 0\n"])
 
+    observed_seeds = []
+
     def fake_execute_battle_with_sources(
         arena,
         cont1,
@@ -396,12 +398,15 @@ def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_con
         battlerounds_override=None,
         seed=None,
     ):
+        observed_seeds.append(seed)
         warrior_score = 10 if cont1 == 1 else 4
         return [cont1, cont2], [warrior_score, 0]
 
     monkeypatch.setattr(
         evolverstage, "execute_battle_with_sources", fake_execute_battle_with_sources
     )
+    seeds = iter((123, 456))
+    monkeypatch.setattr(evolverstage, "_generate_internal_battle_seed", lambda: next(seeds))
 
     try:
         result = evolverstage._run_benchmark_battle(0, 1, 2, 0, config)
@@ -409,6 +414,9 @@ def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_con
         assert result.warriors == [1, 2]
         assert result.scores == [10, 4]
         assert result.benchmarks_played == 1
+        assert observed_seeds == [123, 123]
+        assert evolverstage._run_benchmark_battle(0, 1, 2, 0, config) is not None
+        assert observed_seeds == [123, 123, 456, 456]
     finally:
         if previous_config is not None:
             evolverstage.set_active_config(previous_config)
