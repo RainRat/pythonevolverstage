@@ -29,6 +29,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 TELEMETRY = Path("/mnt/c/Temp/fuzz-host-telemetry.json")
 SAMPLE_SECONDS = 30
+RECOVERY_SECONDS = 3 * 60
 SEGMENT_SECONDS = 3600
 RUN_HOURS = 72
 LIBRARY_SOURCE = ROOT / "optuna_trials/overnight_94nop_20261030T033100Z/instructions.txt"
@@ -160,6 +161,10 @@ def _exit_with_parent() -> None:
     ctypes.CDLL(None).prctl(1, signal.SIGTERM)
 
 
+def _in_recovery(last_critical: float, now: float) -> bool:
+    return now - last_critical < RECOVERY_SECONDS
+
+
 def run_evolution(run: Path, telemetry: Path) -> None:
     settings = run / "settings.ini"
     if not settings.is_file():
@@ -200,12 +205,12 @@ def run_evolution(run: Path, telemetry: Path) -> None:
             raise RuntimeError("Disk budget exceeded; arenas preserved")
         duty, reason = health(telemetry)
         if duty == 0:
-            last_critical = time.time()
+            last_critical = time.monotonic()
             print(f"Waiting: {reason}", flush=True)
             time.sleep(SAMPLE_SECONDS)
             continue
-        if time.time() - last_critical < 600:
-            print("Waiting for ten minutes of safe telemetry", flush=True)
+        if _in_recovery(last_critical, time.monotonic()):
+            print("Waiting for three minutes of safe telemetry", flush=True)
             time.sleep(SAMPLE_SECONDS)
             continue
         segment += 1
@@ -223,8 +228,8 @@ def run_evolution(run: Path, telemetry: Path) -> None:
                 while child.poll() is None and time.time() < segment_end:
                     duty, reason = health(telemetry)
                     if duty == 0:
-                        last_critical = time.time()
-                    if duty == 0 or time.time() - last_critical < 600:
+                        last_critical = time.monotonic()
+                    if duty == 0 or _in_recovery(last_critical, time.monotonic()):
                         if not stopped:
                             child.send_signal(signal.SIGSTOP)
                             stopped = True

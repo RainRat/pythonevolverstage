@@ -9,6 +9,12 @@ import engine
 from tools import tournament_multiday as multiday
 
 
+def test_critical_recovery_window():
+    assert multiday._in_recovery(float("-inf"), 180) is False
+    assert multiday._in_recovery(0, 179) is True
+    assert multiday._in_recovery(0, 180) is False
+
+
 def test_preparation_is_inert_and_telemetry_fails_closed(tmp_path, monkeypatch):
     run = tmp_path / "run"
     source = tmp_path / "source-instructions.txt"
