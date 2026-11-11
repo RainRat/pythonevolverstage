@@ -101,16 +101,22 @@ def fitness(matrix: list[list[float]]) -> tuple[float, tuple[int, int], float]:
     return survival + mean / 15, tuple(ranks), mean
 
 
-def field_matrix(field: list[Path], profile: tuple) -> list[list[float]]:
+def field_matrix(field: list[Path], profile: tuple,
+                 seed: int | None = None, battle_fn=None) -> list[list[float]]:
+    battle_fn = battle_fn or battle
     matrix = [[1.5 for _ in field] for _ in field]
     for i, left in enumerate(field):
         for j in range(i + 1, len(field)):
-            matrix[i][j], matrix[j][i] = battle(left, field[j], profile, FIELD_ROUNDS)
+            matrix[i][j], matrix[j][i] = battle_fn(left, field[j], profile, FIELD_ROUNDS,
+                                                  seed=seed)
     return matrix
 
 
-def score(candidate: Path, field: list[Path], base: list[list[float]], profile: tuple):
-    pairs = [battle(candidate, opponent, profile, FIELD_ROUNDS) for opponent in field]
+def score(candidate: Path, field: list[Path], base: list[list[float]], profile: tuple,
+          seed: int | None = None, battle_fn=None):
+    battle_fn = battle_fn or battle
+    pairs = [battle_fn(candidate, opponent, profile, FIELD_ROUNDS, seed=seed)
+             for opponent in field]
     matrix = [row + [pairs[i][1]] for i, row in enumerate(base)]
     matrix.append([pair[0] for pair in pairs] + [1.5])
     return fitness(matrix)
