@@ -47,6 +47,10 @@ def test_tournament_battle_uses_candidate_independent_placement(monkeypatch):
 
     monkeypatch.setattr(tournament_benchmark.subprocess, 'run', fake_run)
     profile = tournament_benchmark.PROFILES[0]
-    assert tournament_benchmark.battle(Path('one.red'), Path('other.red'), profile, 3) == (2, 1)
+    assert tournament_benchmark.battle(Path('one.red'), Path('other.red'), profile, 3,
+                                       seed=400) == (2, 1)
     assert calls[0][1:4] == ['-b', '-F', '400']
     assert '-f' not in calls[0]
+    calls.clear()
+    assert tournament_benchmark.battle(Path('one.red'), Path('other.red'), profile, 3) == (2, 1)
+    assert [call[3] for call in calls] == ['400', '1200', '2400']
