@@ -1,7 +1,10 @@
 import random
+from pathlib import Path
+from types import SimpleNamespace
 
 from tools.tournament_hillclimb import fitness, mutate
 from tools.tournament_diverse_search import choose_diverse
+from tools import tournament_benchmark
 
 
 def test_hillclimb_preserves_length_and_rewards_survival():
@@ -33,3 +36,17 @@ def test_archive_seeds_are_distinct(tmp_path):
     chosen = choose_diverse(candidates, 3)
     assert len(set(chosen)) == 3
     assert chosen[0] == candidates[0][2]
+
+
+def test_tournament_battle_uses_candidate_independent_placement(monkeypatch):
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout='scores 6\nscores 3\n', stderr='')
+
+    monkeypatch.setattr(tournament_benchmark.subprocess, 'run', fake_run)
+    profile = tournament_benchmark.PROFILES[0]
+    assert tournament_benchmark.battle(Path('one.red'), Path('other.red'), profile, 3) == (2, 1)
+    assert calls[0][1:4] == ['-b', '-F', '400']
+    assert '-f' not in calls[0]
