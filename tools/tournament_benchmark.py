@@ -67,9 +67,15 @@ def prepare_opponents(kind: str, names: list[str], destination: Path) -> list[Pa
     return paths
 
 
-def battle(candidate: Path, opponent: Path, profile: tuple, rounds: int) -> tuple[float, float]:
+def battle(candidate: Path, opponent: Path, profile: tuple, rounds: int,
+           seed: int = 400) -> tuple[float, float]:
+    """Use common placements when comparing versions of a warrior.
+
+    pMARS -f derives its placement seed from both warrior sources, so a code
+    mutation changes the match setup. -F fixes the seed and first placement.
+    """
     _, _, size, processes, cycles, distance, strict88 = profile
-    command = [str(PMARS), "-b", "-f", "-r", str(rounds), "-s", str(size),
+    command = [str(PMARS), "-b", "-F", str(seed), "-r", str(rounds), "-s", str(size),
                "-p", str(processes), "-c", str(cycles), "-d", str(distance),
                "-l", str(distance)]
     if strict88:
