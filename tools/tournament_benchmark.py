@@ -68,26 +68,33 @@ def prepare_opponents(kind: str, names: list[str], destination: Path) -> list[Pa
 
 
 def battle(candidate: Path, opponent: Path, profile: tuple, rounds: int,
-           seed: int = 400) -> tuple[float, float]:
-    """Use common placements when comparing versions of a warrior.
+           seed: int | None = None) -> tuple[float, float]:
+    """Average common-placement sequences when comparing warrior versions.
 
     pMARS -f derives its placement seed from both warrior sources, so a code
-    mutation changes the match setup. -F fixes the seed and first placement.
+    mutation changes the match setup. -F fixes the first placement and the
+    sequence of placements in later rounds. The default averages three seeds;
+    pass one explicit seed only for a bounded screening comparison.
     """
     _, _, size, processes, cycles, distance, strict88 = profile
-    command = [str(PMARS), "-b", "-F", str(seed), "-r", str(rounds), "-s", str(size),
-               "-p", str(processes), "-c", str(cycles), "-d", str(distance),
-               "-l", str(distance)]
-    if strict88:
-        command.append("-8")
-    result = subprocess.run(command + [str(candidate), str(opponent)],
-                            text=True, capture_output=True, timeout=90)
-    if result.returncode:
-        raise RuntimeError(f"pMARS rejected {candidate} vs {opponent}: {result.stderr or result.stdout}")
-    scores = re.findall(r"scores\s+(-?\d+)", result.stdout)
-    if len(scores) != 2:
-        raise RuntimeError(f"Unexpected pMARS output: {result.stdout}")
-    return int(scores[0]) / rounds, int(scores[1]) / rounds
+    totals = [0, 0]
+    seeds = (400, 1200, 2400) if seed is None else (seed,)
+    for placement_seed in seeds:
+        command = [str(PMARS), "-b", "-F", str(placement_seed), "-r", str(rounds), "-s", str(size),
+                   "-p", str(processes), "-c", str(cycles), "-d", str(distance),
+                   "-l", str(distance)]
+        if strict88:
+            command.append("-8")
+        result = subprocess.run(command + [str(candidate), str(opponent)],
+                                text=True, capture_output=True, timeout=90)
+        if result.returncode:
+            raise RuntimeError(f"pMARS rejected {candidate} vs {opponent}: {result.stderr or result.stdout}")
+        scores = re.findall(r"scores\s+(-?\d+)", result.stdout)
+        if len(scores) != 2:
+            raise RuntimeError(f"Unexpected pMARS output: {result.stdout}")
+        totals[0] += int(scores[0])
+        totals[1] += int(scores[1])
+    return totals[0] / (rounds * len(seeds)), totals[1] / (rounds * len(seeds))
 
 
 def push_off(paths: list[Path], profile: tuple, rounds: int) -> dict[Path, tuple[int, float]]:
@@ -164,7 +171,7 @@ def main() -> None:
             rows.append((label, candidate.name, round(screen_score, 3),
                          round(sum(scores) / len(scores), 3),
                          round(min(scores), 3), ranks[candidate][0],
-                         ranks[candidate][1], args.final_rounds, len(scores)))
+                         ranks[candidate][1], args.final_rounds * 3, len(scores)))
         print(label, "screened", len(candidates), "top", [(p.name, round(s, 2)) for s, p in screened[:args.top]], flush=True)
     output = run / "pmars_tournament_proxy.csv"
     with output.open("w", newline="") as file:
