@@ -217,7 +217,8 @@ def run_search(run: Path) -> None:
         if not disk_ok(run):
             raise RuntimeError('Disk limit reached')
         rng = random.Random()
-        weights = (3, 5, 2, 2)  # 94x is weakest; Saturday's LP/94x close first.
+        weights = state.get('weights', (3, 5, 2, 2))
+        active_arenas = [arena for arena, weight in enumerate(weights) if weight]
         keys = [(arena, lane) for arena, weight in enumerate(weights)
                 for lane in range(ISLANDS) for _ in range(weight)]
         fields = {}
@@ -225,7 +226,7 @@ def run_search(run: Path) -> None:
         incumbent = {}
         gate = {}
         ranked_matrices = {}
-        for arena in range(4):
+        for arena in active_arenas:
             for group, seed in (('A', 400), ('B', 1200)):
                 ranked = [run / p for p in state['fields'][str(arena)][group]]
                 ranked_matrices[arena, group] = field_matrix(
