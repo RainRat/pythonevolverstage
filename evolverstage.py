@@ -142,6 +142,14 @@ def set_active_config(new_config: EvolverConfig) -> None:
     set_engine_config(new_config)
 
 
+def _benchmark_match_length(active_config: EvolverConfig, arena_index: int,
+                            benchmark: BenchmarkWarrior) -> int:
+    """Allow published opponents longer than the evolved entry limit."""
+    length = sum(bool(line.strip()) and not line.lstrip().upper().startswith(
+        ("ORG ", "END ", ";")) for line in benchmark.code.splitlines())
+    return max(active_config.warlen_list[arena_index], length)
+
+
 
 
 def _run_benchmark_battle(
@@ -160,6 +168,9 @@ def _run_benchmark_battle(
     cont2_lines = storage.get_warrior_lines(arena_index, cont2)
     if not cont1_lines or not cont2_lines:
         return None
+    entry_limit = active_config.warlen_list[arena_index]
+    if len(cont1_lines) > entry_limit or len(cont2_lines) > entry_limit:
+        raise RuntimeError(f"Evolved warrior exceeds entry limit of {entry_limit}")
 
     cont1_code = "".join(cont1_lines)
     cont2_code = "".join(cont2_lines)
@@ -184,6 +195,8 @@ def _run_benchmark_battle(
                 era,
                 verbose=False,
                 seed=match_seed,
+                warlen_override=_benchmark_match_length(active_config, arena_index,
+                                                        benchmark),
             )
             warrior_pos = warriors.index(warrior_id)
             round_scores[warrior_id] = scores[warrior_pos]
@@ -1096,6 +1109,8 @@ def _score_warrior_against_benchmarks(
             era,
             verbose=False,
             seed=match_seed,
+            warlen_override=_benchmark_match_length(active_config, arena_index,
+                                                    benchmark),
         )
         warrior_pos = warriors.index(warrior_id)
         results.append((benchmark, scores[warrior_pos]))
@@ -1342,6 +1357,8 @@ def _run_benchmark_tournament(
                 final_era_index,
                 verbose=False,
                 seed=match_seed,
+                warlen_override=_benchmark_match_length(active_config, arena,
+                                                        benchmark),
             )
 
             warrior_pos = warriors.index(warrior_id)
