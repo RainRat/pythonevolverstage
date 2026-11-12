@@ -232,7 +232,8 @@ def run_search(run: Path) -> None:
                 ranked_matrices[arena, group] = field_matrix(
                     ranked, PROFILES[arena], seed=seed, battle_fn=safe_battle)
         for arena, lane in dict.fromkeys(keys):
-            other_seed = run / 'seeds' / f'a{arena}_lane{1 if lane == 0 else 0}.red'
+            other_seed = (run / state['partners'][str(arena)] if 'partners' in state else
+                          run / 'seeds' / f'a{arena}_lane{1 if lane == 0 else 0}.red')
             gate[arena] = [run / p for p in state['fields'][str(arena)]['C'][:5]]
             for group, seed in (('A', 400), ('B', 1200)):
                 ranked = [run / p for p in state['fields'][str(arena)][group]]
@@ -307,6 +308,10 @@ def run_search(run: Path) -> None:
             state['attempts'][key] += 1
             if lines == champion.read_text().splitlines():
                 continue
+            cap = state.get('max_partner_matches', {}).get(key)
+            if cap is not None and sum(a == b for a, b in zip(
+                    lines, (run / state['partners'][str(arena)]).read_text().splitlines())) > cap:
+                continue
             trial = run/'scratch'/f'a{arena}_lane{lane}.red'
             trial.write_text('\n'.join(lines)+'\n')
             try:
@@ -328,6 +333,8 @@ def run_search(run: Path) -> None:
                 shutil.copy2(trial, champion)
                 state['pool'][str(arena)].append({'path':str(target.relative_to(run)),
                                                    'source':'accepted'})
+                if state.get('moving_gate'):
+                    state['floor'][key] = max(state['floor'][key], gate_score - .02)
                 incumbent[arena,lane] = values
                 state['last_improve'][key] = state['attempts'][key]
                 event = {'time':time.time(),'arena':arena,'lane':lane,'attempt':state['attempts'][key],
