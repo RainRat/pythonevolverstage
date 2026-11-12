@@ -353,6 +353,7 @@ def _run_external_battle(
     seed: Optional[int],
     warrior1_path: str,
     warrior2_path: str,
+    warlen_override: Optional[int] = None,
 ) -> Optional[str]:
     config = get_active_config()
     resolve_command = _get_evolverstage_override(
@@ -374,7 +375,7 @@ def _run_external_battle(
             "-p": config.processes_list[arena_index],
             "-s": config.coresize_list[arena_index],
             "-c": config.cycles_list[arena_index],
-            "-l": config.warlen_list[arena_index],
+            "-l": warlen_override or config.warlen_list[arena_index],
             "-d": config.wardistance_list[arena_index],
         }
         if seed is not None:
@@ -390,7 +391,7 @@ def _run_external_battle(
             "-p": config.processes_list[arena_index],
             "-c": config.cycles_list[arena_index],
             "-s": config.coresize_list[arena_index],
-            "-l": config.warlen_list[arena_index],
+            "-l": warlen_override or config.warlen_list[arena_index],
             "-d": config.wardistance_list[arena_index],
         }
     else:
@@ -768,6 +769,7 @@ def execute_battle_with_sources(
     verbose: bool = False,
     battlerounds_override: Optional[int] = None,
     seed: Optional[int] = None,
+    warlen_override: Optional[int] = None,
 ) -> tuple[list[int], list[int]]:
     config = _require_battle_config()
     engine_name = config.battle_engine
@@ -796,7 +798,7 @@ def execute_battle_with_sources(
             config.readlimit_list[arena],
             config.writelimit_list[arena],
             config.wardistance_list[arena],
-            config.warlen_list[arena],
+            warlen_override or config.warlen_list[arena],
             battlerounds,
             internal_seed,
         )
@@ -816,6 +818,7 @@ def execute_battle_with_sources(
                 seed,
                 warrior1_path,
                 warrior2_path,
+                warlen_override=warlen_override,
             )
 
     return _process_battle_output(raw_output, engine_name, verbose, [cont1, cont2])
