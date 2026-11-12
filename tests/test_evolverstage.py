@@ -328,7 +328,7 @@ def test_main_runs_final_tournament_only_mode(monkeypatch, tmp_path):
 def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_config):
     benchmark_root = tmp_path / "benchmarks" / "arena0"
     benchmark_root.mkdir(parents=True)
-    (benchmark_root / "alpha.red").write_text("MOV 0, 0\n", encoding="utf-8")
+    (benchmark_root / "alpha.red").write_text("MOV 0, 0\n" * 7, encoding="utf-8")
 
     config_path = write_config(
         """
@@ -386,6 +386,7 @@ def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_con
     storage.set_warrior_lines(0, 2, ["DAT 0, 0\n"])
 
     observed_seeds = []
+    observed_lengths = []
 
     def fake_execute_battle_with_sources(
         arena,
@@ -397,8 +398,10 @@ def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_con
         verbose=False,
         battlerounds_override=None,
         seed=None,
+        warlen_override=None,
     ):
         observed_seeds.append(seed)
+        observed_lengths.append(warlen_override)
         warrior_score = 10 if cont1 == 1 else 4
         return [cont1, cont2], [warrior_score, 0]
 
@@ -415,8 +418,10 @@ def test_run_benchmark_battle_aggregates_scores(monkeypatch, tmp_path, write_con
         assert result.scores == [10, 4]
         assert result.benchmarks_played == 1
         assert observed_seeds == [123, 123]
+        assert observed_lengths == [7, 7]
         assert evolverstage._run_benchmark_battle(0, 1, 2, 0, config) is not None
         assert observed_seeds == [123, 123, 456, 456]
+        assert observed_lengths == [7, 7, 7, 7]
     finally:
         if previous_config is not None:
             evolverstage.set_active_config(previous_config)
@@ -490,6 +495,7 @@ def test_final_tournament_with_benchmarks(monkeypatch, tmp_path, write_config):
         verbose=False,
         battlerounds_override=None,
         seed=None,
+        warlen_override=None,
     ):
         call_records.append(
             (arena, cont1, cont2, cont1_code.strip(), cont2_code.strip(), seed)
@@ -1550,6 +1556,7 @@ def test_log_benchmark_scores_for_champions_records_scores(
         era,
         verbose=False,
         seed=None,
+        warlen_override=None,
     ):
         return [warrior_id, bench_identifier], [123, -123]
 
