@@ -25,6 +25,13 @@ def test_hillclimb_preserves_length_and_rewards_survival():
     assert scores[0][0] < scores[1][0] < scores[2][0]
     assert scores[0][1] == (9, 12)  # First eliminated from both fields.
     assert scores[2][1] == (1, 1)  # Survives both push-offs.
+    assert fitness(matrix, partner_index=10)[1] == (1, 1)
+
+    poor = [row.copy() for row in field]
+    for i in range(11):
+        poor[i][11] = 3
+        poor[11][i] = 0
+    assert fitness(poor, partner_index=10)[1] == (10, 12)
 
 
 def test_archive_seeds_are_distinct(tmp_path):
