@@ -255,7 +255,8 @@ def run_search(run: Path) -> None:
             incumbent[arena, lane] = tuple(
                 tuple(score(candidate, fields[arena,lane,g],
                             matrices[arena,lane,set_index,g], PROFILES[arena],seed=seed,
-                            battle_fn=safe_battle)[0]
+                            battle_fn=safe_battle,
+                            partner_index=len(fields[arena,lane,g])-1 if 'partners' in state else None)[0]
                       for g,seed in seed_set.items())
                 for set_index,seed_set in enumerate(seed_sets))
             print('baseline', arena, lane, incumbent[arena, lane], flush=True)
@@ -278,11 +279,13 @@ def run_search(run: Path) -> None:
                 print('progress', sum(state['attempts'].values()),
                       sum(state['accepted'].values()), reason, flush=True)
                 last_save = now
-            if time.time() >= state['wall_start'] + 2*3600 and not (run/'checkpoint-2h.json').exists():
-                save_json(run/'checkpoint-2h.json',
-                          {'time': time.time(), 'attempts': state['attempts'],
-                           'accepted': state['accepted'], 'restarts': state['restarts'],
-                           'telemetry': reason})
+            for hours in (2, 5):
+                checkpoint = run/f'checkpoint-{hours}h.json'
+                if time.time() >= state['wall_start'] + hours*3600 and not checkpoint.exists():
+                    save_json(checkpoint,
+                              {'time': time.time(), 'attempts': state['attempts'],
+                               'accepted': state['accepted'], 'restarts': state['restarts'],
+                               'telemetry': reason})
             if duty == 0 or now - last_critical < RECOVERY_SECONDS:
                 last_trial_start = None
                 time.sleep(min(20, max(0, state['deadline']-time.time())))
@@ -302,11 +305,12 @@ def run_search(run: Path) -> None:
                 replacement = rng.choice(donors)
                 shutil.copy2(replacement, champion)
                 state['floor'][key] = promotion(champion, gate[arena], PROFILES[arena],
-                                                promotion_seeds) - .05
+                                                promotion_seeds) - (.02 if state.get('moving_gate') else .05)
                 incumbent[arena,lane] = tuple(
                     tuple(score(champion, fields[arena,lane,g],
                                 matrices[arena,lane,set_index,g], PROFILES[arena],seed=seed,
-                                battle_fn=safe_battle)[0]
+                                battle_fn=safe_battle,
+                                partner_index=len(fields[arena,lane,g])-1 if 'partners' in state else None)[0]
                           for g,seed in seed_set.items())
                     for set_index,seed_set in enumerate(seed_sets))
                 state['last_improve'][key] = state['attempts'][key]
@@ -331,7 +335,8 @@ def run_search(run: Path) -> None:
             def evaluate(index):
                 return tuple(score(trial, fields[arena,lane,g],
                                    matrices[arena,lane,index,g], PROFILES[arena],seed=seed,
-                                   battle_fn=safe_battle)[0]
+                                   battle_fn=safe_battle,
+                                   partner_index=len(fields[arena,lane,g])-1 if 'partners' in state else None)[0]
                              for g,seed in seed_sets[index].items())
             try:
                 screened = evaluate(set_index)
