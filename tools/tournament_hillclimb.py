@@ -71,12 +71,18 @@ def mutate(lines: list[str], donor: list[str], rng: random.Random) -> list[str]:
     return result
 
 
-def fitness(matrix: list[list[float]]) -> tuple[float, tuple[int, int], float]:
-    """Candidate survival in approximate push-off for top 8 and full top 10."""
+def fitness(matrix: list[list[float]], partner_index: int | None = None
+            ) -> tuple[float, tuple[int, int], float]:
+    """Candidate survival in approximate push-off for top 8 and full field."""
     candidate = len(matrix) - 1
     ranks = []
+    sizes = []
     for size in (8, len(matrix) - 1):
-        active = list(range(size)) + [candidate]
+        active = list(range(size))
+        if partner_index is not None and partner_index not in active:
+            active.append(partner_index)
+        active.append(candidate)
+        sizes.append(len(active) - 1)
         while len(active) > 1:
             stdev = []
             for column in active:
@@ -97,7 +103,7 @@ def fitness(matrix: list[list[float]]) -> tuple[float, tuple[int, int], float]:
             active.remove(loser)
         ranks.append(len(active))
     mean = sum(matrix[candidate][other] for other in range(candidate)) / candidate
-    survival = sum((size + 1 - rank) / size for size, rank in zip((8, candidate), ranks)) / 2
+    survival = sum((size + 1 - rank) / size for size, rank in zip(sizes, ranks)) / 2
     return survival + mean / 15, tuple(ranks), mean
 
 
@@ -113,13 +119,13 @@ def field_matrix(field: list[Path], profile: tuple,
 
 
 def score(candidate: Path, field: list[Path], base: list[list[float]], profile: tuple,
-          seed: int | None = None, battle_fn=None):
+          seed: int | None = None, battle_fn=None, partner_index: int | None = None):
     battle_fn = battle_fn or battle
     pairs = [battle_fn(candidate, opponent, profile, FIELD_ROUNDS, seed=seed)
              for opponent in field]
     matrix = [row + [pairs[i][1]] for i, row in enumerate(base)]
     matrix.append([pair[0] for pair in pairs] + [1.5])
-    return fitness(matrix)
+    return fitness(matrix, partner_index=partner_index)
 
 
 def holdout_score(candidate: Path, arena: int) -> float:
