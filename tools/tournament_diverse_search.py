@@ -131,9 +131,10 @@ def cached_fields(run: Path, arena: int) -> dict[str, list[str]]:
     return output
 
 
-def promotion(candidate: Path, opponents: list[Path], profile: tuple) -> float:
+def promotion(candidate: Path, opponents: list[Path], profile: tuple,
+              seeds: tuple[int, ...] = (3500, 5700)) -> float:
     return sum(safe_battle(candidate, other, profile, PROMOTION_ROUNDS, seed=seed)[0]
-               for seed in (3500, 5700) for other in opponents) / (2*len(opponents))
+               for seed in seeds for other in opponents) / (len(seeds)*len(opponents))
 
 
 def prepare(run: Path) -> dict:
@@ -218,6 +219,8 @@ def run_search(run: Path) -> None:
             raise RuntimeError('Disk limit reached')
         rng = random.Random()
         weights = state.get('weights', (3, 5, 2, 2))
+        seed_sets = state.get('training_seed_sets', ({'A': 400, 'B': 1200},))
+        promotion_seeds = tuple(state.get('promotion_seeds', (3500, 5700)))
         active_arenas = [arena for arena, weight in enumerate(weights) if weight]
         keys = [(arena, lane) for arena, weight in enumerate(weights)
                 for lane in range(ISLANDS) for _ in range(weight)]
@@ -226,29 +229,35 @@ def run_search(run: Path) -> None:
         incumbent = {}
         gate = {}
         ranked_matrices = {}
-        for arena in active_arenas:
-            for group, seed in (('A', 400), ('B', 1200)):
-                ranked = [run / p for p in state['fields'][str(arena)][group]]
-                ranked_matrices[arena, group] = field_matrix(
-                    ranked, PROFILES[arena], seed=seed, battle_fn=safe_battle)
+        for set_index, seed_set in enumerate(seed_sets):
+            for arena in active_arenas:
+                for group, seed in seed_set.items():
+                    ranked = [run / p for p in state['fields'][str(arena)][group]]
+                    ranked_matrices[arena, set_index, group] = field_matrix(
+                        ranked, PROFILES[arena], seed=seed, battle_fn=safe_battle)
         for arena, lane in dict.fromkeys(keys):
             other_seed = (run / state['partners'][str(arena)] if 'partners' in state else
                           run / 'seeds' / f'a{arena}_lane{1 if lane == 0 else 0}.red')
             gate[arena] = [run / p for p in state['fields'][str(arena)]['C'][:5]]
-            for group, seed in (('A', 400), ('B', 1200)):
-                ranked = [run / p for p in state['fields'][str(arena)][group]]
-                field = ranked + [other_seed]
-                fields[arena, lane, group] = field
-                pairs = [safe_battle(path, other_seed, PROFILES[arena], 12, seed=seed)
-                         for path in ranked]
-                matrices[arena, lane, group] = [row[:] + [pairs[i][0]]
-                                                for i,row in enumerate(ranked_matrices[arena,group])]
-                matrices[arena, lane, group].append([pair[1] for pair in pairs]+[1.5])
+            for set_index, seed_set in enumerate(seed_sets):
+                for group, seed in seed_set.items():
+                    ranked = [run / p for p in state['fields'][str(arena)][group]]
+                    field = ranked + [other_seed]
+                    fields[arena, lane, group] = field
+                    pairs = [safe_battle(path, other_seed, PROFILES[arena], 12, seed=seed)
+                             for path in ranked]
+                    matrices[arena, lane, set_index, group] = [
+                        row[:] + [pairs[i][0]]
+                        for i,row in enumerate(ranked_matrices[arena,set_index,group])]
+                    matrices[arena, lane, set_index, group].append(
+                        [pair[1] for pair in pairs]+[1.5])
             candidate = run / 'champions' / f'a{arena}_lane{lane}.red'
-            incumbent[arena, lane] = tuple(score(candidate, fields[arena,lane,g],
-                                               matrices[arena,lane,g], PROFILES[arena],seed=seed,
-                                               battle_fn=safe_battle)[0]
-                                           for g,seed in (('A',400),('B',1200)))
+            incumbent[arena, lane] = tuple(
+                tuple(score(candidate, fields[arena,lane,g],
+                            matrices[arena,lane,set_index,g], PROFILES[arena],seed=seed,
+                            battle_fn=safe_battle)[0]
+                      for g,seed in seed_set.items())
+                for set_index,seed_set in enumerate(seed_sets))
             print('baseline', arena, lane, incumbent[arena, lane], flush=True)
         last_health = 0.0
         last_critical = -RECOVERY_SECONDS
@@ -292,11 +301,14 @@ def run_search(run: Path) -> None:
                 shutil.copy2(champion, run/'restarts'/f'a{arena}_lane{lane}_{number:04d}_previous.red')
                 replacement = rng.choice(donors)
                 shutil.copy2(replacement, champion)
-                state['floor'][key] = promotion(champion, gate[arena], PROFILES[arena]) - .05
-                incumbent[arena,lane] = tuple(score(champion, fields[arena,lane,g],
-                                                   matrices[arena,lane,g], PROFILES[arena],seed=seed,
-                                                   battle_fn=safe_battle)[0]
-                                               for g,seed in (('A',400),('B',1200)))
+                state['floor'][key] = promotion(champion, gate[arena], PROFILES[arena],
+                                                promotion_seeds) - .05
+                incumbent[arena,lane] = tuple(
+                    tuple(score(champion, fields[arena,lane,g],
+                                matrices[arena,lane,set_index,g], PROFILES[arena],seed=seed,
+                                battle_fn=safe_battle)[0]
+                          for g,seed in seed_set.items())
+                    for set_index,seed_set in enumerate(seed_sets))
                 state['last_improve'][key] = state['attempts'][key]
                 save_json(run/'state.json', state)
                 print('restarted archive island', arena, lane, number, flush=True)
@@ -314,16 +326,28 @@ def run_search(run: Path) -> None:
                 continue
             trial = run/'scratch'/f'a{arena}_lane{lane}.red'
             trial.write_text('\n'.join(lines)+'\n')
+            previous = incumbent[arena,lane]
+            set_index = state['attempts'][key] % len(seed_sets)
+            def evaluate(index):
+                return tuple(score(trial, fields[arena,lane,g],
+                                   matrices[arena,lane,index,g], PROFILES[arena],seed=seed,
+                                   battle_fn=safe_battle)[0]
+                             for g,seed in seed_sets[index].items())
             try:
-                values = tuple(score(trial, fields[arena,lane,g],
-                                     matrices[arena,lane,g], PROFILES[arena],seed=seed,
-                                     battle_fn=safe_battle)[0]
-                               for g,seed in (('A',400),('B',1200)))
+                screened = evaluate(set_index)
+                prior_screen = previous[set_index]
+                if sum(screened) <= sum(prior_screen) + 1e-5 or any(
+                        a < b-.10 for a,b in zip(screened,prior_screen)):
+                    continue
+                values = tuple(screened if index == set_index else evaluate(index)
+                               for index in range(len(seed_sets)))
             except (RuntimeError, subprocess.TimeoutExpired):
                 continue
-            previous = incumbent[arena,lane]
-            if sum(values) > sum(previous) + 1e-5 and all(a >= b-.10 for a,b in zip(values,previous)):
-                gate_score = promotion(trial, gate[arena], PROFILES[arena])
+            flat_new = [v for group in values for v in group]
+            flat_old = [v for group in previous for v in group]
+            if sum(flat_new) > sum(flat_old) + 1e-5 and all(
+                    a >= b-.10 for a,b in zip(flat_new,flat_old)):
+                gate_score = promotion(trial, gate[arena], PROFILES[arena], promotion_seeds)
                 if gate_score < state['floor'][key]:
                     continue
                 state['accepted'][key] += 1
