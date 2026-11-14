@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from tools.tournament_diverse_search import crossover_lines, mutate_tournament
+from tools.tournament_diverse_search import crossover_lines, improvement_path, mutate_tournament
 
 
 def test_padding_choices_are_available_only_in_94_arenas():
@@ -33,3 +33,10 @@ def test_crossover_sources_strip_directives_and_pad_short_warriors(tmp_path):
     old88.write_text('SPL $1, $0\nEND 0\nMOV $0, $1\n')
     with pytest.raises(ValueError):
         crossover_lines(old88, 2)
+
+
+def test_improvement_path_skips_inherited_archive_files(tmp_path):
+    (tmp_path / 'a2_lane0_00001.red').write_text('old first')
+    (tmp_path / 'a2_lane0_00002.red').write_text('old second')
+    assert improvement_path(tmp_path, 2, 0, 1).name == 'a2_lane0_00003.red'
+    assert (tmp_path / 'a2_lane0_00001.red').read_text() == 'old first'
