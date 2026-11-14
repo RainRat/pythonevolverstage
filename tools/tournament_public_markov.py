@@ -22,7 +22,7 @@ import time
 import zipfile
 
 from tools.tournament_benchmark import PMARS, PROFILES
-from tools.tournament_diverse_search import safe_battle
+from tools.tournament_diverse_search import crossover_lines, safe_battle
 from tools.tournament_hillclimb import save_json
 
 
@@ -273,7 +273,7 @@ def inject() -> None:
             if sum(a == b for a, b in zip(compiled[1], partner[1])) > 20:
                 continue
             destination = target / "pool" / f"public_a{arena}_{source.name}"
-            shutil.copy2(source, destination)
+            destination.write_text('\n'.join(crossover_lines(source, arena)) + '\n')
             state["pool"][str(arena)].append({"path": str(destination.relative_to(target)),
                                                 "source": "public_markov_screened"})
             added[str(arena)].append({"path": str(destination.relative_to(target)),
