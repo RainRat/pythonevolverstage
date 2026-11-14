@@ -96,6 +96,14 @@ def crossover_lines(path: Path, arena: int) -> list[str]:
     return lines + [('DAT #0, #0' if arena == 2 else 'DAT.F $0, $0')] * (50-len(lines))
 
 
+def improvement_path(folder: Path, arena: int, lane: int, first: int) -> Path:
+    """Never overwrite an improvement inherited from an earlier run."""
+    number = first
+    while (target := folder / f'a{arena}_lane{lane}_{number:05d}.red').exists():
+        number += 1
+    return target
+
+
 def choose_diverse(candidates: list[tuple[float, tuple[float, ...], Path]], count: int) -> list[Path]:
     """Take strong archive entries with distinct code and matchup vectors."""
     candidates = sorted(candidates, reverse=True)[:200]
@@ -373,7 +381,7 @@ def run_search(run: Path) -> None:
                     continue
                 state['accepted'][key] += 1
                 number = state['accepted'][key]
-                target = run/'improvements'/f'a{arena}_lane{lane}_{number:05d}.red'
+                target = improvement_path(run/'improvements', arena, lane, number)
                 shutil.copy2(trial, target)
                 shutil.copy2(trial, champion)
                 state['pool'][str(arena)].append({'path':str(target.relative_to(run)),
@@ -384,6 +392,7 @@ def run_search(run: Path) -> None:
                 state['last_improve'][key] = state['attempts'][key]
                 event = {'time':time.time(),'arena':arena,'lane':lane,'attempt':state['attempts'][key],
                          'accepted':number,'fitness':values,'gate_score':gate_score,
+                         'archive_path':str(target.relative_to(run)),
                          'sha256':hashlib.sha256(target.read_bytes()).hexdigest()}
                 with (run/'events.jsonl').open('a') as out:
                     out.write(json.dumps(event)+'\n')
