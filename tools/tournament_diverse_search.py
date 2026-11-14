@@ -80,6 +80,22 @@ def mutate_tournament(lines: list[str], donor: list[str], rng: random.Random,
     return result
 
 
+def crossover_lines(path: Path, arena: int) -> list[str]:
+    """Keep directives out of crossover and pad short warriors to 50 instructions."""
+    lines = path.read_text().splitlines()
+    if lines and lines[0] == 'ORG START':
+        lines.pop(0)
+        if not lines or not lines[0].startswith('START '):
+            raise ValueError(f'Unsupported entry directive in {path}')
+        lines[0] = lines[0].removeprefix('START ')
+    if lines and re.match(r'^END\b', lines[-1], re.I):
+        lines.pop()
+    if not lines or len(lines) > 50 or any(re.match(r'^(?:END|ORG)\b', line, re.I)
+                                              for line in lines):
+        raise ValueError(f'Invalid crossover source {path}')
+    return lines + [('DAT #0, #0' if arena == 2 else 'DAT.F $0, $0')] * (50-len(lines))
+
+
 def choose_diverse(candidates: list[tuple[float, tuple[float, ...], Path]], count: int) -> list[Path]:
     """Take strong archive entries with distinct code and matchup vectors."""
     candidates = sorted(candidates, reverse=True)[:200]
@@ -303,7 +319,7 @@ def run_search(run: Path) -> None:
                 number = state['restarts'][key]
                 shutil.copy2(champion, run/'restarts'/f'a{arena}_lane{lane}_{number:04d}_previous.red')
                 replacement = rng.choice(donors)
-                shutil.copy2(replacement, champion)
+                champion.write_text('\n'.join(crossover_lines(replacement, arena))+'\n')
                 state['floor'][key] = promotion(champion, gate[arena], PROFILES[arena],
                                                 promotion_seeds) - (.02 if state.get('moving_gate') else .05)
                 incumbent[arena,lane] = tuple(
@@ -319,8 +335,8 @@ def run_search(run: Path) -> None:
             seed = run/'seeds'/f'a{arena}_lane{lane}.red'
             parent = rng.choices([champion, rng.choice(donors), seed], weights=[65,20,15])[0]
             donor = rng.choices([champion, rng.choice(donors), seed], weights=[40,40,20])[0]
-            lines = mutate_tournament(parent.read_text().splitlines(),
-                                      donor.read_text().splitlines(), rng, arena)
+            lines = mutate_tournament(crossover_lines(parent, arena),
+                                      crossover_lines(donor, arena), rng, arena)
             state['attempts'][key] += 1
             if lines == champion.read_text().splitlines():
                 continue
