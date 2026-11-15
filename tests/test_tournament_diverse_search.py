@@ -2,7 +2,7 @@ import random
 
 import pytest
 
-from tools.tournament_diverse_search import crossover_lines, improvement_path, mutate_tournament
+from tools.tournament_diverse_search import crossover_lines, donor_pool, improvement_path, mutate_tournament
 
 
 def test_padding_choices_are_available_only_in_94_arenas():
@@ -40,3 +40,12 @@ def test_improvement_path_skips_inherited_archive_files(tmp_path):
     (tmp_path / 'a2_lane0_00002.red').write_text('old second')
     assert improvement_path(tmp_path, 2, 0, 1).name == 'a2_lane0_00003.red'
     assert (tmp_path / 'a2_lane0_00001.red').read_text() == 'old first'
+
+
+def test_lane_donor_pools_keep_accepted_sources_isolated():
+    state = {'pool': {'2': [{'path': 'shared.red'}]},
+             'lane_pools': {'2:0': [{'path': 'a.red'}], '2:1': [{'path': 'b.red'}]}}
+    donor_pool(state, 2, 0).append({'path': 'accepted.red'})
+    assert [item['path'] for item in donor_pool(state, 2, 0)] == ['a.red', 'accepted.red']
+    assert [item['path'] for item in donor_pool(state, 2, 1)] == ['b.red']
+    assert [item['path'] for item in state['pool']['2']] == ['shared.red']
