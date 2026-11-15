@@ -104,6 +104,13 @@ def improvement_path(folder: Path, arena: int, lane: int, first: int) -> Path:
     return target
 
 
+def donor_pool(state: dict, arena: int, lane: int) -> list[dict]:
+    """Keep lineage-specific donors separate when the run supplies lane pools."""
+    if 'lane_pools' in state:
+        return state['lane_pools'][f'{arena}:{lane}']
+    return state['pool'][str(arena)]
+
+
 def choose_diverse(candidates: list[tuple[float, tuple[float, ...], Path]], count: int) -> list[Path]:
     """Take strong archive entries with distinct code and matchup vectors."""
     candidates = sorted(candidates, reverse=True)[:200]
@@ -321,7 +328,8 @@ def run_search(run: Path) -> None:
             arena, lane = rng.choice(keys)
             key = f'{arena}:{lane}'
             champion = run/'champions'/f'a{arena}_lane{lane}.red'
-            donors = [run / item['path'] for item in state['pool'][str(arena)]]
+            pool = donor_pool(state, arena, lane)
+            donors = [run / item['path'] for item in pool]
             if lane >= 2 and state['attempts'][key] - state['last_improve'][key] >= RESTART_AFTER:
                 state['restarts'][key] += 1
                 number = state['restarts'][key]
@@ -384,8 +392,8 @@ def run_search(run: Path) -> None:
                 target = improvement_path(run/'improvements', arena, lane, number)
                 shutil.copy2(trial, target)
                 shutil.copy2(trial, champion)
-                state['pool'][str(arena)].append({'path':str(target.relative_to(run)),
-                                                   'source':'accepted'})
+                pool.append({'path':str(target.relative_to(run)),
+                             'source':'accepted'})
                 if state.get('moving_gate'):
                     state['floor'][key] = max(state['floor'][key], gate_score - .02)
                 incumbent[arena,lane] = values
