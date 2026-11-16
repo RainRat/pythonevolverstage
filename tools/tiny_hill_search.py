@@ -205,7 +205,7 @@ def run_search() -> None:
             if now - last_health >= 30:
                 duty, reason = health(TELEMETRY)
                 last_health = now
-                if duty == 0:
+                if duty == 0 and reason in ("critical host pressure", "battery below 40%"):
                     last_critical = now
             if now - last_save >= 300:
                 if not disk_ok(RUN):
