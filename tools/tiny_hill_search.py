@@ -187,6 +187,9 @@ def run_search() -> None:
         holdout = sorted((RUN / "reference_holdout").glob("*.red"))
         library = (RUN / "reference_instruction_library.txt").read_text().splitlines()
         donors = sorted((RUN / "seed_pool").glob("*.red")) + sorted((RUN / "improvements").glob("*.red"))
+        archived_attempts = [int(path.stem.split("_", 1)[0]) for path in (RUN / "improvements").glob("*.red")]
+        state["attempts"] = max([state["attempts"], *archived_attempts])
+        state["accepted"] = max(state["accepted"], len(archived_attempts))
         top_seeds = [RUN / item["file"] for item in json.loads((RUN / "seed_scores.json").read_text())[:50]]
         public_bodies = {tuple(body_at(path)) for path in train + holdout}
         rng = random.Random()
@@ -249,9 +252,10 @@ def run_search() -> None:
                     lane_state["accepted"] += 1
                     lane_state["stalled"] = 0
                     state["accepted"] += 1
-                    archived = RUN / "improvements" / f"{state['attempts']:09d}.red"
+                    archived = RUN / "improvements" / f"{state['attempts']:09d}_{time.time_ns()}.red"
                     shutil.copy2(candidate, archived)
                     donors.append(archived)
+                    save_json(RUN / "state.json", state)
                     promotion_seeds = [rng.randrange(1, 2**31) for _ in range(3)]
                     best = RUN / "champions/best.red"
                     best_score = score(best, train, promotion_seeds, 150)
