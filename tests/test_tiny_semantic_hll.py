@@ -16,5 +16,7 @@ def test_compiled_architectures_and_measured_behavior():
         profile[arch] = behavior(source, worker)[-1]
     assert profile["paper"]["max_processes"] > 1
     assert profile["paper"]["executed_outside"] == 1
+    assert profile["paper_booted"]["max_processes"] > profile["paper"]["max_processes"]
     assert profile["scan_clear"]["max_processes"] == 1
+    assert profile["bounded_scan_clear"]["max_processes"] == 1
     assert profile["clear"]["null_died"] == 1
