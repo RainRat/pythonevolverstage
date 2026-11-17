@@ -268,7 +268,7 @@ def search(state: dict) -> dict:
 
 def originality(paths: list[Path]) -> dict:
     module = SourceFileLoader("tiny_extended_originality", str(OLD / "extended_originality_scan.py")).load_module()
-    candidates = {path.name: module.compiled(path.read_bytes(), "tiny")[1] for path in paths}
+    candidates = {str(path): module.compiled(path.read_bytes(), "tiny")[1] for path in paths}
     results = {name: {"max_active_exact_run": 0, "max_structural_run": 0} for name in candidates}
     seen = set()
     for label, raw, _ in module.cached_sources():
@@ -342,7 +342,7 @@ def validate(state: dict) -> None:
     top = [Path(row["file"]) for row in results[:2]]
     source_checks = originality(top)
     for row in results[:2]:
-        row["originality"] = source_checks[Path(row["file"]).name]
+        row["originality"] = source_checks[row["file"]]
     staged = []
     for i, row in enumerate(results[:2]):
         if not row["passes"] or row["originality"]["max_active_exact_run"] > 2:
