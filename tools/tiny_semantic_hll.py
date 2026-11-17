@@ -15,9 +15,11 @@ from tools.tiny_hill_search import ROOT, assemble, score
 
 PROXY = ROOT / ".local/sal-tiny-conditional-8h-20261117"
 OLD = ROOT / ".local/sal-tiny-8h-20261116"
-RUN = ROOT / ".local/sal-tiny-semantic-behavior-20261117"
+RUN = ROOT / ".local/sal-tiny-semantic-modules-final-20261117"
 ARCHES = ("paper", "stone", "clear", "scan_clear", "parallel_paper_stone",
-          "parallel_paper_clear", "parallel_stone_clear", "stone_then_clear")
+          "parallel_paper_clear", "parallel_stone_clear", "stone_then_clear",
+          "paper_booted", "bounded_scan_clear", "spl_clear",
+          "parallel_booted_paper_stone", "parallel_booted_paper_clear")
 
 
 def compile_program(g: dict) -> str:
@@ -29,6 +31,9 @@ def compile_program(g: dict) -> str:
         raise ValueError("parameter outside Tiny range")
     paper = ["paper spl.b @0, }" + str(offset), "mov.i }paper, >paper",
              "spl.b @0, }" + str(second), "mov.i }-1, >-1", "jmp.b paper"]
+    paper_booted = ["paper spl.b 1", "spl.b 1", "silk spl.b @0, }" + str(offset),
+                    "mov.i }-1, >-1", "spl.b @0, }" + str(second),
+                    "mov.i }-1, >-1", "jmp.b silk"]
     stone = ["stone spl.b #0, >-1", "mov.i bomb, @ptr", f"add.ab #{step}, ptr",
              "jmp.b stone+1", f"ptr dat.f 0, {offset}", "bomb dat.f 0, 0"]
     clear = ["clear mov.i cbomb, >cptr", "jmp.b clear", "cbomb dat.f 0, 0",
@@ -36,18 +41,34 @@ def compile_program(g: dict) -> str:
     scan_clear = [f"scan add.ab #{step}, sptr", "jmz.f scan, @sptr", "jmp.b clear",
                   f"sptr dat.f 0, {offset}", "clear mov.i cbomb, >sptr",
                   "jmp.b clear", "cbomb dat.f 0, 0"]
+    bounded_scan_clear = [f"scan add.ab #{step}, sptr", "jmz.f next, @sptr",
+                          "jmp.b clear", f"next djn.b scan, #{count}",
+                          "jmp.b clear", f"sptr dat.f 0, {offset}",
+                          "clear mov.i cbomb, >sptr", "jmp.b clear", "cbomb dat.f 0, 0"]
+    spl_clear = ["clear spl.b #0, $0", "mov.i cbomb, >cptr",
+                 "jmp.b clear+1", f"cptr dat.f 0, {offset}", "cbomb dat.f 0, 0"]
     finite_stone = ["stone mov.i bomb, @ptr", f"add.ab #{step}, ptr",
                     f"djn.b stone, #{count}", "jmp.b clear", f"ptr dat.f 0, {offset}",
                     "bomb dat.f 0, 0"]
     arch = g["arch"]
     if arch == "paper":
         lines = paper
+    elif arch == "paper_booted":
+        lines = paper_booted
     elif arch == "stone":
         lines = stone
     elif arch == "clear":
         lines = clear
     elif arch == "scan_clear":
         lines = scan_clear
+    elif arch == "bounded_scan_clear":
+        lines = bounded_scan_clear
+    elif arch == "spl_clear":
+        lines = spl_clear
+    elif arch == "parallel_booted_paper_stone":
+        lines = ["entry spl.b paper", "jmp.b stone"] + paper_booted + stone
+    elif arch == "parallel_booted_paper_clear":
+        lines = ["entry spl.b paper", "jmp.b clear"] + paper_booted + clear
     elif arch.startswith("parallel_"):
         first, last = arch.removeprefix("parallel_").split("_")
         modules = {"paper": paper, "stone": stone, "clear": clear}
