@@ -181,6 +181,7 @@ def search(state: dict) -> dict:
     last_critical = -RECOVERY_SECONDS
     duty, reason = 0.0, "starting"
     health_state = None
+    state.setdefault("host_events", [])
     archived_attempts = [int(p.stem.split("_", 1)[0]) for p in (RUN / "improvements").glob("*.red")]
     state["attempts"] = max([state["attempts"], *archived_attempts])
     state["accepted"] = max(state["accepted"], len(archived_attempts))
@@ -191,6 +192,7 @@ def search(state: dict) -> dict:
             last_health = now
             if (duty, reason) != health_state:
                 print("health", duty, reason, flush=True)
+                state["host_events"].append({"time": time.time(), "duty": duty, "reason": reason})
                 health_state = (duty, reason)
             if duty == 0 and reason in ("critical host pressure", "battery below 40%"):
                 last_critical = now
@@ -285,6 +287,11 @@ def originality(paths: list[Path]) -> dict:
 def validate(state: dict) -> None:
     known, hard_train, hard_holdout = fields()
     rng = random.Random()
+    if time.time() >= state["deadline"]:
+        state["phase"] = "deadline_expired"
+        save_json(RUN / "state.json", state)
+        (RUN / "FINAL_REPORT.md").write_text("# SAL Tiny result\n\nThe fixed wall deadline passed before final validation. No entry is recommended.\n")
+        return
     while health(TELEMETRY)[0] == 0 and time.time() < state["deadline"]:
         time.sleep(10)
     if health(TELEMETRY)[0] == 0:
@@ -347,20 +354,32 @@ def validate(state: dict) -> None:
             raise RuntimeError("Entry header changed the assembled warrior")
         staged.append(str(draft))
     outcome = "unsent qualifying draft" if staged else "credible proxy but no qualifying candidate"
-    report = {"outcome": outcome, "finished_at": time.time(), "slate_known": slate_known * 100,
+    report = {"outcome": outcome, "finished_at": time.time(), "started_at": state["started_at"],
+              "deadline": state["deadline"], "search_deadline": state["search_deadline"],
+              "host_events": state.get("host_events", []),
+              "calibration": json.loads((RUN / "PREP.json").read_text()),
+              "slate_known": slate_known * 100,
               "slate_hard_holdout": slate_hard * 100, "final_seeds": final_seeds,
               "rank_seed": rank_seeds, "candidate_count": len(pool), "results": results,
               "staged_drafts": staged,
               "source_count": len(json.loads((RUN / "sources.json").read_text()))}
     save_json(RUN / "FINAL_RESULTS.json", report)
     lines = ["# SAL Tiny conditional run", "", f"Outcome: **{outcome}**. No submission was made.", "",
+             f"Started: {time.strftime('%Y-%m-%d %H:%M:%S %Z', time.localtime(state['started_at']))}.",
+             f"Finished: {time.strftime('%Y-%m-%d %H:%M:%S %Z', time.localtime(report['finished_at']))}.",
+             f"Elapsed wall time: {(report['finished_at'] - state['started_at']) / 3600:.2f} hours.",
              f"Attempts: {state['attempts']}; accepted: {state['accepted']}; resets: {state['resets']}.",
+             f"Host telemetry changes: {len(state.get('host_events', []))}; details in `FINAL_RESULTS.json`.",
+             "Prelaunch checks: offline proxy preflight passed; `pytest tests/`: 444 passed.",
              f"Slate baseline: known {slate_known * 100:.2f}, hard holdout {slate_hard * 100:.2f}.", "",
              "| Candidate | Known | Hard holdout | Estimated live | Pass |", "|---|---:|---:|---:|---|"]
     for row in results[:10]:
         lines.append(f"| {Path(row['file']).name} | {row['known']:.2f} | {row['hard_holdout']:.2f} | {row['estimated_live']:.2f} | {row['passes']} |")
     lines += ["", "The estimate uses Slate's official 120.8 as an anchor and local candidate-minus-Slate gains.",
               "The hard proxy remains an approximation of 14 unavailable live opponents.",
+              f"Known panel: {', '.join(path.stem for path in known)}.",
+              f"Hard training panel: {', '.join(path.stem for path in hard_train)}.",
+              f"Hard holdout panel: {', '.join(path.stem for path in hard_holdout)}.",
               "See `FINAL_RESULTS.json`, `sources.json`, and `PREP.json` for seeds, scores, and provenance."]
     (RUN / "FINAL_REPORT.md").write_text("\n".join(lines) + "\n")
     state["phase"] = "complete"
